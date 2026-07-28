@@ -21,7 +21,7 @@ Four authoring panels, in order:
 |---|---|---|
 | **Information** | name, version, creator, description | `[meta]` in `.sap`; no editor UI |
 | **Colors** | 204 named roles + ♦ Groups + Import Colors + RGB/hex/decimal | Named roles + RGB/hex; no Groups / Import / decimal CSV UI |
-| **Images** | paste bitmap, Caps, Positions, Transparent Color, Text Color | Runtime Caps/Positions + Hap import; no Images authoring panel |
+| **Images** | paste bitmap, Caps, Positions, Transparent Color, Text Color | Editor Images panel: Paste (Ctrl+V / DIB), Caps/Positions nudges, Transparent Color menu, Text Color RGB; live Kit Preview |
 | **Icons** | full 16×16 / 32×32 catalog | `file.generic` + `folder` only; no Icons panel |
 
 ### Authoring rules (PDF — record these)

@@ -44,6 +44,8 @@ enum Drag : int {
     DragBtnStock,
     DragBtnImportColors,
     DragBtnColorsOnly,
+    DragBtnPaste,
+    DragBtnTrans,
     DragPreviewBtn,
     DragCloseBox,
     DragMaxBox,
@@ -56,6 +58,7 @@ enum Drag : int {
     DragDropdown,
     DragPanelTab,
     DragGroupBase,
+    DragImgNudge,
 };
 
 struct App {
@@ -74,6 +77,7 @@ struct App {
     KitPreviewState preview_st{};
     int asset_sel = 0; // images / icons list selection
     Color group_base{180, 180, 180};
+    int trans_mode = 0; // 0=None 1=White 2=Red 3=Green 4=Blue (last applied)
 
     int drag = DragNone;
     int drag_btn = 0;       // active preview button id (1..3) while over it
@@ -83,6 +87,7 @@ struct App {
     ScrollArrowHot arrow_hot = ScrollArrowHot::None;
     int pressed_box = 0;
     int h_thumb_grab = 0;   // mouse x offset within H thumb
+    int nudge_which = 0;    // 0..7 caps, 8..15 pos; low bit unused, encode as (kind<<4)|axis
 
     std::string path;
     std::string status = "Stock skin — edit colours, Save to write a .sap";
@@ -97,6 +102,13 @@ struct App {
     Rect hex_field{};
     Rect group_swatch{};
     Rect info_fields[4]{};
+
+    // Images authoring strip
+    Rect img_thumb{};
+    Rect img_cap_minus[4]{}, img_cap_plus[4]{};
+    Rect img_pos_minus[4]{}, img_pos_plus[4]{};
+    Rect btn_paste{};
+    Rect btn_trans[5]{};
 
     int roles_page() const {
         int body_h = role_list.h - kHeaderH;
@@ -287,6 +299,224 @@ void apply_primary_group(Color base) {
     g.ap.set_color("primary.frame", frame);
 }
 
+// --- Images authoring ----------------------------------------------------
+
+std::vector<std::string> art_keys_list() {
+    std::vector<std::string> keys;
+    keys.reserve(g.ap.art_cache.size());
+    for (const auto &kv : g.ap.art_cache)
+        if (!kv.second.empty()) keys.push_back(kv.first);
+    return keys;
+}
+
+std::string selected_art_key() {
+    auto keys = art_keys_list();
+    if (g.asset_sel < 0 || g.asset_sel >= (int)keys.size()) return {};
+    return keys[size_t(g.asset_sel)];
+}
+
+SkinImage *selected_art_mutable() {
+    std::string key = selected_art_key();
+    if (key.empty()) return nullptr;
+    auto it = g.ap.art_cache.find(key);
+    if (it == g.ap.art_cache.end() || it->second.empty()) return nullptr;
+    return &it->second;
+}
+
+void sync_selected_art_ref() {
+    std::string key = selected_art_key();
+    SkinImage *img = selected_art_mutable();
+    if (key.empty() || !img) return;
+    ArtRef &ref = g.ap.skin.art[key];
+    std::memcpy(ref.caps, img->caps, 4);
+    std::memcpy(ref.positions, img->positions, 4);
+    ref.has_caps = true;
+    ref.has_positions = true;
+    ref.has_text_color = img->has_text_color;
+    ref.text_color = img->text_color;
+}
+
+void clamp_caps(SkinImage &img) {
+    while (img.w > 0 && int(img.caps[0]) + int(img.caps[2]) >= img.w) {
+        if (img.caps[2] > 0) --img.caps[2];
+        else if (img.caps[0] > 0) --img.caps[0];
+        else break;
+    }
+    while (img.h > 0 && int(img.caps[1]) + int(img.caps[3]) >= img.h) {
+        if (img.caps[3] > 0) --img.caps[3];
+        else if (img.caps[1] > 0) --img.caps[1];
+        else break;
+    }
+}
+
+void nudge_cap(int axis, int delta) {
+    SkinImage *img = selected_art_mutable();
+    if (!img || axis < 0 || axis > 3) return;
+    int v = int(img->caps[axis]) + delta;
+    img->caps[axis] = uint8_t(std::clamp(v, 0, 255));
+    clamp_caps(*img);
+    sync_selected_art_ref();
+    static const char *labs[] = {"L", "T", "R", "B"};
+    set_status(std::string("Caps ") + labs[axis] + " = " +
+               std::to_string(img->caps[axis]));
+}
+
+void nudge_pos(int axis, int delta) {
+    SkinImage *img = selected_art_mutable();
+    if (!img || axis < 0 || axis > 3) return;
+    int v = int(img->positions[axis]) + delta;
+    img->positions[axis] = uint8_t(std::clamp(v, 0, 255));
+    sync_selected_art_ref();
+    static const char *labs[] = {"L", "T", "R", "B"};
+    set_status(std::string("Positions ") + labs[axis] + " = " +
+               std::to_string(img->positions[axis]));
+}
+
+Color selected_art_text_color() {
+    SkinImage *img = selected_art_mutable();
+    if (!img || !img->has_text_color) return rgb(0, 0, 0);
+    return plate_text_color(img);
+}
+
+void set_selected_art_text_color(Color c) {
+    SkinImage *img = selected_art_mutable();
+    if (!img) return;
+    img->has_text_color = true;
+    img->text_color = (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | uint32_t(c.b);
+    sync_selected_art_ref();
+}
+
+// AppearanceEdit Transparent Color menu: None / White / 100% R/G/B.
+void apply_transparent_color(int mode) {
+    SkinImage *img = selected_art_mutable();
+    if (!img || img->px.empty()) return;
+    g.trans_mode = mode;
+    for (uint32_t &p : img->px) {
+        uint8_t r = uint8_t((p >> 16) & 0xff);
+        uint8_t gch = uint8_t((p >> 8) & 0xff);
+        uint8_t b = uint8_t(p & 0xff);
+        bool match = false;
+        if (mode == 0) {
+            // None → all opaque
+            p = 0xff000000u | (p & 0x00ffffffu);
+            continue;
+        } else if (mode == 1)
+            match = (r == 255 && gch == 255 && b == 255);
+        else if (mode == 2)
+            match = (r == 255 && gch == 0 && b == 0);
+        else if (mode == 3)
+            match = (r == 0 && gch == 255 && b == 0);
+        else if (mode == 4)
+            match = (r == 0 && gch == 0 && b == 255);
+        if (match)
+            p = p & 0x00ffffffu; // A=0
+        else
+            p = 0xff000000u | (p & 0x00ffffffu);
+    }
+    static const char *names[] = {"None", "White", "100% Red", "100% Green",
+                                  "100% Blue"};
+    set_status(std::string("Transparent Color: ") + names[std::clamp(mode, 0, 4)]);
+}
+
+bool paste_art_from_clipboard() {
+    SkinImage *dst = selected_art_mutable();
+    std::string key = selected_art_key();
+    if (key.empty()) {
+        set_status("Select an image slot before Paste");
+        return false;
+    }
+    if (!OpenClipboard(g_hwnd)) {
+        set_status("Clipboard unavailable");
+        return false;
+    }
+    HANDLE h = GetClipboardData(CF_DIB);
+    if (!h) {
+        CloseClipboard();
+        set_status("Clipboard has no DIB bitmap (copy an image first)");
+        return false;
+    }
+    auto *bi = (BITMAPINFOHEADER *)GlobalLock(h);
+    if (!bi) {
+        CloseClipboard();
+        return false;
+    }
+    int w = bi->biWidth;
+    int hgt = bi->biHeight;
+    bool bottom_up = hgt > 0;
+    if (hgt < 0) hgt = -hgt;
+    int bpp = bi->biBitCount;
+    if (w <= 0 || hgt <= 0 || (bpp != 24 && bpp != 32) ||
+        bi->biCompression != BI_RGB) {
+        GlobalUnlock(h);
+        CloseClipboard();
+        set_status("Paste needs uncompressed 24/32-bit bitmap");
+        return false;
+    }
+    size_t header = sizeof(BITMAPINFOHEADER);
+    if (bpp <= 8) header += size_t(1u << bpp) * sizeof(RGBQUAD);
+    const uint8_t *bits = (const uint8_t *)bi + header;
+    int stride = ((w * bpp + 31) / 32) * 4;
+
+    SkinImage out;
+    out.w = w;
+    out.h = hgt;
+    out.px.assign(size_t(w) * size_t(hgt), 0);
+    if (dst) {
+        std::memcpy(out.caps, dst->caps, 4);
+        std::memcpy(out.positions, dst->positions, 4);
+        out.has_text_color = dst->has_text_color;
+        out.text_color = dst->text_color;
+    } else {
+        out.caps[0] = uint8_t(std::max(1, w / 2));
+        out.caps[1] = uint8_t(std::max(1, hgt / 2));
+        out.caps[2] = uint8_t(std::max(0, w - 1 - out.caps[0]));
+        out.caps[3] = uint8_t(std::max(0, hgt - 1 - out.caps[1]));
+    }
+    clamp_caps(out);
+
+    for (int y = 0; y < hgt; ++y) {
+        int src_y = bottom_up ? (hgt - 1 - y) : y;
+        const uint8_t *row = bits + size_t(src_y) * size_t(stride);
+        for (int x = 0; x < w; ++x) {
+            uint8_t b, gch, r, a = 255;
+            if (bpp == 32) {
+                b = row[x * 4 + 0];
+                gch = row[x * 4 + 1];
+                r = row[x * 4 + 2];
+                a = row[x * 4 + 3];
+                if (a == 0) a = 255; // many DIBs leave A=0
+            } else {
+                b = row[x * 3 + 0];
+                gch = row[x * 3 + 1];
+                r = row[x * 3 + 2];
+            }
+            out.px[size_t(y) * size_t(w) + size_t(x)] =
+                (uint32_t(a) << 24) | (uint32_t(r) << 16) | (uint32_t(gch) << 8) |
+                uint32_t(b);
+        }
+    }
+    GlobalUnlock(h);
+    CloseClipboard();
+
+    g.ap.art_cache[key] = std::move(out);
+    sync_selected_art_ref();
+    set_status("Pasted " + std::to_string(w) + "x" + std::to_string(hgt) +
+               " into " + key);
+    return true;
+}
+
+void paint_nudge(Canvas &cv, const Appearance &ap, Rect minus, Rect plus, int value,
+                 bool minus_p, bool plus_p) {
+    paint_button(cv, ap, minus, "-", minus_p, false);
+    paint_button(cv, ap, plus, "+", plus_p, false);
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "%d", value);
+    int mid = (minus.right() + plus.x) / 2;
+    int tw = cv.text_width(buf);
+    cv.text(mid - tw / 2, minus.y + (minus.h - kFontHeight) / 2, buf,
+            ap.c("primary.label"));
+}
+
 void paint_slider(Canvas &cv, Rect r, const char *label, int value, Color fill) {
     cv.text(r.x, r.y + 2, label, g.ap.c("primary.label"));
     Rect track{r.x + 16, r.y + 4, r.w - 56, r.h - 8};
@@ -339,8 +569,10 @@ void layout() {
     }
 
     int list_top = content_top + kPanelTabH + 6;
-    int list_h = content_h - kPanelTabH - 6 - 90;
-    if (g.panel == PanelInfo || g.panel == PanelGroups) list_h = content_h - kPanelTabH - 6;
+    int bottom_reserve = 90;
+    if (g.panel == PanelImages) bottom_reserve = 210;
+    if (g.panel == PanelInfo || g.panel == PanelGroups) bottom_reserve = 0;
+    int list_h = content_h - kPanelTabH - 6 - bottom_reserve;
     g.role_list = {client.x + 10, list_top, 420, std::max(80, list_h)};
     int body_y = g.role_list.y + kHeaderH;
     int body_h = g.role_list.h - kHeaderH;
@@ -352,6 +584,33 @@ void layout() {
     g.slider_b = {client.x + 10, ey + 48, 360, 20};
     g.hex_field = {client.x + 330, ey + 18, 72, kFieldH};
     g.group_swatch = {client.x + 24, list_top + 40, 64, 64};
+
+    // Images authoring strip (below list)
+    g.img_thumb = {client.x + 10, ey, 72, 56};
+    int nx = g.img_thumb.right() + 8;
+    int ny = ey;
+    constexpr int kNudgeW = 18;
+    constexpr int kNudgeH = 18;
+    constexpr int kNudgeGap = 52;
+    for (int i = 0; i < 4; ++i) {
+        int x0 = nx + i * kNudgeGap;
+        g.img_cap_minus[i] = {x0, ny, kNudgeW, kNudgeH};
+        g.img_cap_plus[i] = {x0 + 28, ny, kNudgeW, kNudgeH};
+        g.img_pos_minus[i] = {x0, ny + 22, kNudgeW, kNudgeH};
+        g.img_pos_plus[i] = {x0 + 28, ny + 22, kNudgeW, kNudgeH};
+    }
+    g.btn_paste = {client.x + 10, ey + 64, 72, kButtonH};
+    static const int kTransW = 56;
+    for (int i = 0; i < 5; ++i)
+        g.btn_trans[i] = {client.x + 90 + i * (kTransW + 4), ey + 64, kTransW, kButtonH};
+    // Text Color RGB sliders sit under the transparent row for Images.
+    if (g.panel == PanelImages) {
+        int sy = ey + 64 + kButtonH + 8;
+        g.slider_r = {client.x + 10, sy, 360, 20};
+        g.slider_g = {client.x + 10, sy + 22, 360, 20};
+        g.slider_b = {client.x + 10, sy + 44, 360, 20};
+        g.hex_field = {client.x + 330, sy + 16, 72, kFieldH};
+    }
 
     // Information meta field rows
     for (int i = 0; i < 4; ++i)
@@ -468,10 +727,7 @@ void paint() {
         paint_column_header(cv, ap,
                             {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
                             "Images", true);
-        std::vector<std::string> keys;
-        keys.reserve(ap.art_cache.size());
-        for (const auto &kv : ap.art_cache)
-            if (!kv.second.empty()) keys.push_back(kv.first);
+        auto keys = art_keys_list();
         int body_y = g.role_list.y + kHeaderH;
         int page = g.roles_page();
         int max_scroll = g.roles_max_scroll();
@@ -503,25 +759,56 @@ void paint() {
                         g.drag == DragThumbRoles, false, false,
                         g.drag == DragScrollArrowRoles ? g.arrow_hot
                                                        : ScrollArrowHot::None);
-        // Selected image preview + positions
-        if (g.asset_sel >= 0 && g.asset_sel < (int)keys.size()) {
-            const SkinImage *img = ap.art(keys[size_t(g.asset_sel)].c_str());
-            if (img) {
-                int px = g.slider_r.x, py = g.slider_r.y;
-                int pw = std::min(120, img->w), ph = std::min(48, img->h);
-                cv.fill({px, py, pw + 4, ph + 4}, ap.c("list.background"));
-                cv.frame({px, py, pw + 4, ph + 4}, ap.c("primary.frame"));
-                cv.place(*img, px + 2, py + 2);
-                char pos[80];
-                std::snprintf(pos, sizeof(pos), "Positions [%d,%d,%d,%d]",
-                              img->positions[0], img->positions[1], img->positions[2],
-                              img->positions[3]);
-                cv.text(px + pw + 12, py + 4, pos, ap.c("primary.label"));
-                if (img->has_text_color)
-                    cv.text(px + pw + 12, py + 20, "Text Color set",
-                            ap.c("primary.label"));
-            }
+
+        // Authoring strip — thumbnail, Caps/Positions nudges, Paste, Transparent,
+        // Text Color RGB (sliders below).
+        SkinImage *sel = selected_art_mutable();
+        cv.fill(g.img_thumb, ap.c("list.background"));
+        cv.frame(g.img_thumb, ap.c("primary.frame"));
+        if (sel) {
+            int dx = g.img_thumb.x + 2 +
+                     std::max(0, (g.img_thumb.w - 4 - sel->w) / 2);
+            int dy = g.img_thumb.y + 2 +
+                     std::max(0, (g.img_thumb.h - 4 - sel->h) / 2);
+            cv.place(*sel, dx, dy);
         }
+        static const char *axes[] = {"L", "T", "R", "B"};
+        cv.text(g.img_cap_minus[0].x - 36, g.img_cap_minus[0].y + 2, "Caps",
+                ap.c("primary.label"));
+        cv.text(g.img_pos_minus[0].x - 36, g.img_pos_minus[0].y + 2, "Pos",
+                ap.c("primary.label"));
+        for (int i = 0; i < 4; ++i) {
+            cv.text(g.img_cap_minus[i].x + 6, g.img_cap_minus[i].y - 12, axes[i],
+                    ap.c("primary.disable_label"));
+            int cap_v = sel ? sel->caps[i] : 0;
+            int pos_v = sel ? sel->positions[i] : 0;
+            bool cm = g.drag == DragImgNudge && g.nudge_which == i && g.arrow_dir < 0;
+            bool cp = g.drag == DragImgNudge && g.nudge_which == i && g.arrow_dir > 0;
+            bool pm =
+                g.drag == DragImgNudge && g.nudge_which == (8 + i) && g.arrow_dir < 0;
+            bool pp =
+                g.drag == DragImgNudge && g.nudge_which == (8 + i) && g.arrow_dir > 0;
+            paint_nudge(cv, ap, g.img_cap_minus[i], g.img_cap_plus[i], cap_v, cm, cp);
+            paint_nudge(cv, ap, g.img_pos_minus[i], g.img_pos_plus[i], pos_v, pm, pp);
+        }
+
+        bool paste_p = g.drag == DragBtnPaste && g.btn_paste.contains(pt.x, pt.y);
+        paint_button(cv, ap, g.btn_paste, "Paste", paste_p, false);
+        static const char *trans_labs[] = {"None", "White", "Red", "Green", "Blue"};
+        for (int i = 0; i < 5; ++i) {
+            bool on = g.trans_mode == i;
+            bool pressed =
+                g.drag == DragBtnTrans && g.drag_target == i &&
+                g.btn_trans[i].contains(pt.x, pt.y);
+            paint_button(cv, ap, g.btn_trans[i], trans_labs[i], pressed || on, false);
+        }
+
+        Color tc = selected_art_text_color();
+        cv.text(g.slider_r.x, g.slider_r.y - 14, "Text Color", ap.c("primary.label"));
+        paint_slider(cv, g.slider_r, "R", tc.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", tc.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", tc.b, rgb(40, 80, 200));
+        paint_field(cv, ap, g.hex_field, color_to_hex(tc).c_str(), true, g.caret_on);
     } else if (g.panel == PanelIcons) {
         paint_column_header(cv, ap,
                             {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
@@ -783,13 +1070,17 @@ void mouse_down(int mx, int my) {
         return;
     }
 
-    // RGB sliders (Colors + Groups)
-    if ((g.panel == PanelColors || g.panel == PanelGroups) &&
+    // RGB sliders (Colors + Groups + Images Text Color)
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages) &&
         g.slider_r.contains(mx, my)) {
         g.drag = DragSliderR;
         if (g.panel == PanelGroups) {
             g.group_base.r = uint8_t(slider_value_at(g.slider_r, mx));
             apply_primary_group(g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            c.r = uint8_t(slider_value_at(g.slider_r, mx));
+            set_selected_art_text_color(c);
         } else {
             Color c = selected_color();
             c.r = uint8_t(slider_value_at(g.slider_r, mx));
@@ -798,12 +1089,16 @@ void mouse_down(int mx, int my) {
         redraw();
         return;
     }
-    if ((g.panel == PanelColors || g.panel == PanelGroups) &&
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages) &&
         g.slider_g.contains(mx, my)) {
         g.drag = DragSliderG;
         if (g.panel == PanelGroups) {
             g.group_base.g = uint8_t(slider_value_at(g.slider_g, mx));
             apply_primary_group(g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            c.g = uint8_t(slider_value_at(g.slider_g, mx));
+            set_selected_art_text_color(c);
         } else {
             Color c = selected_color();
             c.g = uint8_t(slider_value_at(g.slider_g, mx));
@@ -812,12 +1107,16 @@ void mouse_down(int mx, int my) {
         redraw();
         return;
     }
-    if ((g.panel == PanelColors || g.panel == PanelGroups) &&
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages) &&
         g.slider_b.contains(mx, my)) {
         g.drag = DragSliderB;
         if (g.panel == PanelGroups) {
             g.group_base.b = uint8_t(slider_value_at(g.slider_b, mx));
             apply_primary_group(g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            c.b = uint8_t(slider_value_at(g.slider_b, mx));
+            set_selected_art_text_color(c);
         } else {
             Color c = selected_color();
             c.b = uint8_t(slider_value_at(g.slider_b, mx));
@@ -825,6 +1124,57 @@ void mouse_down(int mx, int my) {
         }
         redraw();
         return;
+    }
+
+    // Images authoring — Caps/Positions nudges, Paste, Transparent Color
+    if (g.panel == PanelImages) {
+        for (int i = 0; i < 4; ++i) {
+            if (g.img_cap_minus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = i;
+                g.arrow_dir = -1;
+                nudge_cap(i, -1);
+                redraw();
+                return;
+            }
+            if (g.img_cap_plus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = i;
+                g.arrow_dir = 1;
+                nudge_cap(i, 1);
+                redraw();
+                return;
+            }
+            if (g.img_pos_minus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = 8 + i;
+                g.arrow_dir = -1;
+                nudge_pos(i, -1);
+                redraw();
+                return;
+            }
+            if (g.img_pos_plus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = 8 + i;
+                g.arrow_dir = 1;
+                nudge_pos(i, 1);
+                redraw();
+                return;
+            }
+        }
+        if (g.btn_paste.contains(mx, my)) {
+            g.drag = DragBtnPaste;
+            redraw();
+            return;
+        }
+        for (int i = 0; i < 5; ++i) {
+            if (g.btn_trans[i].contains(mx, my)) {
+                g.drag = DragBtnTrans;
+                g.drag_target = i;
+                redraw();
+                return;
+            }
+        }
     }
 
     // Open dropdown menu takes clicks first (stacked above list)
@@ -986,6 +1336,10 @@ void mouse_move(int mx, int my) {
         if (g.panel == PanelGroups) {
             g.group_base.r = uint8_t(slider_value_at(g.slider_r, mx));
             apply_primary_group(g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            c.r = uint8_t(slider_value_at(g.slider_r, mx));
+            set_selected_art_text_color(c);
         } else {
             Color c = selected_color();
             c.r = uint8_t(slider_value_at(g.slider_r, mx));
@@ -996,6 +1350,10 @@ void mouse_move(int mx, int my) {
         if (g.panel == PanelGroups) {
             g.group_base.g = uint8_t(slider_value_at(g.slider_g, mx));
             apply_primary_group(g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            c.g = uint8_t(slider_value_at(g.slider_g, mx));
+            set_selected_art_text_color(c);
         } else {
             Color c = selected_color();
             c.g = uint8_t(slider_value_at(g.slider_g, mx));
@@ -1006,6 +1364,10 @@ void mouse_move(int mx, int my) {
         if (g.panel == PanelGroups) {
             g.group_base.b = uint8_t(slider_value_at(g.slider_b, mx));
             apply_primary_group(g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            c.b = uint8_t(slider_value_at(g.slider_b, mx));
+            set_selected_art_text_color(c);
         } else {
             Color c = selected_color();
             c.b = uint8_t(slider_value_at(g.slider_b, mx));
@@ -1031,8 +1393,9 @@ void mouse_move(int mx, int my) {
         redraw();
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
                g.drag == DragBtnStock || g.drag == DragBtnImportColors ||
-               g.drag == DragBtnColorsOnly || g.drag == DragPreviewBtn ||
-               g.drag == DragDropdown) {
+               g.drag == DragBtnColorsOnly || g.drag == DragBtnPaste ||
+               g.drag == DragBtnTrans || g.drag == DragImgNudge ||
+               g.drag == DragPreviewBtn || g.drag == DragDropdown) {
         if (g.drag == DragPreviewBtn) {
             bool over =
                 (g.drag_target == 1 && g.preview_lay.btn_ok.contains(mx, my)) ||
@@ -1088,6 +1451,11 @@ void mouse_up(int mx, int my) {
         g.preview_st.colours_only = !g.preview_st.colours_only;
         set_status(g.preview_st.colours_only ? "Colors Preview (no images/icons)"
                                              : "Full Kit Preview");
+    } else if (was == DragBtnPaste && g.btn_paste.contains(mx, my)) {
+        paste_art_from_clipboard();
+    } else if (was == DragBtnTrans && target >= 0 && target < 5 &&
+               g.btn_trans[target].contains(mx, my)) {
+        apply_transparent_color(target);
     } else if (was == DragPreviewBtn) {
         if (target == 1 && g.preview_lay.btn_ok.contains(mx, my))
             set_status("Preview: OK clicked");
@@ -1200,15 +1568,39 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             do_save();
             redraw();
         }
+        if (wp == 'V' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            if (g.panel == PanelImages) {
+                paste_art_from_clipboard();
+                redraw();
+            }
+        }
         if (wp == VK_UP) {
-            g.selected = std::max(0, g.selected - 1);
-            if (g.selected < g.scroll) g.scroll = g.selected;
+            if (g.panel == PanelImages || g.panel == PanelIcons) {
+                g.asset_sel = std::max(0, g.asset_sel - 1);
+                if (g.asset_sel < g.scroll) g.scroll = g.asset_sel;
+            } else {
+                g.selected = std::max(0, g.selected - 1);
+                if (g.selected < g.scroll) g.scroll = g.selected;
+            }
             redraw();
         }
         if (wp == VK_DOWN) {
-            g.selected = std::min((int)all_color_roles().size() - 1, g.selected + 1);
-            if (g.selected >= g.scroll + g.roles_page())
-                g.scroll = g.selected - g.roles_page() + 1;
+            if (g.panel == PanelImages) {
+                int n = (int)art_keys_list().size();
+                g.asset_sel = std::min(n - 1, g.asset_sel + 1);
+                if (g.asset_sel >= g.scroll + g.roles_page())
+                    g.scroll = g.asset_sel - g.roles_page() + 1;
+            } else if (g.panel == PanelIcons) {
+                g.asset_sel =
+                    std::min((int)g.ap.icon_cache.size() - 1, g.asset_sel + 1);
+                if (g.asset_sel >= g.scroll + g.roles_page())
+                    g.scroll = g.asset_sel - g.roles_page() + 1;
+            } else {
+                g.selected =
+                    std::min((int)all_color_roles().size() - 1, g.selected + 1);
+                if (g.selected >= g.scroll + g.roles_page())
+                    g.scroll = g.selected - g.roles_page() + 1;
+            }
             redraw();
         }
         if (wp == VK_PRIOR) {
