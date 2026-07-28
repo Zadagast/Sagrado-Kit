@@ -404,6 +404,16 @@ file = "window_maximize_hilited.skimg"
 caps = [0, 0, 0, 0]
 positions = [41, 4, 0, 0]
 
+[art."window.menu.normal"]
+file = "window_menu_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 4, 7, 0]
+
+[art."window.menu.focus"]
+file = "window_menu_focus.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 4, 7, 0]
+
 [art."window.resize.normal"]
 file = "window_resize_normal.skimg"
 caps = [0, 0, 0, 0]

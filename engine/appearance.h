@@ -126,7 +126,7 @@ struct GelLayout {
     Rect window;
     Rect client;
     Rect close_box;
-    Rect hatch_box; // w == 0 when omitted (Find dialog)
+    Rect hatch_box; // Window Menu rectangle (w == 0 only if truly absent)
     Rect max_box;
     Rect min_box;
     Rect grip;
@@ -135,8 +135,8 @@ struct GelLayout {
 };
 
 enum class GelStyle {
-    Main,   // TextEdit main: close + hatch + max + min + grip
-    Dialog, // Find dialog: close + min only (no hatch/max/grip)
+    Main,   // TextEdit main: close + Window Menu + max + min + grip
+    Dialog, // Find-style: close + Window Menu + min (no max/grip)
 };
 
 // Title-button place from art Positions (Sagrado chrome_layout).
@@ -176,16 +176,25 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         const char *close_n = focused ? "window.close.focus" : "window.close.normal";
         const char *min_n = focused ? "window.minimize.focus" : "window.minimize.normal";
         const char *max_n = focused ? "window.maximize.focus" : "window.maximize.normal";
+        const char *menu_n = focused ? "window.menu.focus" : "window.menu.normal";
         const SkinImage *close_img = ap->art(close_n);
         if (!close_img) close_img = ap->art("window.close.normal");
         const SkinImage *min_img = ap->art(min_n);
         if (!min_img) min_img = ap->art("window.minimize.normal");
         const SkinImage *max_img = ap->art(max_n);
         if (!max_img) max_img = ap->art("window.maximize.normal");
+        const SkinImage *menu_img = ap->art(menu_n);
+        if (!menu_img) menu_img = ap->art("window.menu.normal");
         lay.close_box = gel_place_title_btn(close_img, x, y, w);
         lay.min_box = gel_place_title_btn(min_img, x, y, w);
         lay.max_box = gel_place_title_btn(max_img, x, y, w);
-        lay.hatch_box = {0, 0, 0, 0};
+        lay.hatch_box = gel_place_title_btn(menu_img, x, y, w);
+        // No menu art → Standard rectangle next to Close (every Haxial window).
+        if (lay.hatch_box.w <= 0 && lay.close_box.w > 0)
+            lay.hatch_box = {lay.close_box.right() + 8, lay.close_box.y, kHatchW,
+                            lay.close_box.h};
+        else if (lay.hatch_box.w <= 0)
+            lay.hatch_box = {x + 5 + kBtnBox + 8, y + kBtnTop, kHatchW, kBtnBox};
         const SkinImage *resize = focused ? ap->art("window.resize.focus")
                                           : ap->art("window.resize.normal");
         if (!resize) resize = ap->art("window.resize.normal");
@@ -210,7 +219,7 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
     }
 
     if (style == GelStyle::Dialog) {
-        lay.hatch_box = {0, 0, 0, 0};
+        // Dialogs still get the Window Menu rectangle (Haxial); no max / grip.
         lay.max_box = {0, 0, 0, 0};
         lay.grip = {0, 0, 0, 0};
     }
@@ -354,6 +363,29 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                   "window.maximize.hilited", pressed_box == 3, gel_max_glyph);
         paint_btn(lay.min_box, "window.minimize.normal", "window.minimize.focus",
                   "window.minimize.hilited", pressed_box == 4, gel_min_glyph);
+        // Window Menu rectangle — Hap art when present, else striped plate.
+        if (lay.hatch_box.w > 0) {
+            const SkinImage *mimg = nullptr;
+            if (pressed_box == 2) mimg = ap.art("window.menu.hilited");
+            if (!mimg) mimg = focused ? ap.art("window.menu.focus")
+                                      : ap.art("window.menu.normal");
+            if (!mimg) mimg = ap.art("window.menu.normal");
+            if (mimg) {
+                if (mimg->w == lay.hatch_box.w && mimg->h == lay.hatch_box.h)
+                    cv.blit_image(*mimg, lay.hatch_box.x, lay.hatch_box.y);
+                else
+                    cv.place(*mimg,
+                             lay.hatch_box.x + (lay.hatch_box.w - mimg->w) / 2,
+                             lay.hatch_box.y + (lay.hatch_box.h - mimg->h) / 2);
+            } else {
+                gel_flat_box(cv, lay.hatch_box, pressed_box == 2, ap.c("window_focus.dark1"),
+                             ap.c("window_focus.frame"));
+                gel_diagonal_hatch(cv,
+                                   {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
+                                    lay.hatch_box.w - 4, lay.hatch_box.h - 4},
+                                   tc);
+            }
+        }
         cv.fill(lay.client, ap.c("primary.background"));
         return;
     }

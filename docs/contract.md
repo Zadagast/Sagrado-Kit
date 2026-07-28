@@ -112,7 +112,7 @@ skin is incomplete. How each art slot plugs in is defined in
 
 Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 
-1. **Gel window** — framed window with title bar, close + hatch + min/max boxes, client fill
+1. **Gel window** — framed window with title bar, close + Window Menu rectangle + min/max boxes, client fill
 2. **Button** — raised bevel push button (pressed / default variants)
 3. **Tick / Mutex** — checkbox and radio (`paint_tick` / `paint_mutex`, blank/ticked/tristate)
 4. **Field** — sunken text field with focus ring and caret

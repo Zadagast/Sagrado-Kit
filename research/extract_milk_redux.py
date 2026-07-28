@@ -58,6 +58,8 @@ SLOT_MAP = {
     233: "window.maximize.normal",
     234: "window.maximize.focus",
     235: "window.maximize.hilited",
+    238: "window.menu.normal",
+    239: "window.menu.focus",
     243: "window.resize.normal",
     244: "window.resize.focus",
     251: "wonderlight.off",
