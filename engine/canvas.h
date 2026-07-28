@@ -1,0 +1,125 @@
+// Software framebuffer — every pixel is ours. Host blits with one GDI call.
+#pragma once
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
+#include "font.h"
+
+struct Color {
+    uint8_t r = 0, g = 0, b = 0;
+};
+
+constexpr uint32_t pack(Color c) {
+    return (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | uint32_t(c.b);
+}
+
+inline Color unpack(uint32_t v) {
+    return {uint8_t(v >> 16), uint8_t(v >> 8), uint8_t(v)};
+}
+
+struct Rect {
+    int x = 0, y = 0, w = 0, h = 0;
+    int right() const { return x + w; }
+    int bottom() const { return y + h; }
+    bool contains(int px, int py) const {
+        return px >= x && py >= y && px < right() && py < bottom();
+    }
+};
+
+struct Canvas {
+    void resize(int w, int h) {
+        width_ = w;
+        height_ = h;
+        pixels_.assign(size_t(w) * h, 0);
+        clip_ = {0, 0, w, h};
+    }
+
+    int width() const { return width_; }
+    int height() const { return height_; }
+    const uint32_t *data() const { return pixels_.data(); }
+    uint32_t *data() { return pixels_.data(); }
+
+    void clear(Color c) { fill({0, 0, width_, height_}, c); }
+
+    void put(int x, int y, uint32_t p) {
+        if (x < clip_.x || y < clip_.y || x >= clip_.right() || y >= clip_.bottom())
+            return;
+        pixels_[size_t(y) * width_ + x] = p;
+    }
+
+    void fill(Rect r, Color c) {
+        uint32_t p = pack(c);
+        int x0 = r.x < clip_.x ? clip_.x : r.x;
+        int y0 = r.y < clip_.y ? clip_.y : r.y;
+        int x1 = r.right() > clip_.right() ? clip_.right() : r.right();
+        int y1 = r.bottom() > clip_.bottom() ? clip_.bottom() : r.bottom();
+        for (int y = y0; y < y1; ++y)
+            for (int x = x0; x < x1; ++x)
+                pixels_[size_t(y) * width_ + x] = p;
+    }
+
+    void hline(int x0, int x1, int y, Color c) {
+        if (x0 > x1) {
+            int t = x0;
+            x0 = x1;
+            x1 = t;
+        }
+        uint32_t p = pack(c);
+        for (int x = x0; x < x1; ++x) put(x, y, p);
+    }
+
+    void vline(int x, int y0, int y1, Color c) {
+        if (y0 > y1) {
+            int t = y0;
+            y0 = y1;
+            y1 = t;
+        }
+        uint32_t p = pack(c);
+        for (int y = y0; y < y1; ++y) put(x, y, p);
+    }
+
+    void frame(Rect r, Color c) {
+        if (r.w <= 0 || r.h <= 0) return;
+        hline(r.x, r.right(), r.y, c);
+        hline(r.x, r.right(), r.bottom() - 1, c);
+        vline(r.x, r.y, r.bottom(), c);
+        vline(r.right() - 1, r.y, r.bottom(), c);
+    }
+
+    void rect_grad_v(Rect r, const Color *stops, int n) {
+        if (n <= 0 || r.h <= 0) return;
+        for (int y = 0; y < r.h; ++y) {
+            int i = n == 1 ? 0 : y * (n - 1) / (r.h - 1 ? r.h - 1 : 1);
+            if (i >= n) i = n - 1;
+            hline(r.x, r.right(), r.y + y, stops[i]);
+        }
+    }
+
+    int text_width(const char *s) const {
+        int w = 0;
+        for (; *s; ++s)
+            if (*s >= 32 && *s < 127) w += kFont[*s - 32].advance;
+        return w;
+    }
+
+    int text(int x, int y, const char *s, Color c) {
+        uint32_t p = pack(c);
+        for (; *s; ++s) {
+            if (*s < 32 || *s >= 127) continue;
+            const Glyph &g = kFont[*s - 32];
+            for (int row = 0; row < kFontHeight; ++row) {
+                uint16_t bits = g.rows[row];
+                for (int col = 0; bits; ++col, bits >>= 1)
+                    if (bits & 1) put(x + col, y + row, p);
+            }
+            x += g.advance;
+        }
+        return x;
+    }
+
+  private:
+    int width_ = 0, height_ = 0;
+    Rect clip_{0, 0, 0, 0};
+    std::vector<uint32_t> pixels_;
+};

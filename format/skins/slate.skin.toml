@@ -1,0 +1,118 @@
+# Example author skin — partial colours only. Missing roles → stock.
+
+format = "sagrado-skin"
+version = 1
+
+[meta]
+name = "Slate"
+creator = "SagradoKit"
+description = "Cool slate example; incomplete on purpose"
+version = "0.1"
+
+[colors.primary]
+light = "#d8dee9"
+background = "#3b4252"
+dark = "#2e3440"
+frame = "#1a1d24"
+label = "#eceff4"
+disable_frame = "#4c566a"
+disable_label = "#7b8496"
+
+[colors.focus]
+box = "#5e81ac"
+
+[colors.text]
+background = "#2e3440"
+foreground = "#eceff4"
+hilite_background = "#5e81ac"
+hilite_foreground = "#eceff4"
+insertion_point = "#88c0d0"
+
+[colors.list]
+background = "#2e3440"
+label = "#eceff4"
+hilite_background = "#5e81ac"
+hilite_foreground = "#eceff4"
+sort_column_background = "#343b4a"
+separator = "#1a1d24"
+
+[colors.button]
+light2 = "#6b7588"
+light1 = "#4c566a"
+face = "#3b4252"
+dark1 = "#2e3440"
+dark2 = "#1a1d24"
+frame = "#1a1d24"
+label = "#eceff4"
+
+[colors.default_button]
+light = "#81a1c1"
+face = "#5e81ac"
+dark = "#3b5990"
+frame = "#1a1d24"
+
+[colors.window]
+light2 = "#4c566a"
+light1 = "#5e81ac"
+face = "#3b4252"
+dark1 = "#2e3440"
+dark2 = "#1a1d24"
+frame = "#1a1d24"
+label = "#eceff4"
+transition = [
+  "#2e3440", "#323845", "#363c4a", "#3a4050",
+  "#3e4455", "#42485a", "#464c60", "#4a5065",
+  "#4e546a", "#525870", "#565c75", "#5a607a",
+  "#5e647f", "#626885", "#666c8a", "#6a708f",
+  "#6e7494", "#727899",
+]
+
+[colors.window_focus]
+light2 = "#5e81ac"
+light1 = "#81a1c1"
+face = "#3b4252"
+dark1 = "#2e3440"
+dark2 = "#1a1d24"
+frame = "#1a1d24"
+label = "#eceff4"
+transition = [
+  "#3b4252", "#405060", "#455e6e", "#4a6c7c",
+  "#4f7a8a", "#548898", "#5996a6", "#5ea4b4",
+  "#63b0c0", "#68b8c6", "#6dbecc", "#72c4d2",
+  "#77cad8", "#7cd0de", "#81d6e4", "#86dcea",
+  "#8be2f0", "#90e8f6",
+]
+
+[colors.scrollbar]
+frame = "#1a1d24"
+light = "#6b7588"
+face = "#3b4252"
+dark = "#1a1d24"
+label = "#7b8496"
+hilite_light = "#81a1c1"
+hilite = "#5e81ac"
+hilite_dark = "#3b5990"
+hilite_label = "#eceff4"
+indicator_light = "#6b7588"
+indicator = "#4c566a"
+indicator_dark = "#2e3440"
+track_light2 = "#4c566a"
+track_light1 = "#3b4252"
+track = "#2e3440"
+track_dark1 = "#1a1d24"
+track_dark2 = "#0f1115"
+
+[colors.column_header]
+frame = "#1a1d24"
+light = "#6b7588"
+face = "#434c5e"
+dark = "#2e3440"
+label = "#eceff4"
+hilite_light = "#81a1c1"
+hilite = "#5e81ac"
+hilite_dark = "#3b5990"
+hilite_label = "#eceff4"
+
+[art]
+
+[icons]

@@ -1,0 +1,159 @@
+# SagradoKit stock skin — the last-resort appearance.
+# Incomplete author skins fall through to these values (art → colour → stock).
+
+format = "sagrado-skin"
+version = 1
+
+[meta]
+name = "Stock"
+creator = "SagradoKit"
+description = "Built-in stock appearance (Haxial-Standard-inspired greys and reds)"
+version = "1.0"
+
+[colors.primary]
+light = "#ffffff"
+background = "#333333"
+dark = "#111111"
+frame = "#000000"
+label = "#ffffff"
+disable_frame = "#555555"
+disable_label = "#888888"
+
+[colors.important]
+label = "#ffffff"
+
+[colors.focus]
+box = "#880000"
+
+[colors.text]
+background = "#000000"
+foreground = "#00cc00"
+hilite_background = "#880000"
+hilite_foreground = "#ffffff"
+insertion_point = "#cc0000"
+
+[colors.list]
+background = "#222222"
+label = "#ffffff"
+hilite_background = "#880000"
+hilite_foreground = "#ffffff"
+sort_column_background = "#2a2a2a"
+separator = "#111111"
+
+[colors.button]
+light2 = "#666666"
+light1 = "#444444"
+face = "#333333"
+dark1 = "#222222"
+dark2 = "#111111"
+frame = "#000000"
+label = "#ffffff"
+
+[colors.button_hilite]
+light2 = "#888888"
+light1 = "#666666"
+face = "#444444"
+dark1 = "#222222"
+dark2 = "#111111"
+frame = "#000000"
+label = "#ffffff"
+
+[colors.button_disable]
+light2 = "#555555"
+light1 = "#444444"
+face = "#3a3a3a"
+dark1 = "#2a2a2a"
+dark2 = "#1a1a1a"
+frame = "#000000"
+label = "#888888"
+
+[colors.default_button]
+light = "#cc0000"
+face = "#880000"
+dark = "#440000"
+frame = "#000000"
+
+[colors.window]
+light2 = "#550000"
+light1 = "#aa0000"
+face = "#880000"
+dark1 = "#440000"
+dark2 = "#220000"
+frame = "#000000"
+label = "#ffffff"
+transition = [
+  "#320000", "#3d0000", "#480000", "#520000",
+  "#5d0000", "#680000", "#720000", "#7d0000",
+  "#880000", "#8b0000", "#920000", "#990000",
+  "#a00000", "#a70000", "#ae0000", "#b50000",
+  "#bc0000", "#c30000",
+]
+
+[colors.window_focus]
+light2 = "#550000"
+light1 = "#cc0000"
+face = "#880000"
+dark1 = "#440000"
+dark2 = "#220000"
+frame = "#000000"
+label = "#ffffff"
+transition = [
+  "#320000", "#3d0000", "#480000", "#520000",
+  "#5d0000", "#680000", "#720000", "#7d0000",
+  "#880000", "#8b0000", "#920000", "#990000",
+  "#a00000", "#a70000", "#ae0000", "#b50000",
+  "#bc0000", "#c30000",
+]
+
+[colors.menu]
+light = "#666666"
+background = "#333333"
+dark = "#111111"
+label = "#ffffff"
+hilite_light = "#aa4444"
+hilite_background = "#880000"
+hilite_dark = "#440000"
+hilite_label = "#ffffff"
+disable_label = "#888888"
+
+[colors.scrollbar]
+frame = "#000000"
+light = "#666666"
+face = "#333333"
+dark = "#111111"
+label = "#888888"
+hilite_light = "#888888"
+hilite = "#444444"
+hilite_dark = "#222222"
+hilite_label = "#ffffff"
+indicator_light = "#666666"
+indicator = "#333333"
+indicator_dark = "#111111"
+track_light2 = "#444444"
+track_light1 = "#333333"
+track = "#222222"
+track_dark1 = "#111111"
+track_dark2 = "#000000"
+
+[colors.column_header]
+frame = "#000000"
+light = "#666666"
+face = "#444444"
+dark = "#222222"
+label = "#ffffff"
+hilite_light = "#aa4444"
+hilite = "#880000"
+hilite_dark = "#440000"
+hilite_label = "#ffffff"
+
+[colors.workspace]
+background1 = "#333333"
+background2 = "#2a2a2a"
+background3 = "#222222"
+background4 = "#1a1a1a"
+
+# Art / icon slots are reserved. Paths are accepted by the loader; painting
+# from bitmaps lands in a later slice. Omit entries for colour-only skins.
+[art]
+
+[icons]

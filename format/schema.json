@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Zadagast/Sagrado-Kit/format/schema.json",
+  "title": "SagradoSkin",
+  "description": "SagradoKit skin format — named colour roles with reserved art/icon slots. Incomplete skins are valid; missing tokens fall through to stock.",
+  "type": "object",
+  "required": ["format", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "sagrado-skin",
+      "description": "Format identifier. Must be the string sagrado-skin."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "description": "Skin format version."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "creator": { "type": "string" },
+        "description": { "type": "string" },
+        "version": { "type": "string", "description": "Author-facing skin version string." }
+      }
+    },
+    "colors": {
+      "type": "object",
+      "description": "Named colour role groups. Each leaf is #RRGGBB or #RRGGBBAA.",
+      "additionalProperties": false,
+      "properties": {
+        "primary": { "$ref": "#/$defs/primaryGroup" },
+        "important": { "$ref": "#/$defs/labelOnly" },
+        "focus": { "$ref": "#/$defs/focusGroup" },
+        "text": { "$ref": "#/$defs/textGroup" },
+        "list": { "$ref": "#/$defs/listGroup" },
+        "button": { "$ref": "#/$defs/buttonGroup" },
+        "button_hilite": { "$ref": "#/$defs/buttonGroup" },
+        "button_disable": { "$ref": "#/$defs/buttonGroup" },
+        "default_button": { "$ref": "#/$defs/defaultButtonGroup" },
+        "window": { "$ref": "#/$defs/windowGroup" },
+        "window_focus": { "$ref": "#/$defs/windowGroup" },
+        "menu": { "$ref": "#/$defs/menuGroup" },
+        "scrollbar": { "$ref": "#/$defs/scrollbarGroup" },
+        "column_header": { "$ref": "#/$defs/columnHeaderGroup" },
+        "workspace": { "$ref": "#/$defs/workspaceGroup" }
+      }
+    },
+    "art": {
+      "type": "object",
+      "description": "Reserved widget-chrome art slots. Keys are slot names; values are relative image paths.",
+      "additionalProperties": { "type": "string" }
+    },
+    "icons": {
+      "type": "object",
+      "description": "Reserved icon slots. Keys are slot names; values are relative image paths.",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+    },
+    "colorMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/color" }
+    },
+    "labelOnly": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "primaryGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": { "$ref": "#/$defs/color" },
+        "background": { "$ref": "#/$defs/color" },
+        "dark": { "$ref": "#/$defs/color" },
+        "frame": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "disable_frame": { "$ref": "#/$defs/color" },
+        "disable_label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "focusGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "box": { "$ref": "#/$defs/color" }
+      }
+    },
+    "textGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": { "$ref": "#/$defs/color" },
+        "foreground": { "$ref": "#/$defs/color" },
+        "hilite_background": { "$ref": "#/$defs/color" },
+        "hilite_foreground": { "$ref": "#/$defs/color" },
+        "insertion_point": { "$ref": "#/$defs/color" }
+      }
+    },
+    "listGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "hilite_background": { "$ref": "#/$defs/color" },
+        "hilite_foreground": { "$ref": "#/$defs/color" },
+        "sort_column_background": { "$ref": "#/$defs/color" },
+        "separator": { "$ref": "#/$defs/color" }
+      }
+    },
+    "buttonGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light2": { "$ref": "#/$defs/color" },
+        "light1": { "$ref": "#/$defs/color" },
+        "face": { "$ref": "#/$defs/color" },
+        "dark1": { "$ref": "#/$defs/color" },
+        "dark2": { "$ref": "#/$defs/color" },
+        "frame": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "defaultButtonGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": { "$ref": "#/$defs/color" },
+        "face": { "$ref": "#/$defs/color" },
+        "dark": { "$ref": "#/$defs/color" },
+        "frame": { "$ref": "#/$defs/color" }
+      }
+    },
+    "windowGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light2": { "$ref": "#/$defs/color" },
+        "light1": { "$ref": "#/$defs/color" },
+        "face": { "$ref": "#/$defs/color" },
+        "dark1": { "$ref": "#/$defs/color" },
+        "dark2": { "$ref": "#/$defs/color" },
+        "frame": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "transition": {
+          "type": "array",
+          "minItems": 18,
+          "maxItems": 18,
+          "items": { "$ref": "#/$defs/color" }
+        }
+      }
+    },
+    "menuGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": { "$ref": "#/$defs/color" },
+        "background": { "$ref": "#/$defs/color" },
+        "dark": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "hilite_light": { "$ref": "#/$defs/color" },
+        "hilite_background": { "$ref": "#/$defs/color" },
+        "hilite_dark": { "$ref": "#/$defs/color" },
+        "hilite_label": { "$ref": "#/$defs/color" },
+        "disable_label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "scrollbarGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "#/$defs/color" },
+        "light": { "$ref": "#/$defs/color" },
+        "face": { "$ref": "#/$defs/color" },
+        "dark": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "hilite_light": { "$ref": "#/$defs/color" },
+        "hilite": { "$ref": "#/$defs/color" },
+        "hilite_dark": { "$ref": "#/$defs/color" },
+        "hilite_label": { "$ref": "#/$defs/color" },
+        "indicator_light": { "$ref": "#/$defs/color" },
+        "indicator": { "$ref": "#/$defs/color" },
+        "indicator_dark": { "$ref": "#/$defs/color" },
+        "track_light2": { "$ref": "#/$defs/color" },
+        "track_light1": { "$ref": "#/$defs/color" },
+        "track": { "$ref": "#/$defs/color" },
+        "track_dark1": { "$ref": "#/$defs/color" },
+        "track_dark2": { "$ref": "#/$defs/color" }
+      }
+    },
+    "columnHeaderGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "#/$defs/color" },
+        "light": { "$ref": "#/$defs/color" },
+        "face": { "$ref": "#/$defs/color" },
+        "dark": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "hilite_light": { "$ref": "#/$defs/color" },
+        "hilite": { "$ref": "#/$defs/color" },
+        "hilite_dark": { "$ref": "#/$defs/color" },
+        "hilite_label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "workspaceGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "background1": { "$ref": "#/$defs/color" },
+        "background2": { "$ref": "#/$defs/color" },
+        "background3": { "$ref": "#/$defs/color" },
+        "background4": { "$ref": "#/$defs/color" }
+      }
+    }
+  }
+}
