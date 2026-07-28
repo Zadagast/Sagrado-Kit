@@ -1043,81 +1043,152 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
 
 // --- Progress / separators / box / disclosure / focus art ---------------
 
-constexpr int kProgressH = 12; // AppearanceEdit: ≤ 16
+constexpr int kProgressH = 15; // AppearanceEdit: ≤ 16; Milk Hap bar/fill are 15
 constexpr int kWonderLight = 16;
-constexpr int kTransferRowH = 52;
+constexpr int kTransferRowH = 56;
 
 enum class ProgressStyle {
-    Continuous, // solid / gradient fill (finished bar in KDX)
-    Segmented,  // LED blocks in a recessed track (active transfer in KDX)
+    Continuous, // AppearanceEdit: stretch Hap fill (or colour gradient)
+    Segmented,  // KDX File Transfers: tiled LED columns in the trough
 };
 
+inline void paint_progress_trough_colour(Canvas &cv, const Appearance &ap, Rect r) {
+    // Recessed well — dark top/left, light bottom/right (matches Hap trough).
+    cv.fill(r, ap.c("progress.bkgnd"));
+    cv.frame(r, ap.c("progress.frame"));
+    cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("progress.bkgnd_dark"));
+    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_dark"));
+    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("progress.bkgnd_light"));
+    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_light"));
+}
+
+inline Color progress_led_shade(Color body, int row, int h) {
+    // Glossy LED column: bright near top-third, mid body, darker lower band.
+    if (h <= 1) return body;
+    int t = (row * 10) / std::max(1, h - 1); // 0..10
+    auto clamp8 = [](int v) -> uint8_t {
+        return uint8_t(std::clamp(v, 0, 255));
+    };
+    if (t <= 2) {
+        int k = 90 - t * 20;
+        return {clamp8(int(body.r) + k), clamp8(int(body.g) + k),
+                clamp8(int(body.b) + k)};
+    }
+    if (t >= 7) {
+        int k = 55 + (t - 7) * 15;
+        return {clamp8(int(body.r) * (100 - k) / 100),
+                clamp8(int(body.g) * (100 - k) / 100),
+                clamp8(int(body.b) * (100 - k) / 100)};
+    }
+    return body;
+}
+
+inline void paint_progress_led_colour(Canvas &cv, Rect seg, Color body) {
+    for (int y = 0; y < seg.h; ++y) {
+        Color c = progress_led_shade(body, y, seg.h);
+        cv.hline(seg.x, seg.right(), seg.y + y, c);
+    }
+}
+
+inline int progress_art_height(const SkinImage *bar, const SkinImage *fill) {
+    int h = kProgressH;
+    if (bar && bar->h > 0) h = bar->h;
+    else if (fill && fill->h > 0) h = fill->h;
+    return std::clamp(h, 1, 16);
+}
+
+// led_tint: colour-path LED hue for File Transfers (WonderLight state). Ignored
+// when Hap progress.fill art is present (theme owns the LED look).
 inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
                            int max_value = 100,
-                           ProgressStyle style = ProgressStyle::Continuous) {
+                           ProgressStyle style = ProgressStyle::Continuous,
+                           const Color *led_tint = nullptr) {
     if (r.w <= 0 || r.h <= 0) return;
     int vmax = std::max(1, max_value);
     int v = std::clamp(value, 0, vmax);
     const SkinImage *bar = ap.art("progress.bar");
     const SkinImage *fill = ap.art("progress.fill");
 
-    // Segmented = KDX active-transfer LED blocks (app-drawn, not fill art).
+    // AppearanceEdit: progress is vertically centered; height ≤ 16.
+    int ph = progress_art_height(bar, fill);
+    Rect track = r;
+    if (r.h != ph) {
+        track.h = ph;
+        track.y = r.y + (r.h - ph) / 2;
+    }
+
+    auto paint_trough = [&]() {
+        if (bar)
+            cv.nine_slice(*bar, track);
+        else
+            paint_progress_trough_colour(cv, ap, track);
+    };
+
     if (style == ProgressStyle::Segmented) {
-        cv.fill(r, ap.c("progress.bkgnd"));
-        cv.frame(r, ap.c("progress.frame"));
-        cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("progress.bkgnd_dark"));
-        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_dark"));
-        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("progress.bkgnd_light"));
-        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_light"));
-        constexpr int kSegW = 6, kGap = 2, kPad = 3;
-        int inner = r.w - 2 * kPad;
-        int nseg = std::max(1, (inner + kGap) / (kSegW + kGap));
-        int lit = (nseg * v + vmax - 1) / vmax;
-        Color on = ap.c("progress.transition.5");
-        Color hi = ap.c("progress.transition.8");
-        for (int i = 0; i < lit && i < nseg; ++i) {
-            int sx = r.x + kPad + i * (kSegW + kGap);
-            Rect seg{sx, r.y + 3, kSegW, r.h - 6};
-            if (seg.right() > r.right() - kPad) break;
-            cv.fill(seg, on);
-            cv.hline(seg.x, seg.right(), seg.y, hi);
+        paint_trough();
+        constexpr int kGap = 1, kPad = 1;
+        int seg_w = fill ? fill->w : 4;
+        if (seg_w < 2) seg_w = 2;
+        int inner = track.w - 2 * kPad;
+        if (inner < seg_w) return;
+        int nseg = std::max(1, (inner + kGap) / (seg_w + kGap));
+        // Round up so small % still lights at least one LED when v > 0.
+        int lit = v <= 0 ? 0 : std::max(1, (nseg * v + vmax - 1) / vmax);
+        if (lit > nseg) lit = nseg;
+
+        Color body = led_tint ? *led_tint : ap.c("progress.transition.5");
+        for (int i = 0; i < lit; ++i) {
+            int sx = track.x + kPad + i * (seg_w + kGap);
+            if (sx + seg_w > track.right() - kPad) break;
+            Rect seg{sx, track.y, seg_w, track.h};
+            if (fill) {
+                // Art-first: tile Hap fill column; gap shows trough through.
+                // Theme owns LED colour — led_tint is colour-path only.
+                Rect seg{sx, track.y, seg_w, track.h};
+                if (fill->w == seg.w && fill->h == seg.h)
+                    cv.blit_image(*fill, seg.x, seg.y);
+                else
+                    cv.nine_slice(*fill, seg);
+            } else {
+                // Inset 1px so recessed bevel stays visible.
+                Rect seg{sx, track.y + 1, seg_w, track.h - 2};
+                if (seg.h > 0) paint_progress_led_colour(cv, seg, body);
+            }
         }
         return;
     }
 
-    if (bar) {
-        cv.nine_slice(*bar, r);
-    } else {
-        cv.fill(r, ap.c("progress.bkgnd"));
-        cv.frame(r, ap.c("progress.frame"));
-        cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("progress.bkgnd_light"));
-        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_light"));
-        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("progress.bkgnd_dark"));
-        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_dark"));
-    }
+    // Continuous — AppearanceEdit Progress Bar + Fill.
+    paint_trough();
+    // Hap Positions (including authored 0). Colour path defaults to 2px inset.
     int inset_l = 2, inset_r = 2, inset_t = 2, inset_b = 2;
     if (fill) {
-        if (fill->positions[0]) inset_l = fill->positions[0];
-        if (fill->positions[2]) inset_r = fill->positions[2];
-        if (fill->positions[1]) inset_t = fill->positions[1];
-        if (fill->positions[3]) inset_b = fill->positions[3];
+        inset_l = fill->positions[0];
+        inset_r = fill->positions[2];
+        inset_t = fill->positions[1];
+        inset_b = fill->positions[3];
     }
-    int inner_w = r.w - inset_l - inset_r;
+    int inner_w = track.w - inset_l - inset_r;
     int fill_w = (inner_w * v) / vmax;
     if (fill_w <= 0) return;
-    Rect fr{r.x + inset_l, r.y + inset_t, fill_w, r.h - inset_t - inset_b};
-    if (fr.h <= 0) return;
+    Rect fr{track.x + inset_l, track.y + inset_t, fill_w,
+            track.h - inset_t - inset_b};
+    if (fr.h <= 0 || fr.w <= 0) return;
     if (fill) {
         cv.nine_slice(*fill, fr);
     } else {
         Color stops[10];
-        for (int i = 0; i < 10; ++i) {
-            char key[40];
-            std::snprintf(key, sizeof(key), "progress.transition.%d", i);
-            stops[i] = ap.c(key);
+        if (led_tint) {
+            for (int i = 0; i < 10; ++i)
+                stops[i] = progress_led_shade(*led_tint, i, 10);
+        } else {
+            for (int i = 0; i < 10; ++i) {
+                char key[40];
+                std::snprintf(key, sizeof(key), "progress.transition.%d", i);
+                stops[i] = ap.c(key);
+            }
         }
         cv.rect_grad_v(fr, stops, 10);
-        cv.frame(fr, ap.c("progress.frame"));
     }
 }
 
@@ -1246,11 +1317,11 @@ struct TransferRow {
     Rect progress{};
 };
 
-// KDX File Transfers row: icon | WonderLight | name / status | progress.
+// KDX File Transfers row: icon | WonderLight | name / status | LED progress.
 inline TransferRow paint_transfer_row(Canvas &cv, const Appearance &ap, Rect r,
                                       const char *name, const char *status,
                                       WonderLightState light, int progress_pct,
-                                      bool finished) {
+                                      bool /*finished*/) {
     TransferRow tr;
     tr.bounds = r;
     cv.fill(r, ap.c("list.background"));
@@ -1267,7 +1338,7 @@ inline TransferRow paint_transfer_row(Canvas &cv, const Appearance &ap, Rect r,
     cv.text(text_x, r.y + 5, name, ap.c("list.label"));
     // Status line with a small down-arrow mark (KDX transfer direction).
     int sy = r.y + 5 + kFontHeight + 3;
-    Color stc = finished ? rgb(80, 140, 255) : ap.c("list.label");
+    Color stc = wonderlight_color(light);
     // Tiny arrow
     cv.put(text_x, sy + 3, pack(stc));
     cv.put(text_x + 1, sy + 4, pack(stc));
@@ -1278,10 +1349,14 @@ inline TransferRow paint_transfer_row(Canvas &cv, const Appearance &ap, Rect r,
     cv.put(text_x + 4, sy + 3, pack(stc));
     cv.text(text_x + 10, sy, status, ap.c("list.label"));
 
-    int bar_y = r.bottom() - 8 - kProgressH;
-    tr.progress = {text_x, bar_y, text_w, kProgressH};
-    paint_progress(cv, ap, tr.progress, progress_pct, 100,
-                   finished ? ProgressStyle::Continuous : ProgressStyle::Segmented);
+    int bar_h = progress_art_height(ap.art("progress.bar"), ap.art("progress.fill"));
+    int bar_y = r.bottom() - 6 - bar_h;
+    tr.progress = {text_x, bar_y, text_w, bar_h};
+    // File Transfers always use LED meters (finished = full lit). Colour-path
+    // LEDs tint to WonderLight; Hap fill art keeps theme colours.
+    Color tint = wonderlight_color(light);
+    paint_progress(cv, ap, tr.progress, progress_pct, 100, ProgressStyle::Segmented,
+                   &tint);
     return tr;
 }
 
@@ -1493,7 +1568,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     y += kTransferRowH;
     paint_transfer_row(cv, ap, {x, y, tw, kTransferRowH},
                        "readme.txt @ higher intellect",
-                       "Receiving. 12K/sec, 48K, 0:04", WonderLightState::Go, 18,
+                       "Receiving. 12K/sec, 48K, 0:04", WonderLightState::Go, 42,
                        false);
     y += kTransferRowH + 8;
 
