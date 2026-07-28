@@ -95,10 +95,16 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    const char *cands[] = {"\\format\\skins\\stock.skin.toml",
-                           "\\..\\format\\skins\\stock.skin.toml",
-                           "\\..\\..\\format\\skins\\stock.skin.toml",
-                           "\\skins\\stock.skin.toml"};
+    // Prefer Milk Redux (Hap art) when present so Kit Preview shows icon buttons,
+    // scroll extras, etc. Fall back to stock colour skin.
+    const char *cands[] = {
+        "\\format\\skins\\milk-redux\\milk-redux.skin.toml",
+        "\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
+        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
+        "\\format\\skins\\stock.skin.toml",
+        "\\..\\format\\skins\\stock.skin.toml",
+        "\\..\\..\\format\\skins\\stock.skin.toml",
+        "\\skins\\stock.skin.toml"};
     for (const char *c : cands) {
         std::string p = dir + c;
         DWORD a = GetFileAttributesA(p.c_str());
