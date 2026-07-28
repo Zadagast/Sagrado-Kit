@@ -217,22 +217,7 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
     return lay;
 }
 
-// Title-bar box as KDX Settings draws it: red plate inset into the bar
-// (dark top-left / bright bottom-right). Pressed fills deeper.
-inline void gel_bevel_box(Canvas &cv, Rect r, bool pressed, Color bright,
-                          Color body, Color deep, Color frame) {
-    if (r.w <= 0 || r.h <= 0) return;
-    cv.fill(r, pressed ? deep : body);
-    cv.frame(r, frame);
-    // Idle = inset into the title slab (matches real KDX Settings).
-    // Pressed = even deeper / inverted highlight.
-    Color tl = pressed ? bright : deep;
-    Color br = pressed ? deep : bright;
-    cv.hline(r.x + 1, r.right() - 1, r.y + 1, tl);
-    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, tl);
-    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, br);
-    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, br);
-}
+// Title-bar box helpers ---------------------------------------------------
 
 inline void gel_close_glyph(Canvas &cv, Rect r, Color c) {
     // 10×10 close glyph measured from Haxial TextEdit (box-relative 2,2).
@@ -245,6 +230,44 @@ inline void gel_close_glyph(Canvas &cv, Rect r, Color c) {
         for (int col = 0; col < 10; ++col)
             if (rows[row][col] == 'W')
                 cv.put(r.x + 2 + col, r.y + 2 + row, pack(c));
+}
+
+// Minimize dash — same 2px inset / 10px span as the close glyph.
+// Rows 3–4 (not 4–5): sits in the bright face of Hap spheres and optically
+// centres in the 14×14 Standard box (a mid dash reads low against the X).
+inline void gel_min_glyph(Canvas &cv, Rect r, Color c) {
+    static const char *rows[10] = {
+        "..........", "..........", "..........",
+        "WWWWWWWWWW", "WWWWWWWWWW",
+        "..........", "..........", "..........",
+        "..........", "..........",
+    };
+    for (int row = 0; row < 10; ++row)
+        for (int col = 0; col < 10; ++col)
+            if (rows[row][col] == 'W')
+                cv.put(r.x + 2 + col, r.y + 2 + row, pack(c));
+}
+
+// Maximize "+" — horizontal bar shares the min dash row; stem matches close.
+inline void gel_max_glyph(Canvas &cv, Rect r, Color c) {
+    static const char *rows[10] = {
+        "....WW....", "....WW....", "....WW....",
+        "WWWWWWWWWW", "WWWWWWWWWW",
+        "....WW....", "....WW....", "....WW....",
+        "....WW....", "....WW....",
+    };
+    for (int row = 0; row < 10; ++row)
+        for (int col = 0; col < 10; ++col)
+            if (rows[row][col] == 'W')
+                cv.put(r.x + 2 + col, r.y + 2 + row, pack(c));
+}
+
+// Standard title-bar box: 1px outline over the title gradient (TextEdit).
+// No fill / bevel — glyphs sit cleanly on the slab (Sagrado flat_box).
+inline void gel_flat_box(Canvas &cv, Rect r, bool pressed, Color deep, Color frame) {
+    if (r.w <= 0 || r.h <= 0) return;
+    if (pressed) cv.fill(r, deep);
+    cv.frame(r, frame);
 }
 
 inline void gel_diagonal_hatch(Canvas &cv, Rect r, Color c) {
@@ -306,20 +329,31 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         cv.text(win.x + (win.w - tw) / 2,
                 win.y + (lay.title_h - kFontHeight) / 2, title, tc);
         auto paint_btn = [&](Rect r, const char *normal, const char *focus,
-                             const char *hilited, bool pressed) {
+                             const char *hilited, bool pressed,
+                             void (*glyph)(Canvas &, Rect, Color)) {
             if (r.w <= 0) return;
             const SkinImage *img = nullptr;
             if (pressed) img = ap.art(hilited);
             if (!img) img = focused ? ap.art(focus) : ap.art(normal);
             if (!img) img = ap.art(normal);
-            if (img) cv.nine_slice(*img, r);
+            if (img) {
+                // Title buttons are placed 1:1 — never 9-slice (caps are 0 and
+                // nine_slice would invent mid caps that smear the sphere).
+                if (img->w == r.w && img->h == r.h)
+                    cv.blit_image(*img, r.x, r.y);
+                else
+                    cv.place(*img, r.x + (r.w - img->w) / 2,
+                             r.y + (r.h - img->h) / 2);
+            }
+            // Milk Redux plates are blank spheres — draw Standard glyphs on top.
+            if (glyph) glyph(cv, r, tc);
         };
         paint_btn(lay.close_box, "window.close.normal", "window.close.focus",
-                  "window.close.hilited", pressed_box == 1);
+                  "window.close.hilited", pressed_box == 1, gel_close_glyph);
         paint_btn(lay.max_box, "window.maximize.normal", "window.maximize.focus",
-                  "window.maximize.hilited", pressed_box == 3);
+                  "window.maximize.hilited", pressed_box == 3, gel_max_glyph);
         paint_btn(lay.min_box, "window.minimize.normal", "window.minimize.focus",
-                  "window.minimize.hilited", pressed_box == 4);
+                  "window.minimize.hilited", pressed_box == 4, gel_min_glyph);
         cv.fill(lay.client, ap.c("primary.background"));
         return;
     }
@@ -373,24 +407,23 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
             label);
 
     if (lay.close_box.w > 0) {
-        gel_bevel_box(cv, lay.close_box, pressed_box == 1, bright, body, deep, frame_c);
+        gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame_c);
         gel_close_glyph(cv, lay.close_box, label);
     }
     if (lay.hatch_box.w > 0) {
-        gel_bevel_box(cv, lay.hatch_box, false, bright, body, deep, frame_c);
+        gel_flat_box(cv, lay.hatch_box, false, deep, frame_c);
         gel_diagonal_hatch(cv,
                            {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
                             lay.hatch_box.w - 4, lay.hatch_box.h - 4},
                            label);
     }
     if (lay.max_box.w > 0) {
-        gel_bevel_box(cv, lay.max_box, pressed_box == 3, bright, body, deep, frame_c);
-        cv.fill({lay.max_box.x + 1, lay.max_box.y + 6, 10, 2}, label);
-        cv.fill({lay.max_box.x + 5, lay.max_box.y + 2, 2, 10}, label);
+        gel_flat_box(cv, lay.max_box, pressed_box == 3, deep, frame_c);
+        gel_max_glyph(cv, lay.max_box, label);
     }
     if (lay.min_box.w > 0) {
-        gel_bevel_box(cv, lay.min_box, pressed_box == 4, bright, body, deep, frame_c);
-        cv.fill({lay.min_box.x + 1, lay.min_box.y + 6, 10, 2}, label);
+        gel_flat_box(cv, lay.min_box, pressed_box == 4, deep, frame_c);
+        gel_min_glyph(cv, lay.min_box, label);
     }
 }
 
