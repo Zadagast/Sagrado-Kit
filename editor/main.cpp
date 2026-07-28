@@ -621,8 +621,9 @@ void mouse_move(int mx, int my) {
         redraw();
     } else if (g.drag == DragSliderKit) {
         g.preview_st.slider_value =
-            slider_value_at_x(slider_layout(g.preview_lay.slider,
-                                            g.preview_st.slider_value, 100),
+            slider_value_at_x(slider_layout(g.ap, g.preview_lay.slider,
+                                            g.preview_st.slider_value, 100,
+                                            g.preview_st.slider_hot),
                               mx);
         set_status("Slider: " + std::to_string(g.preview_st.slider_value));
         redraw();

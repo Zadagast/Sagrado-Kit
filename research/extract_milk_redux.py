@@ -38,6 +38,9 @@ SLOT_MAP = {
     89: "popup.normal",
     90: "popup.hilited",
     91: "popup.disabled",
+    93: "popup.no_title.normal",
+    94: "popup.no_title.hilited",
+    95: "popup.no_title.disabled",
     97: "popup.symbol.normal",
     98: "popup.symbol.hilited",
     99: "popup.symbol.disabled",
@@ -47,6 +50,19 @@ SLOT_MAP = {
     108: "framed_raised",
     111: "progress.bar",
     112: "progress.fill",
+    # H / V slider (bar + indicator; pointed deferred to P2)
+    126: "slider.h.bar.normal",
+    127: "slider.h.bar.hilited",
+    128: "slider.h.bar.disabled",
+    130: "slider.h.indicator.normal",
+    131: "slider.h.indicator.hilited",
+    132: "slider.h.indicator.disabled",
+    138: "slider.v.bar.normal",
+    139: "slider.v.bar.hilited",
+    140: "slider.v.bar.disabled",
+    142: "slider.v.indicator.normal",
+    143: "slider.v.indicator.hilited",
+    144: "slider.v.indicator.disabled",
     # Column header
     150: "column_header.normal",
     151: "column_header.hilited",
@@ -58,6 +74,12 @@ SLOT_MAP = {
     181: "scrollbar.v.double_arrows",
     185: "scrollbar.v.indicator.normal",
     186: "scrollbar.v.indicator.hilited",
+    # Menu (often absent in Milk — donor fill from Boilerplate)
+    200: "menu.background_pattern",
+    201: "menu.background",
+    206: "menu.item.normal",
+    207: "menu.item.hilited",
+    208: "menu.separator",
     220: "window.frame.normal",
     221: "window.frame.focus",
     223: "window.close.normal",
@@ -380,7 +402,7 @@ def main():
     name, colors, images, icons = load_hap(hap)
     print(f"theme: {name}  images={len(images)}  colors={len(colors)}  icons={len(icons)}")
 
-    # Fill missing image slots from Boilerplate (WonderLight etc.)
+    # Fill missing image slots from Boilerplate (WonderLight, menu, no-title popup…)
     if donor.exists():
         _, _, donor_imgs, _ = load_hap(donor)
         filled = 0
@@ -389,6 +411,10 @@ def main():
                 images[slot] = donor_imgs[slot]
                 filled += 1
                 print(f"  donor fill [{slot}] {key}")
+        # Milk 208 is not a thin separator rule — prefer Boilerplate's.
+        if 208 in images and images[208]["h"] > 12 and 208 in donor_imgs:
+            images[208] = donor_imgs[208]
+            print("  donor override [208] menu.separator (Milk geometry wrong)")
         print(f"donor filled {filled} image slots from {donor.name}")
 
     if icon_donor.exists() and not icons:
@@ -411,9 +437,14 @@ def main():
             f"caps={img['caps']} pos={img['pos']}"
         )
 
-    # Prefer 16×16 then 32×32 generic file icons (Ashen slots 4/5).
+    # Prefer 16×16 then 32×32 generic file / folder icons (Ashen 4/5, 8/9).
     icon_entries = []
-    icon_map = [(4, "file.generic.16"), (5, "file.generic.32")]
+    icon_map = [
+        (4, "file.generic.16"),
+        (5, "file.generic.32"),
+        (8, "folder.16"),
+        (9, "folder.32"),
+    ]
     for slot, key in icon_map:
         img = icons.get(slot)
         if not img:
@@ -451,7 +482,7 @@ def main():
         "[meta]",
         f'name = "{name}"',
         'creator = "extracted from Hap"',
-        'description = "Art seed: buttons, popup, gel, tick/mutex, progress, scroll/header, WonderLight, icons"',
+        'description = "Art seed: buttons, popup, gel, tick/mutex, progress, scroll/header, slider/menu, WonderLight, icons"',
         'version = "1.0"',
         "",
     ]

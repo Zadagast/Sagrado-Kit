@@ -1011,35 +1011,87 @@ struct MenuLayout {
 
 // Popup / drop-down menu panel. `hot` is the hilited row (-1 none).
 // Optional `disabled_mask` bit i disables item i.
+// Art path: menu.background(_pattern) + menu.item.* + menu.separator + popup_frame.*.
 inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
                              int width, const char *const *items, int count,
                              int hot = -1, unsigned disabled_mask = 0) {
     MenuLayout lay;
     lay.count = count;
     lay.item_h = kMenuItemH;
-    int h = 4 + count * kMenuItemH;
-    lay.frame = {x, y, width, h};
-    // Outer ring uses focus box (Haxial: Window Focus / Focus Box)
-    cv.fill(lay.frame, ap.c("menu.background"));
-    cv.frame(lay.frame, ap.c("focus.box"));
-    cv.frame({x + 1, y + 1, width - 2, h - 2}, ap.c("menu.dark"));
-    // Bevel
-    cv.hline(x + 2, x + width - 2, y + 2, ap.c("menu.light"));
-    cv.vline(x + 2, y + 2, y + h - 2, ap.c("menu.light"));
 
-    lay.items_bounds = {x + 2, y + 2, width - 4, count * kMenuItemH};
+    int pad_l = 2, pad_t = 2, pad_r = 2, pad_b = 2;
+    const SkinImage *frame = ap.art("popup_frame.focus");
+    if (!frame) frame = ap.art("popup_frame.normal");
+    if (frame) {
+        // Positions = frame thickness (even); fall back to 2px.
+        pad_l = frame->positions[0] > 0 ? frame->positions[0] : 2;
+        pad_t = frame->positions[1] > 0 ? frame->positions[1] : 2;
+        pad_r = frame->positions[2] > 0 ? frame->positions[2] : 2;
+        pad_b = frame->positions[3] > 0 ? frame->positions[3] : 2;
+    }
+
+    int inner_h = count * kMenuItemH;
+    int h = pad_t + pad_b + inner_h;
+    lay.frame = {x, y, width, h};
+    lay.items_bounds = {x + pad_l, y + pad_t, width - pad_l - pad_r, inner_h};
+
+    // Background colour / optional pattern under art.
+    cv.fill(lay.frame, ap.c("menu.background"));
+    const SkinImage *pat = ap.art("menu.background_pattern");
+    if (pat && !pat->empty() && lay.items_bounds.w > 0 && lay.items_bounds.h > 0) {
+        for (int py = lay.items_bounds.y; py < lay.items_bounds.bottom(); py += pat->h)
+            for (int px = lay.items_bounds.x; px < lay.items_bounds.right(); px += pat->w)
+                cv.blit_image(*pat, px, py);
+    }
+    const SkinImage *mbg = ap.art("menu.background");
+    if (mbg)
+        cv.nine_slice(*mbg, lay.items_bounds);
+
+    if (frame) {
+        cv.nine_slice(*frame, lay.frame);
+    } else {
+        cv.frame(lay.frame, ap.c("focus.box"));
+        cv.frame({x + 1, y + 1, width - 2, h - 2}, ap.c("menu.dark"));
+        cv.hline(x + 2, x + width - 2, y + 2, ap.c("menu.light"));
+        cv.vline(x + 2, y + 2, y + h - 2, ap.c("menu.light"));
+    }
+
     for (int i = 0; i < count; ++i) {
         Rect row{lay.items_bounds.x, lay.items_bounds.y + i * kMenuItemH,
                  lay.items_bounds.w, kMenuItemH};
         bool dis = (disabled_mask >> i) & 1;
         bool is_hot = (!dis && i == hot);
-        if (is_hot) {
+        bool is_sep = items[i] && (std::strcmp(items[i], "-") == 0 ||
+                                   std::strcmp(items[i], "—") == 0);
+
+        if (is_sep) {
+            const SkinImage *sep = ap.art("menu.separator");
+            if (sep) {
+                int sh = std::min(sep->h, row.h);
+                Rect dest{row.x, row.y + (row.h - sh) / 2, row.w, sh};
+                cv.nine_slice(*sep, dest);
+            } else {
+                int mid = row.y + row.h / 2;
+                cv.hline(row.x + 4, row.right() - 4, mid, ap.c("menu.dark"));
+                cv.hline(row.x + 4, row.right() - 4, mid + 1, ap.c("menu.light"));
+            }
+            continue;
+        }
+
+        const char *islot = dis ? "menu.item.disabled"
+                                : (is_hot ? "menu.item.hilited" : "menu.item.normal");
+        const SkinImage *item = ap.art(islot);
+        if (!item && is_hot) item = ap.art("menu.item.normal");
+        if (item) {
+            cv.nine_slice(*item, row);
+        } else if (is_hot) {
             cv.fill(row, ap.c("menu.hilite_background"));
             cv.hline(row.x, row.right(), row.y, ap.c("menu.hilite_light"));
             cv.vline(row.x, row.y, row.bottom(), ap.c("menu.hilite_light"));
             cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("menu.hilite_dark"));
             cv.vline(row.right() - 1, row.y, row.bottom(), ap.c("menu.hilite_dark"));
         }
+
         Color ink = dis ? ap.c("menu.disable_label")
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
         cv.text(row.x + 8, row.y + (kMenuItemH - kFontHeight) / 2, items[i], ink);
@@ -1055,14 +1107,28 @@ inline int menu_hit_row(const MenuLayout &lay, int mx, int my) {
 }
 
 // Haxial Popup Button — art plate + symbol place; else raised colour plate.
+// `no_title` uses popup.no_title.* (well next to a field; symbol centred).
 inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
                            const char *label, bool open, bool pressed,
-                           bool disabled = false) {
+                           bool disabled = false, bool no_title = false) {
     bool down = pressed || open;
-    const char *pslot = disabled ? "popup.disabled"
-                                 : (down ? "popup.hilited" : "popup.normal");
+    const char *pslot;
+    if (no_title) {
+        pslot = disabled ? "popup.no_title.disabled"
+                         : (down ? "popup.no_title.hilited" : "popup.no_title.normal");
+    } else {
+        pslot = disabled ? "popup.disabled"
+                         : (down ? "popup.hilited" : "popup.normal");
+    }
     const SkinImage *plate = ap.art(pslot);
-    if (!plate && down) plate = ap.art("popup.normal");
+    if (!plate && down)
+        plate = ap.art(no_title ? "popup.no_title.normal" : "popup.normal");
+    if (!plate && no_title) {
+        pslot = disabled ? "popup.disabled"
+                         : (down ? "popup.hilited" : "popup.normal");
+        plate = ap.art(pslot);
+        if (!plate && down) plate = ap.art("popup.normal");
+    }
     const char *sslot = disabled ? "popup.symbol.disabled"
                                  : (down ? "popup.symbol.hilited" : "popup.symbol.normal");
     const SkinImage *sym = ap.art(sslot);
@@ -1072,20 +1138,26 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
         cv.nine_slice(*plate, r);
         if (sym) {
             int sx, sy;
-            if (sym->positions[0] > 0)
-                sx = r.x + sym->positions[0];
-            else if (sym->positions[2] > 0)
-                sx = r.right() - sym->positions[2] - sym->w;
-            else
-                sx = r.right() - sym->w - 4;
-            if (sym->positions[1] > 0)
-                sy = r.y + sym->positions[1];
-            else if (sym->positions[3] > 0)
-                sy = r.bottom() - sym->positions[3] - sym->h;
-            else
+            if (no_title) {
+                sx = r.x + (r.w - sym->w) / 2;
                 sy = r.y + (r.h - sym->h) / 2;
+            } else {
+                if (sym->positions[0] > 0)
+                    sx = r.x + sym->positions[0];
+                else if (sym->positions[2] > 0)
+                    sx = r.right() - sym->positions[2] - sym->w;
+                else
+                    sx = r.right() - sym->w - 4;
+                if (sym->positions[1] > 0)
+                    sy = r.y + sym->positions[1];
+                else if (sym->positions[3] > 0)
+                    sy = r.bottom() - sym->positions[3] - sym->h;
+                else
+                    sy = r.y + (r.h - sym->h) / 2;
+            }
             cv.place(*sym, sx, sy);
         }
+        if (no_title || !label || !*label) return;
         Color ink = disabled ? ap.c("button_disable.label") : ap.c("button.label");
         int tx = r.x + 8 + (down ? 1 : 0);
         int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
@@ -1127,6 +1199,7 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
     Rect well{div_x + 1, r.y, r.right() - (div_x + 1), r.h};
     paint_arrow(cv, well, false, ink);
 
+    if (no_title || !label || !*label) return;
     int tx = r.x + 8 + (down ? 1 : 0);
     int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
     int max_w = div_x - tx - 4;
@@ -1147,58 +1220,218 @@ struct SliderLayout {
     Rect thumb{};
     int value = 0;
     int max_value = 100;
+    int thumb_w = kSliderThumbW;
+    int thumb_h = kSliderThumbH;
 };
 
-inline SliderLayout slider_layout(Rect r, int value, int max_value) {
+inline SliderLayout slider_layout(Rect r, int value, int max_value,
+                                  int thumb_w = kSliderThumbW,
+                                  int thumb_h = kSliderThumbH, int travel_l = 0,
+                                  int travel_r = 0, int bar_h = 6,
+                                  int thumb_above = 0) {
     SliderLayout s;
     s.bounds = r;
     s.max_value = std::max(1, max_value);
     s.value = std::clamp(value, 0, s.max_value);
-    int bar_h = 6;
-    s.bar = {r.x + 2, r.y + (r.h - bar_h) / 2, r.w - 4, bar_h};
-    int travel = std::max(0, s.bar.w - kSliderThumbW);
+    s.thumb_w = thumb_w;
+    s.thumb_h = thumb_h;
+    if (bar_h < 2) bar_h = 2;
+    int bar_w = r.w - travel_l - travel_r;
+    if (bar_w < thumb_w) bar_w = std::max(thumb_w, r.w);
+    s.bar = {r.x + travel_l, r.y + (r.h - bar_h) / 2, bar_w, bar_h};
+    int travel = std::max(0, s.bar.w - thumb_w);
     int tx = s.bar.x + (travel * s.value) / s.max_value;
-    s.thumb = {tx, r.y + (r.h - kSliderThumbH) / 2, kSliderThumbW, kSliderThumbH};
+    int ty = s.bar.y - thumb_above;
+    if (thumb_above <= 0)
+        ty = r.y + (r.h - thumb_h) / 2;
+    s.thumb = {tx, ty, thumb_w, thumb_h};
     return s;
 }
 
+inline SliderLayout slider_layout(const Appearance &ap, Rect r, int value,
+                                  int max_value, bool hilite = false) {
+    const char *bslot = hilite ? "slider.h.bar.hilited" : "slider.h.bar.normal";
+    const SkinImage *bar = ap.art(bslot);
+    if (!bar) bar = ap.art("slider.h.bar.normal");
+    const char *islot =
+        hilite ? "slider.h.indicator.hilited" : "slider.h.indicator.normal";
+    const SkinImage *ind = ap.art(islot);
+    if (!ind) ind = ap.art("slider.h.indicator.normal");
+
+    int thumb_w = kSliderThumbW, thumb_h = kSliderThumbH;
+    int travel_l = 0, travel_r = 0, bar_h = 6, thumb_above = 0;
+    if (bar) {
+        bar_h = bar->h;
+        travel_l = bar->positions[0];
+        travel_r = bar->positions[2];
+    }
+    if (ind) {
+        thumb_w = ind->w;
+        thumb_h = ind->h;
+        thumb_above = ind->positions[1];
+    }
+    // AppearanceEdit: total height including indicator ≤ 30.
+    int total_h = bar_h + (thumb_above > 0 ? thumb_above : 0);
+    if (thumb_above <= 0) total_h = std::max(bar_h, thumb_h);
+    if (total_h > r.h && r.h > 0) {
+        // Keep within band; prefer shrinking thumb_above.
+        if (thumb_above > 0) thumb_above = std::max(0, r.h - bar_h - 1);
+    }
+    return slider_layout(r, value, max_value, thumb_w, thumb_h, travel_l, travel_r,
+                         bar_h, thumb_above);
+}
+
 inline int slider_value_at_x(const SliderLayout &s, int mx) {
-    int travel = std::max(1, s.bar.w - kSliderThumbW);
-    int rel = mx - s.bar.x - kSliderThumbW / 2;
+    int travel = std::max(1, s.bar.w - s.thumb_w);
+    int rel = mx - s.bar.x - s.thumb_w / 2;
+    return std::clamp(rel * s.max_value / travel, 0, s.max_value);
+}
+
+inline SliderLayout slider_layout_v(const Appearance &ap, Rect r, int value,
+                                    int max_value, bool hilite = false) {
+    SliderLayout s;
+    s.bounds = r;
+    s.max_value = std::max(1, max_value);
+    s.value = std::clamp(value, 0, s.max_value);
+
+    const char *bslot = hilite ? "slider.v.bar.hilited" : "slider.v.bar.normal";
+    const SkinImage *bar = ap.art(bslot);
+    if (!bar) bar = ap.art("slider.v.bar.normal");
+    const char *islot =
+        hilite ? "slider.v.indicator.hilited" : "slider.v.indicator.normal";
+    const SkinImage *ind = ap.art(islot);
+    if (!ind) ind = ap.art("slider.v.indicator.normal");
+
+    int bar_w = 6, travel_t = 0, travel_b = 0;
+    int thumb_w = kSliderThumbH, thumb_h = kSliderThumbW; // swap defaults
+    int thumb_left = 0;
+    if (bar) {
+        bar_w = bar->w;
+        travel_t = bar->positions[1];
+        travel_b = bar->positions[3];
+    }
+    if (ind) {
+        thumb_w = ind->w;
+        thumb_h = ind->h;
+        thumb_left = ind->positions[0];
+    }
+    s.thumb_w = thumb_w;
+    s.thumb_h = thumb_h;
+    int bar_h = r.h - travel_t - travel_b;
+    if (bar_h < thumb_h) bar_h = std::max(thumb_h, r.h);
+    s.bar = {r.x + (r.w - bar_w) / 2, r.y + travel_t, bar_w, bar_h};
+    int travel = std::max(0, s.bar.h - thumb_h);
+    // Value 0 at top (like scroll).
+    int ty = s.bar.y + (travel * s.value) / s.max_value;
+    int tx = s.bar.x - thumb_left;
+    if (thumb_left <= 0) tx = r.x + (r.w - thumb_w) / 2;
+    s.thumb = {tx, ty, thumb_w, thumb_h};
+    return s;
+}
+
+inline int slider_value_at_y(const SliderLayout &s, int my) {
+    int travel = std::max(1, s.bar.h - s.thumb_h);
+    int rel = my - s.bar.y - s.thumb_h / 2;
     return std::clamp(rel * s.max_value / travel, 0, s.max_value);
 }
 
 inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
                                  int value, int max_value, bool hilite) {
-    SliderLayout s = slider_layout(r, value, max_value);
-    // Bar track
-    cv.fill(s.bar, ap.c("slider.bar"));
-    cv.frame(s.bar, ap.c("slider.bar_frame"));
-    // Filled portion
-    if (s.value > 0) {
-        int fill_w = (s.thumb.x + kSliderThumbW / 2) - s.bar.x;
-        fill_w = std::clamp(fill_w, 0, s.bar.w);
-        Rect fill{s.bar.x, s.bar.y, fill_w, s.bar.h};
-        cv.fill(fill, ap.c("slider.bar_hilite"));
-        cv.frame(fill, ap.c("slider.bar_hilite_frame"));
+    SliderLayout s = slider_layout(ap, r, value, max_value, hilite);
+
+    const char *bslot = hilite ? "slider.h.bar.hilited" : "slider.h.bar.normal";
+    const SkinImage *bar = ap.art(bslot);
+    if (!bar) bar = ap.art("slider.h.bar.normal");
+    const char *islot =
+        hilite ? "slider.h.indicator.hilited" : "slider.h.indicator.normal";
+    const SkinImage *ind = ap.art(islot);
+    if (!ind) ind = ap.art("slider.h.indicator.normal");
+
+    if (bar) {
+        cv.nine_slice(*bar, s.bar);
+    } else {
+        cv.fill(s.bar, ap.c("slider.bar"));
+        cv.frame(s.bar, ap.c("slider.bar_frame"));
+        if (s.value > 0) {
+            int fill_w = (s.thumb.x + s.thumb_w / 2) - s.bar.x;
+            fill_w = std::clamp(fill_w, 0, s.bar.w);
+            Rect fill{s.bar.x, s.bar.y, fill_w, s.bar.h};
+            cv.fill(fill, ap.c("slider.bar_hilite"));
+            cv.frame(fill, ap.c("slider.bar_hilite_frame"));
+        }
     }
-    // Thumb
-    Color il = hilite ? ap.c("slider.indicator_hilite_light") : ap.c("slider.indicator_light");
-    Color ind = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
-    Color id = hilite ? ap.c("slider.indicator_hilite_dark") : ap.c("slider.indicator_dark");
-    Color fr = hilite ? ap.c("slider.indicator_hilite_frame") : ap.c("slider.indicator_frame");
-    cv.fill(s.thumb, ind);
+
+    if (ind) {
+        if (ind->caps[0] || ind->caps[1] || ind->caps[2] || ind->caps[3])
+            cv.nine_slice(*ind, s.thumb);
+        else
+            cv.blit_image(*ind, s.thumb.x, s.thumb.y);
+        return s;
+    }
+
+    Color il = hilite ? ap.c("slider.indicator_hilite_light")
+                      : ap.c("slider.indicator_light");
+    Color face = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
+    Color id = hilite ? ap.c("slider.indicator_hilite_dark")
+                      : ap.c("slider.indicator_dark");
+    Color fr = hilite ? ap.c("slider.indicator_hilite_frame")
+                      : ap.c("slider.indicator_frame");
+    cv.fill(s.thumb, face);
     rounded_frame(cv, s.thumb, fr, ap.c("primary.background"));
     cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.y + 1, il);
     cv.vline(s.thumb.x + 1, s.thumb.y + 1, s.thumb.bottom() - 1, il);
     cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.bottom() - 2, id);
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
-    // Grip ridges — three horizontal lines like KDX Settings volume thumb
     int mid = s.thumb.y + s.thumb.h / 2;
     for (int i = -2; i <= 2; i += 2)
         cv.hline(s.thumb.x + 2, s.thumb.right() - 2, mid + i, il);
     return s;
 }
+
+inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
+                                   int value, int max_value, bool hilite) {
+    SliderLayout s = slider_layout_v(ap, r, value, max_value, hilite);
+
+    const char *bslot = hilite ? "slider.v.bar.hilited" : "slider.v.bar.normal";
+    const SkinImage *bar = ap.art(bslot);
+    if (!bar) bar = ap.art("slider.v.bar.normal");
+    const char *islot =
+        hilite ? "slider.v.indicator.hilited" : "slider.v.indicator.normal";
+    const SkinImage *ind = ap.art(islot);
+    if (!ind) ind = ap.art("slider.v.indicator.normal");
+
+    if (bar) {
+        cv.nine_slice(*bar, s.bar);
+    } else {
+        cv.fill(s.bar, ap.c("slider.bar"));
+        cv.frame(s.bar, ap.c("slider.bar_frame"));
+    }
+
+    if (ind) {
+        if (ind->caps[0] || ind->caps[1] || ind->caps[2] || ind->caps[3])
+            cv.nine_slice(*ind, s.thumb);
+        else
+            cv.blit_image(*ind, s.thumb.x, s.thumb.y);
+        return s;
+    }
+
+    Color il = hilite ? ap.c("slider.indicator_hilite_light")
+                      : ap.c("slider.indicator_light");
+    Color face = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
+    Color id = hilite ? ap.c("slider.indicator_hilite_dark")
+                      : ap.c("slider.indicator_dark");
+    Color fr = hilite ? ap.c("slider.indicator_hilite_frame")
+                      : ap.c("slider.indicator_frame");
+    cv.fill(s.thumb, face);
+    rounded_frame(cv, s.thumb, fr, ap.c("primary.background"));
+    cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.y + 1, il);
+    cv.vline(s.thumb.x + 1, s.thumb.y + 1, s.thumb.bottom() - 1, il);
+    cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.bottom() - 2, id);
+    cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
+    return s;
+}
+
+// --- Tick (checkbox) / Mutex (radio)
 
 // --- Tick (checkbox) / Mutex (radio) ------------------------------------
 // AppearanceEdit: Tick/Mutex Blank|Ticked|Tristate × Normal/Hilited/Disabled.
@@ -1646,7 +1879,13 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
             tr.light = paint_wonderlight(cv, ap, cell.x + (cell.w - kWonderLight) / 2,
                                          ly, light);
         } else if (std::strcmp(key, "Name") == 0) {
-            paint_cell_text(cv, cell.x + text_pad, ty, max_w, name, ink);
+            int ix = cell.x + 2;
+            int iy = row.y + (row.h - 16) / 2;
+            paint_icon(cv, ap, ix, iy, "file.generic.16", 16);
+            int text_x = ix + 18;
+            int name_w = cell.right() - text_x - 2;
+            if (name_w < 4) name_w = 4;
+            paint_cell_text(cv, text_x, ty, name_w, name, ink);
         } else if (std::strcmp(key, "Size") == 0) {
             paint_cell_text(cv, cell.x + text_pad, ty, max_w, size, ink);
         } else if (std::strcmp(key, "Progress") == 0) {
@@ -1993,12 +2232,26 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     paint_disclosure(cv, ap, x + 528, y, DisclosureKind::MinusSmall);
     y += kTickBox + 10;
 
-    // Progress + separator
+    // Progress + separators + box / framed samples
     cv.text(x, y + 1, "Progress", ap.c("primary.label"));
     paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
     y += kProgressH + 8;
-    paint_separator_h(cv, ap, {x, y, std::min(w, 320), 4});
+    paint_separator_h(cv, ap, {x, y, std::min(w, 220), 4});
+    paint_separator_v(cv, ap, {x + std::min(w, 220) + 8, y - 6, 4, 20});
     y += 10;
+
+    // Box + framed + icons
+    paint_box(cv, ap, {x, y, 120, 36}, "Box");
+    paint_framed_raised(cv, ap, {x + 130, y, 100, 36});
+    cv.text(x + 140, y + 12, "Framed", ap.c("primary.label"));
+    paint_icon(cv, ap, x + 250, y + 8, "file.generic.16", 16);
+    paint_icon(cv, ap, x + 274, y + 8, "folder.16", 16);
+    y += 44;
+
+    // Compact Main gel (title + grip) sample
+    int gel_w = std::min(w, 220);
+    paint_gel(cv, ap, {x, y, gel_w, 56}, "Main Gel", true, 0, GelStyle::Main);
+    y += 64;
 
     // Official-style KDX File Transfers window (columns + LEDs + footer).
     int ftw = std::min(w, 450);
@@ -2010,13 +2263,18 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     int field_w = std::min(w, 280);
     lay.field = {x, y, field_w, kFieldH};
     paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
+    // No-title popup well beside the field (AppearanceEdit pattern)
+    Rect no_title{lay.field.right() + 6, y, kDropArrowW + 2, kFieldH};
+    if (no_title.right() <= client.right() - pad)
+        paint_dropdown(cv, ap, no_title, "", false, false, false, true);
     y += kFieldH + 8;
 
     // Popup buttons — real bevelled plates (KDX Settings), not text fields.
     // AppearanceEdit default ~20px; match sibling buttons when in a dialog row.
-    static const char *menu_items[] = {"Standard", "Slate", "Custom...", "Disabled"};
-    static const unsigned kMenuDisabled = 1u << 3;
-    const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 3)];
+    static const char *menu_items[] = {"Standard", "Slate", "-", "Custom...", "Disabled"};
+    static const unsigned kMenuDisabled = 1u << 4;
+    const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 4)];
+    if (st.menu_sel == 2) drop_label = "Standard"; // separator not selectable
     int pop_h = kButtonH; // KDX Settings: popup matches sibling dialog buttons
     lay.dropdown = {x, y, std::min(w, 200), pop_h};
     paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
@@ -2028,14 +2286,17 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         paint_dropdown(cv, ap, drop_dis, "None", false, false, true);
     y += pop_h + 8;
 
-    // Slider (bar centred in a ≤30px total height band per AppearanceEdit)
+    // Slider H + V (art-first when present)
     cv.text(x, y + 2, "Slider", ap.c("primary.label"));
-    lay.slider = {x + 56, y, std::min(w - 56, 200), 22};
+    lay.slider = {x + 56, y, std::min(w - 100, 200), 22};
     lay.slider_lay =
         paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
     char sval[16];
     std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
     cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
+    Rect vslide{lay.slider.right() + 48, y - 4, 22, 72};
+    if (vslide.right() <= client.right() - pad)
+        paint_slider_v(cv, ap, vslide, st.slider_value, 100, false);
     y += 28;
 
     // Compact V + H scrollbar samples (always visible above the list)
@@ -2092,7 +2353,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     // Open dropdown menu painted last so it stacks above the list
     if (st.dropdown_open) {
         lay.menu_lay = paint_menu(cv, ap, lay.dropdown.x, lay.dropdown.bottom(),
-                                  lay.dropdown.w, menu_items, 4, st.menu_hot,
+                                  lay.dropdown.w, menu_items, 5, st.menu_hot,
                                   kMenuDisabled);
         lay.menu = lay.menu_lay.frame;
     }

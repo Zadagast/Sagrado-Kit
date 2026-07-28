@@ -157,11 +157,11 @@ face + 3 px on each side (`kDefaultButtonPad`).
 
 | AppearanceEdit name | Hap slot | Paint |
 |---|---|---|
-| Menu Background Pattern | index TBD | Optional tiled pattern (else Menu Background colour) |
-| Menu Background | index TBD | 9-slice over whole menu; may use transparency over pattern |
-| Menu Item Pattern/Normal/Hilited/Disabled | index TBD | Per-row chrome above background |
-| Menu Separator | index TBD | Horizontal rule; L/R caps; vertically centred |
-| Popup Window Frame Normal/Focus | index TBD | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
+| Menu Background Pattern | **200** | Optional tiled pattern (else Menu Background colour) |
+| Menu Background | **201** | 9-slice over item area; may use transparency over pattern |
+| Menu Item Pattern/Normal/Hilited/Disabled | **206** / **207** / TBD | Per-row chrome above background |
+| Menu Separator | **208** | Horizontal rule; L/R caps; vertically centred |
+| Popup Window Frame Normal/Focus | rarely authored | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
 
 Colours always apply for label / hilite / disable ink even when art is present.
 
@@ -173,11 +173,12 @@ Colours always apply for label / hilite / disable ink even when art is present.
 
 | AppearanceEdit name | Hap slot | Caps / Positions | Paint |
 |---|---|---|---|
-| H Slider Bar Normal/Hilited/Disabled | index TBD | Bar vertically centred; height+indicator ≤ 30 | Track; **L/R Positions = travel limits** |
-| H Slider Indicator Normal/Hilited/Disabled | index TBD | **Top Position** = px above bar top | Thumb |
-| H Slider Pointed Indicator * | index TBD | Points down (scale below) | Optional pointed thumb |
-| V Slider Bar * | index TBD | Horizontally centred; width+indicator ≤ 30 | **T/B Positions = travel** |
-| V Slider Indicator * | index TBD | **Left Position** = px left of bar | Thumb |
+| H Slider Bar Normal/Hilited/Disabled | **126** / **127** / **128** | Bar vertically centred; height+indicator ≤ 30 | Track; **L/R Positions = travel limits** |
+| H Slider Indicator Normal/Hilited/Disabled | **130** / **131** / **132** | **Top Position** = px above bar top | Thumb (blit or 9-slice) |
+| H Slider Pointed Indicator * | **134** / **135** / **136** | Points down (scale below) | Optional (P2) |
+| V Slider Bar * | **138** / **139** / **140** | Horizontally centred; width+indicator ≤ 30 | **T/B Positions = travel** |
+| V Slider Indicator * | **142** / **143** / **144** | **Left Position** = px left of bar | Thumb |
+| V Slider Pointed Indicator * | **146** / **147** / **148** | | Optional (P2) |
 
 **SagradoKit names:** `slider.h.bar.normal` …, `slider.h.indicator.normal` …,
 `slider.v.*` (pointed variants optional).
@@ -252,8 +253,8 @@ Before painting art for a control in `engine/`:
 
 **Needs index probe before art paint:**
 
-Popup button + symbol, menu backgrounds/items, popup window frame, sliders,
-default button, scroll arrow hilite overlays.
+Popup window frame (rare), pointed sliders, scroll arrow hilite overlays,
+menu item disabled, menu bar family.
 
 ---
 
