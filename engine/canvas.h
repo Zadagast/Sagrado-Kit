@@ -174,6 +174,8 @@ struct Canvas {
     void place(const SkinImage &img, int dx, int dy) { blit_image(img, dx, dy); }
 
     // 9-slice using AppearanceEdit caps: corners 1:1, edges/centre stretched.
+    // Corners are stamped last so stretched edges cannot own corner pixels
+    // (avoids the frame reading as four disconnected border sticks).
     void nine_slice(const SkinImage &img, Rect r) {
         if (img.empty() || r.w <= 0 || r.h <= 0) return;
         int cl = img.caps[0], ct = img.caps[1];
@@ -196,22 +198,39 @@ struct Canvas {
         }
         int mid_sw = img.w - cl - cr, mid_sh = img.h - ct - cb;
         int mid_dw = r.w - cl - cr, mid_dh = r.h - ct - cb;
+
+        auto sample = [&](int x, int y) {
+            int sy = y < ct          ? y
+                     : y >= r.h - cb ? img.h - (r.h - y)
+                     : mid_sh <= 0   ? ct
+                                     : ct + (y - ct) * mid_sh / mid_dh;
+            int sx = x < cl          ? x
+                     : x >= r.w - cr ? img.w - (r.w - x)
+                     : mid_sw <= 0   ? cl
+                                     : cl + (x - cl) * mid_sw / mid_dw;
+            if (sy < 0 || sy >= img.h || sx < 0 || sx >= img.w) return;
+            uint32_t p = img.at(sx, sy);
+            if (p >> 24) put(r.x + x, r.y + y, p & 0x00ffffffu);
+        };
+
+        // Edges + centre (exclude destination corners).
         for (int y = 0; y < r.h; ++y) {
-            int sy = y < ct            ? y
-                     : y >= r.h - cb   ? img.h - (r.h - y)
-                     : mid_sh <= 0     ? ct
-                                       : ct + (y - ct) * mid_sh / mid_dh;
-            if (sy < 0 || sy >= img.h) continue;
+            bool y_corner = (y < ct) || (y >= r.h - cb);
             for (int x = 0; x < r.w; ++x) {
-                int sx = x < cl          ? x
-                         : x >= r.w - cr ? img.w - (r.w - x)
-                         : mid_sw <= 0   ? cl
-                                         : cl + (x - cl) * mid_sw / mid_dw;
-                if (sx < 0 || sx >= img.w) continue;
-                uint32_t p = img.at(sx, sy);
-                if (p >> 24) put(r.x + x, r.y + y, p & 0x00ffffffu);
+                bool x_corner = (x < cl) || (x >= r.w - cr);
+                if (x_corner && y_corner) continue;
+                sample(x, y);
             }
         }
+        // Corners last.
+        for (int y = 0; y < ct; ++y)
+            for (int x = 0; x < cl; ++x) sample(x, y);
+        for (int y = 0; y < ct; ++y)
+            for (int x = r.w - cr; x < r.w; ++x) sample(x, y);
+        for (int y = r.h - cb; y < r.h; ++y)
+            for (int x = 0; x < cl; ++x) sample(x, y);
+        for (int y = r.h - cb; y < r.h; ++y)
+            for (int x = r.w - cr; x < r.w; ++x) sample(x, y);
     }
 
   private:

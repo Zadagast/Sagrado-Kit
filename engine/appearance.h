@@ -382,29 +382,40 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
 
     Rect client = lay.client;
     Rect slab{win.x + 1, win.y + 1, win.w - 2, win.h - 2};
+    int title_bottom = win.y + lay.title_h; // first client-row / under-title
 
+    // One continuous chrome slab (title + side + bottom rails). Do not stroke
+    // full-width separators through the side rails — that chops the frame into
+    // a top "piece" and left/right "pieces".
     cv.fill(slab, body);
     for (int i = 0; i < 18; ++i)
         cv.hline(slab.x, slab.right(), win.y + 2 + i, grad[i]);
-    cv.hline(slab.x, slab.right(), win.y + kTitleH - 2, deep);
+    // Under-title shade only across the title span between the side rails.
+    if (client.w > 0)
+        cv.hline(client.x, client.right(), title_bottom - 2, deep);
 
+    // Outer rim: continuous L highlights / shadows meeting at the corners.
     cv.hline(slab.x, slab.right(), slab.y, bright);
     cv.vline(slab.x, slab.y, slab.bottom(), bright);
-    cv.vline(client.right() + 1, client.y - 1, client.bottom() + 1, bright);
-    cv.hline(client.x - 1, client.right() + 2, client.bottom() + 1, bright);
+    cv.hline(slab.x, slab.right(), slab.bottom() - 1, deep);
+    cv.vline(slab.right() - 1, slab.y, slab.bottom(), deep);
 
-    cv.vline(client.x - 2, client.y - 2, slab.bottom(), deep);
-    cv.hline(client.x - 2, client.right() + 1, client.y - 2, deep);
-    cv.vline(slab.right() - 1, client.y - 2, slab.bottom(), deep);
-    cv.hline(slab.x + 1, slab.right(), slab.bottom() - 1, deep);
-
-    cv.frame({client.x - 1, client.y - 1, client.w + 2, client.h + 2}, frame_c);
+    // Single client hole outline (no parallel deep/bright tracks around it).
     cv.frame(win, frame_c);
+    cv.frame(client, frame_c);
     cv.fill(client, ap.c("primary.background"));
 
+    // Soft inset: one pixel inside the hole, top/left deep, bottom/right bright.
+    if (client.w > 2 && client.h > 2) {
+        cv.hline(client.x + 1, client.right() - 1, client.y + 1, deep);
+        cv.vline(client.x + 1, client.y + 1, client.bottom() - 1, deep);
+        cv.hline(client.x + 1, client.right() - 1, client.bottom() - 2, bright);
+        cv.vline(client.right() - 2, client.y + 1, client.bottom() - 1, bright);
+    }
+
     int tw = cv.text_width(title);
-    cv.text(win.x + (win.w - tw) / 2, win.y + (kTitleH - kFontHeight) / 2, title,
-            label);
+    cv.text(win.x + (win.w - tw) / 2,
+            win.y + (lay.title_h - kFontHeight) / 2, title, label);
 
     if (lay.close_box.w > 0) {
         gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame_c);
