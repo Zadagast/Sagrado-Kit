@@ -1151,6 +1151,24 @@ inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
 }
 
+// Hap: scrollbar cross-axis is exactly 16. If art is thinner (Milk 15), centre
+// the strip in the layout trough — do not stretch cross-axis.
+inline Rect scrollbar_art_strip(Rect bar, bool vertical, int art_thickness) {
+    if (art_thickness <= 0) return bar;
+    if (vertical) {
+        if (art_thickness >= bar.w) return bar;
+        return {bar.x + (bar.w - art_thickness) / 2, bar.y, art_thickness, bar.h};
+    }
+    if (art_thickness >= bar.h) return bar;
+    return {bar.x, bar.y + (bar.h - art_thickness) / 2, bar.w, art_thickness};
+}
+
+inline Rect scrollbar_thumb_on_strip(Rect thumb, Rect strip, bool vertical) {
+    if (vertical)
+        return {strip.x, thumb.y, strip.w, thumb.h};
+    return {thumb.x, strip.y, thumb.w, strip.h};
+}
+
 // Art-first vertical scrollbar (double/single arrows + indicator + grips + overlays).
 // `arrow_hot` stamps pressed-arrow hilite overlays (Haxial Positions = offsets).
 inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
@@ -1165,7 +1183,8 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     if (bar.h < min_h) {
         const SkinImage *tiny = ap.art("scrollbar.v.too_small");
         if (tiny) {
-            cv.nine_slice(*tiny, bar);
+            Rect strip = scrollbar_art_strip(bar, true, tiny->w);
+            cv.nine_slice(*tiny, strip);
             return;
         }
     }
@@ -1173,7 +1192,8 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     if (disabled) {
         const SkinImage *dis = ap.art("scrollbar.v.disabled");
         if (dis) {
-            cv.nine_slice(*dis, bar);
+            Rect strip = scrollbar_art_strip(bar, true, dis->w);
+            cv.nine_slice(*dis, strip);
             return;
         }
     }
@@ -1185,24 +1205,26 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     const SkinImage *arrows = ap.art(arrow_slot);
     if (!arrows && single) arrows = ap.art("scrollbar.v.double_arrows");
     if (arrows) {
-        cv.nine_slice(*arrows, bar);
+        Rect strip = scrollbar_art_strip(bar, true, arrows->w);
+        cv.nine_slice(*arrows, strip);
         if (!disabled) {
+            Rect th = scrollbar_thumb_on_strip(s.thumb, strip, true);
             const char *islot = hilite_thumb ? "scrollbar.v.indicator.hilited"
                                              : "scrollbar.v.indicator.normal";
             const SkinImage *ind = ap.art(islot);
             if (!ind) ind = ap.art("scrollbar.v.indicator.normal");
-            if (ind && s.thumb.h > 0)
-                cv.nine_slice(*ind, s.thumb);
-            else if (s.thumb.h > 0) {
+            if (ind && th.h > 0)
+                cv.nine_slice(*ind, th);
+            else if (th.h > 0) {
                 Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
                                           : ap.c("scrollbar.indicator");
-                cv.fill(s.thumb, face);
+                cv.fill(th, face);
             }
             const char *gslot = hilite_thumb ? "scrollbar.v.grips.hilited"
                                              : "scrollbar.v.grips.normal";
             const SkinImage *grips = ap.art(gslot);
             if (!grips) grips = ap.art("scrollbar.v.grips.normal");
-            paint_scrollbar_grips(cv, grips, s.thumb);
+            paint_scrollbar_grips(cv, grips, th);
 
             const char *ov_slot = nullptr;
             if (single) {
@@ -1228,7 +1250,7 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
                     break;
                 }
             }
-            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), bar, ov_slot);
+            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), strip, ov_slot);
         }
         return;
     }
@@ -1249,7 +1271,8 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
     if (bar.w < min_w) {
         const SkinImage *tiny = ap.art("scrollbar.h.too_small");
         if (tiny) {
-            cv.nine_slice(*tiny, bar);
+            Rect strip = scrollbar_art_strip(bar, false, tiny->h);
+            cv.nine_slice(*tiny, strip);
             return;
         }
     }
@@ -1257,7 +1280,8 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
     if (disabled) {
         const SkinImage *dis = ap.art("scrollbar.h.disabled");
         if (dis) {
-            cv.nine_slice(*dis, bar);
+            Rect strip = scrollbar_art_strip(bar, false, dis->h);
+            cv.nine_slice(*dis, strip);
             return;
         }
     }
@@ -1269,24 +1293,26 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
     const SkinImage *arrows = ap.art(arrow_slot);
     if (!arrows && single) arrows = ap.art("scrollbar.h.double_arrows");
     if (arrows) {
-        cv.nine_slice(*arrows, bar);
+        Rect strip = scrollbar_art_strip(bar, false, arrows->h);
+        cv.nine_slice(*arrows, strip);
         if (!disabled) {
+            Rect th = scrollbar_thumb_on_strip(s.thumb, strip, false);
             const char *islot = hilite_thumb ? "scrollbar.h.indicator.hilited"
                                              : "scrollbar.h.indicator.normal";
             const SkinImage *ind = ap.art(islot);
             if (!ind) ind = ap.art("scrollbar.h.indicator.normal");
-            if (ind && s.thumb.w > 0)
-                cv.nine_slice(*ind, s.thumb);
-            else if (s.thumb.w > 0) {
+            if (ind && th.w > 0)
+                cv.nine_slice(*ind, th);
+            else if (th.w > 0) {
                 Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
                                           : ap.c("scrollbar.indicator");
-                cv.fill(s.thumb, face);
+                cv.fill(th, face);
             }
             const char *gslot = hilite_thumb ? "scrollbar.h.grips.hilited"
                                              : "scrollbar.h.grips.normal";
             const SkinImage *grips = ap.art(gslot);
             if (!grips) grips = ap.art("scrollbar.h.grips.normal");
-            paint_scrollbar_grips(cv, grips, s.thumb);
+            paint_scrollbar_grips(cv, grips, th);
 
             const char *ov_slot = nullptr;
             if (single) {
@@ -1312,7 +1338,7 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
                     break;
                 }
             }
-            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), bar, ov_slot);
+            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), strip, ov_slot);
         }
         return;
     }
@@ -1613,8 +1639,11 @@ struct SliderLayout {
     int max_value = 100;
     int thumb_w = kSliderThumbW;
     int thumb_h = kSliderThumbH;
+    int travel_a = 0; // H: left inset; V: top inset (Hap Positions)
+    int travel_b = 0; // H: right inset; V: bottom inset
 };
 
+// Hap: bar spans the full control; Positions only limit indicator travel inside it.
 inline SliderLayout slider_layout(Rect r, int value, int max_value,
                                   int thumb_w = kSliderThumbW,
                                   int thumb_h = kSliderThumbH, int travel_l = 0,
@@ -1626,12 +1655,15 @@ inline SliderLayout slider_layout(Rect r, int value, int max_value,
     s.value = std::clamp(value, 0, s.max_value);
     s.thumb_w = thumb_w;
     s.thumb_h = thumb_h;
+    s.travel_a = std::max(0, travel_l);
+    s.travel_b = std::max(0, travel_r);
     if (bar_h < 2) bar_h = 2;
-    int bar_w = r.w - travel_l - travel_r;
-    if (bar_w < thumb_w) bar_w = std::max(thumb_w, r.w);
-    s.bar = {r.x + travel_l, r.y + (r.h - bar_h) / 2, bar_w, bar_h};
-    int travel = std::max(0, s.bar.w - thumb_w);
-    int tx = s.bar.x + (travel * s.value) / s.max_value;
+    s.bar = {r.x, r.y + (r.h - bar_h) / 2, r.w, bar_h};
+    int track_x = s.bar.x + s.travel_a;
+    int track_w = s.bar.w - s.travel_a - s.travel_b;
+    if (track_w < thumb_w) track_w = std::max(thumb_w, s.bar.w);
+    int travel = std::max(0, track_w - thumb_w);
+    int tx = track_x + (travel * s.value) / s.max_value;
     int ty = s.bar.y - thumb_above;
     if (thumb_above <= 0)
         ty = r.y + (r.h - thumb_h) / 2;
@@ -1669,10 +1701,18 @@ inline SliderLayout slider_layout(const Appearance &ap, Rect r, int value,
         thumb_above = ind->positions[1];
     }
     // AppearanceEdit: total height including indicator ≤ 30.
-    int total_h = bar_h + (thumb_above > 0 ? thumb_above : 0);
-    if (thumb_above <= 0) total_h = std::max(bar_h, thumb_h);
-    if (total_h > r.h && r.h > 0) {
-        // Keep within band; prefer shrinking thumb_above.
+    int band = bar_h;
+    if (thumb_above > 0)
+        band = bar_h + thumb_above + std::max(0, thumb_h - bar_h);
+    else
+        band = std::max(bar_h, thumb_h);
+    if (band > 30) {
+        if (thumb_above > 0) thumb_above = std::max(0, 30 - bar_h - 1);
+        band = (thumb_above > 0) ? bar_h + thumb_above + std::max(0, thumb_h - bar_h)
+                                 : std::max(bar_h, thumb_h);
+        if (band > 30 && thumb_h > bar_h) thumb_h = std::max(bar_h, 30 - std::max(0, thumb_above));
+    }
+    if (band > r.h && r.h > 0) {
         if (thumb_above > 0) thumb_above = std::max(0, r.h - bar_h - 1);
     }
     return slider_layout(r, value, max_value, thumb_w, thumb_h, travel_l, travel_r,
@@ -1680,8 +1720,10 @@ inline SliderLayout slider_layout(const Appearance &ap, Rect r, int value,
 }
 
 inline int slider_value_at_x(const SliderLayout &s, int mx) {
-    int travel = std::max(1, s.bar.w - s.thumb_w);
-    int rel = mx - s.bar.x - s.thumb_w / 2;
+    int track_x = s.bar.x + s.travel_a;
+    int track_w = s.bar.w - s.travel_a - s.travel_b;
+    int travel = std::max(1, track_w - s.thumb_w);
+    int rel = mx - track_x - s.thumb_w / 2;
     return std::clamp(rel * s.max_value / travel, 0, s.max_value);
 }
 
@@ -1720,14 +1762,33 @@ inline SliderLayout slider_layout_v(const Appearance &ap, Rect r, int value,
         thumb_h = ind->h;
         thumb_left = ind->positions[0];
     }
+    // AppearanceEdit: total width including indicator ≤ 30.
+    int band = bar_w;
+    if (thumb_left > 0)
+        band = bar_w + thumb_left + std::max(0, thumb_w - bar_w);
+    else
+        band = std::max(bar_w, thumb_w);
+    if (band > 30) {
+        if (thumb_left > 0) thumb_left = std::max(0, 30 - bar_w - 1);
+        if (std::max(bar_w, thumb_w) > 30 && thumb_w > bar_w)
+            thumb_w = std::max(bar_w, 30 - std::max(0, thumb_left));
+    }
+    if (band > r.w && r.w > 0) {
+        if (thumb_left > 0) thumb_left = std::max(0, r.w - bar_w - 1);
+    }
+
     s.thumb_w = thumb_w;
     s.thumb_h = thumb_h;
-    int bar_h = r.h - travel_t - travel_b;
-    if (bar_h < thumb_h) bar_h = std::max(thumb_h, r.h);
-    s.bar = {r.x + (r.w - bar_w) / 2, r.y + travel_t, bar_w, bar_h};
-    int travel = std::max(0, s.bar.h - thumb_h);
+    s.travel_a = std::max(0, travel_t);
+    s.travel_b = std::max(0, travel_b);
+    // Bar spans full height; Positions only limit thumb travel.
+    s.bar = {r.x + (r.w - bar_w) / 2, r.y, bar_w, r.h};
+    int track_y = s.bar.y + s.travel_a;
+    int track_h = s.bar.h - s.travel_a - s.travel_b;
+    if (track_h < thumb_h) track_h = std::max(thumb_h, s.bar.h);
+    int travel = std::max(0, track_h - thumb_h);
     // Value 0 at top (like scroll).
-    int ty = s.bar.y + (travel * s.value) / s.max_value;
+    int ty = track_y + (travel * s.value) / s.max_value;
     int tx = s.bar.x - thumb_left;
     if (thumb_left <= 0) tx = r.x + (r.w - thumb_w) / 2;
     s.thumb = {tx, ty, thumb_w, thumb_h};
@@ -1735,8 +1796,10 @@ inline SliderLayout slider_layout_v(const Appearance &ap, Rect r, int value,
 }
 
 inline int slider_value_at_y(const SliderLayout &s, int my) {
-    int travel = std::max(1, s.bar.h - s.thumb_h);
-    int rel = my - s.bar.y - s.thumb_h / 2;
+    int track_y = s.bar.y + s.travel_a;
+    int track_h = s.bar.h - s.travel_a - s.travel_b;
+    int travel = std::max(1, track_h - s.thumb_h);
+    int rel = my - track_y - s.thumb_h / 2;
     return std::clamp(rel * s.max_value / travel, 0, s.max_value);
 }
 
@@ -2676,8 +2739,8 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     y += kFontHeight + 8;
 
     // P2 samples first so short editor panels still show them (Find gel is tall).
-    // Sizes follow Milk Hap art: icon_button hilited needs ≥30×23; scroll thumbs
-    // need ~47px travel; bar thickness matches art (15), not a stretched 16.
+    // Hap: scrollbar cross-axis is exactly 16 (kScrollbarW). Icon buttons size
+    // from art so hilited caps are not crushed; scroll thumbs need ~47px travel.
     if (fits(kButtonH + kMenuBarH + 90)) {
         cv.text(x, y, "P2  icon / menu / scroll", ap.c("important.label"));
         y += kFontHeight + 4;
@@ -2707,13 +2770,9 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         if (ibd.right() <= right)
             paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
 
-        const SkinImage *v_arrows = ap.art("scrollbar.v.single_arrows");
-        const SkinImage *h_arrows = ap.art("scrollbar.h.double_arrows");
+        constexpr int sb = kScrollbarW;
         const SkinImage *v_ind = ap.art("scrollbar.v.indicator.normal");
         const SkinImage *h_ind = ap.art("scrollbar.h.indicator.normal");
-        int sb = kScrollbarW;
-        if (v_arrows && v_arrows->w > 0) sb = v_arrows->w;
-        else if (h_arrows && h_arrows->h > 0) sb = h_arrows->h;
 
         int v_top = 0, v_bot = 0;
         scrollbar_v_insets(ap, sb, v_top, v_bot, true);
@@ -2734,7 +2793,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             if (h1.right() + 20 <= right)
                 paint_scrollbar_h(cv, ap, h1, 2, 6, 2, true, false, false,
                                   ScrollArrowHot::FirstEnd);
-            Rect tiny{h1.right() + 6, h1.y, std::max(10, sb - 4), sb};
+            Rect tiny{h1.right() + 6, h1.y, 12, sb};
             if (tiny.right() <= right)
                 paint_scrollbar_h(cv, ap, tiny, 0, 0, 1, false);
         }
@@ -2893,11 +2952,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
 
     // Compact V + H scrollbar samples (double + single + arrow hilite + too-small)
     {
-        const SkinImage *v_arrows = ap.art("scrollbar.v.double_arrows");
-        const SkinImage *h_arrows = ap.art("scrollbar.h.double_arrows");
-        int sb = kScrollbarW;
-        if (v_arrows && v_arrows->w > 0) sb = v_arrows->w;
-        else if (h_arrows && h_arrows->h > 0) sb = h_arrows->h;
+        constexpr int sb = kScrollbarW;
         int v_top = 0, v_bot = 0;
         scrollbar_v_insets(ap, sb, v_top, v_bot, false);
         int v_h = std::max(72, v_top + v_bot + scrollbar_min_thumb_v(ap, sb) + 8);
@@ -2924,10 +2979,10 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             else
                 hdemo.w = 0;
             Rect htiny{(hdemo.w > 0 ? hdemo.right() : after_v) + 8,
-                       y + (v_h - sb) / 2, std::max(12, sb - 3), sb};
+                       y + (v_h - sb) / 2, 12, sb};
             if (htiny.right() <= right)
                 paint_scrollbar_h(cv, ap, htiny, 0, 0, 1, false);
-            Rect vtiny{htiny.right() + 8, y, sb, std::max(12, sb - 3)};
+            Rect vtiny{htiny.right() + 8, y, sb, 12};
             if (vtiny.right() <= right)
                 paint_scrollbar(cv, ap, vtiny, 0, 0, 1, false);
             y += v_h + 8;

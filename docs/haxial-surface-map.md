@@ -58,6 +58,38 @@ Meaning depends on the image. Common patterns:
 
 If Positions are disabled for a slot, they are unused.
 
+### Fill model (sizing)
+
+**Outer size is the program’s job.** The Appearance Engine never invents a
+control’s destination rect from art pixel size. The app (TextEdit, KDX, kit
+preview) requests a `Rect`; Caps/Positions only say how to fill or place inside it.
+
+```
+App requests Rect R for a control
+        │
+        ├─ stretchy chrome (button, bar, frame, header, menu…)
+        │     nine_slice(art, R) using Caps
+        │     Positions may inset travel / thickness / fill area inside R
+        │
+        └─ fixed chrome (title btn, grip, symbol, arrow hilite, icon)
+              blit 1:1 at Positions (or centre); natural art size
+```
+
+| Rule | Hap contract |
+|---|---|
+| Buttons / headers / menus / frames | Stretch freely via Caps into requested R |
+| Scrollbar cross-axis | Layout thickness **exactly 16**; thinner art (e.g. Milk 15) is **centred** in the trough — not stretched cross-axis |
+| Scroll / slider bar Positions | Limit **indicator travel** inside the full bar — do **not** shrink the bar |
+| Progress height | ≤ **16**; fill Positions = inset inside the trough |
+| Slider band | Height (H) or width (V) including indicator ≤ **30** |
+| Window / popup frame Positions | Frame **thickness** (even); client = inside |
+| Title buttons / WonderLight / icons | Place 1:1; never 9-slice into the control rect |
+
+TextEdit-measured kit metrics (`kButtonH=24`, `kTitleH=22`, `kBorder=6`) are
+layout constants from real Haxial chrome. AppearanceEdit’s “buttons usually 20”
+is authoring guidance for art — both are Haxial; do not “correct” Find metrics
+to 20.
+
 ### States
 
 | State | Meaning |

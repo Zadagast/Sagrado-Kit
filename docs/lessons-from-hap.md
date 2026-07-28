@@ -38,8 +38,9 @@ icons. The authoritative plug-in map (AppearanceEdit docs + probes) lives in
 [`haxial-surface-map.md`](haxial-surface-map.md). Kit contract:
 [`contract.md`](contract.md).
 
-- **Images (art)** = widget chrome. **Caps** = 9-slice; **Positions** = travel,
-  frame thickness, or placement — meaning is per slot (see the surface map).
+- **Images (art)** = widget chrome. **Caps** = 9-slice fill into the app’s Rect;
+  **Positions** = travel, frame thickness, or placement — meaning is per slot
+  (see the surface map **Fill model**). Outer size is never taken from art pixels.
 - **Icons** = sparse marks (file, folder, user) — a separate namespace.
 - Many real themes are colour-only; art coverage is uneven. Fallbacks are
   mandatory.
