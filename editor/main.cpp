@@ -473,7 +473,7 @@ void mouse_down(int mx, int my) {
             g.arrow_hot = hot;
             g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr); // initial delay, then faster
+            SetTimer(g_hwnd, 2, 200, nullptr); // hold-repeat initial delay
             return;
         }
         if (sl.thumb.contains(mx, my)) {
@@ -608,7 +608,7 @@ void mouse_down(int mx, int my) {
             g.arrow_hot = hot;
             g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
+            SetTimer(g_hwnd, 2, 200, nullptr);
             return;
         }
         if (sl.thumb.contains(mx, my)) {
@@ -637,7 +637,7 @@ void mouse_down(int mx, int my) {
             g.arrow_hot = hot;
             g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
+            SetTimer(g_hwnd, 2, 200, nullptr);
             return;
         }
         if (sl.thumb.contains(mx, my)) {
@@ -834,6 +834,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         redraw();
         return 0;
     case WM_LBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
+        // Treat double-clicks as presses — otherwise rapid clicks are eaten
+        // (Win32 sends DBLCLK instead of the second DOWN).
         mouse_down(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEMOVE: {
