@@ -60,6 +60,14 @@ SLOT_MAP = {
     235: "window.maximize.hilited",
     243: "window.resize.normal",
     244: "window.resize.focus",
+    251: "wonderlight.off",
+    252: "wonderlight.pause",
+    253: "wonderlight.ready",
+    254: "wonderlight.go",
+    255: "wonderlight.finished",
+    256: "wonderlight.flash_off",
+    257: "wonderlight.flash_on1",
+    258: "wonderlight.flash_on2",
 }
 
 # Hap colour index → SagradoKit role (subset used by kit surfaces).
@@ -227,7 +235,34 @@ def load_hap(path: Path):
             img = parse_image(d, img_off + rel)
             if img:
                 images[slot] = img
-    return name, colors, images
+
+    icons = {}
+    ico_off, ico_len = rd32(d, 0x44), rd32(d, 0x48)
+    if ico_len > 0 and ico_off + 4 <= len(d):
+        first = None
+        offsets = []
+        i = 0
+        while True:
+            if first is not None and 4 * i >= first:
+                break
+            if i > 512:
+                break
+            if ico_off + 4 * i + 4 > len(d):
+                break
+            v = rd32(d, ico_off + 4 * i)
+            if v != 0 and (first is None or v < first):
+                first = v
+            offsets.append(v)
+            i += 1
+        for slot, rel in enumerate(offsets):
+            if not rel:
+                continue
+            if ico_off + rel + 20 > len(d):
+                continue
+            img = parse_image(d, ico_off + rel)
+            if img:
+                icons[slot] = img
+    return name, colors, images, icons
 
 
 def write_skimg(path: Path, img: dict):
@@ -274,11 +309,29 @@ def hex_rgb(v: int) -> str:
 def main():
     root = Path(__file__).resolve().parents[1]
     hap = root / "research" / "haps" / "Milk Redux.hap"
+    donor = root / "research" / "haps" / "Boilerplate.hap"
+    icon_donor = root / "research" / "haps" / "Ashen.hap"
     out_dir = root / "format" / "skins" / "milk-redux"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    name, colors, images = load_hap(hap)
-    print(f"theme: {name}  images={len(images)}  colors={len(colors)}")
+    name, colors, images, icons = load_hap(hap)
+    print(f"theme: {name}  images={len(images)}  colors={len(colors)}  icons={len(icons)}")
+
+    # Fill missing image slots from Boilerplate (WonderLight etc.)
+    if donor.exists():
+        _, _, donor_imgs, _ = load_hap(donor)
+        filled = 0
+        for slot, key in SLOT_MAP.items():
+            if slot not in images and slot in donor_imgs:
+                images[slot] = donor_imgs[slot]
+                filled += 1
+                print(f"  donor fill [{slot}] {key}")
+        print(f"donor filled {filled} image slots from {donor.name}")
+
+    if icon_donor.exists() and not icons:
+        _, _, _, donor_icons = load_hap(icon_donor)
+        icons = donor_icons
+        print(f"icons borrowed from {icon_donor.name}: {len(icons)}")
 
     art_entries = []
     for slot, key in sorted(SLOT_MAP.items()):
@@ -294,6 +347,19 @@ def main():
             f"  [{slot:3d}] {key:28s} {img['w']}x{img['h']} "
             f"caps={img['caps']} pos={img['pos']}"
         )
+
+    # Prefer 16×16 then 32×32 generic file icons (Ashen slots 4/5).
+    icon_entries = []
+    icon_map = [(4, "file.generic.16"), (5, "file.generic.32")]
+    for slot, key in icon_map:
+        img = icons.get(slot)
+        if not img:
+            continue
+        fname = key.replace(".", "_") + ".skimg"
+        write_skimg(out_dir / fname, img)
+        write_png(out_dir / (key.replace(".", "_") + ".png"), img)
+        icon_entries.append((key, fname))
+        print(f"  icon[{slot}] {key} {img['w']}x{img['h']}")
 
     # Group colours for TOML
     groups: dict[str, dict[str, str]] = {}
@@ -315,14 +381,14 @@ def main():
             groups.setdefault(base, {})["__transition__"] = stops
 
     lines = [
-        "# SagradoKit skin — Milk Redux first-wave art (extracted from .hap)",
+        "# SagradoKit skin — Milk Redux + donor WonderLight/icons",
         'format = "sagrado-skin"',
         "version = 1",
         "",
         "[meta]",
         f'name = "{name}"',
         'creator = "extracted from Hap"',
-        'description = "Art-first seed: button, default, popup, window frame/title boxes"',
+        'description = "Art seed: buttons, popup, gel, tick/mutex, progress, WonderLight, icons"',
         'version = "1.0"',
         "",
     ]
@@ -351,11 +417,13 @@ def main():
         lines.append("")
 
     lines.append("[icons]")
+    for key, fname in icon_entries:
+        lines.append(f'"{key}" = "{fname}"')
     lines.append("")
 
     toml_path = out_dir / "milk-redux.skin.toml"
     toml_path.write_text("\n".join(lines) + "\n")
-    print(f"wrote {toml_path} ({len(art_entries)} art slots)")
+    print(f"wrote {toml_path} ({len(art_entries)} art, {len(icon_entries)} icons)")
 
 
 if __name__ == "__main__":

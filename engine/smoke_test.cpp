@@ -16,6 +16,8 @@ int main(int argc, char **argv) {
         std::printf("loaded: %s (%s)\n", path.c_str(), ap.skin.meta.name.c_str());
         std::printf("art slots authored: %zu  loaded: %zu\n", ap.skin.art.size(),
                     ap.art_cache.size());
+        std::printf("icon slots authored: %zu  loaded: %zu\n", ap.skin.icons.size(),
+                    ap.icon_cache.size());
         if (ap.art("button.normal"))
             std::printf("button.normal art %dx%d caps=[%d,%d,%d,%d]\n",
                         ap.art("button.normal")->w, ap.art("button.normal")->h,
@@ -23,6 +25,12 @@ int main(int argc, char **argv) {
                         ap.art("button.normal")->caps[1],
                         ap.art("button.normal")->caps[2],
                         ap.art("button.normal")->caps[3]);
+        if (ap.art("wonderlight.go"))
+            std::printf("wonderlight.go art %dx%d\n", ap.art("wonderlight.go")->w,
+                        ap.art("wonderlight.go")->h);
+        if (ap.icon("file.generic.16"))
+            std::printf("file.generic.16 icon %dx%d\n", ap.icon("file.generic.16")->w,
+                        ap.icon("file.generic.16")->h);
     }
 
     Color bg = ap.c("primary.background");

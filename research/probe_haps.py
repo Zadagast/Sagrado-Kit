@@ -222,6 +222,14 @@ KNOWN = {
     239: "Window Menu Button Focus",
     243: "Window Resize Button Normal",
     244: "Window Resize Button Focus",
+    251: "WonderLight Off",
+    252: "WonderLight Pause",
+    253: "WonderLight Ready",
+    254: "WonderLight Go",
+    255: "WonderLight Finished",
+    256: "WonderLight Flash Off",
+    257: "WonderLight Flash On 1",
+    258: "WonderLight Flash On 2",
 }
 
 

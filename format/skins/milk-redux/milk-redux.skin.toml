@@ -1,11 +1,11 @@
-# SagradoKit skin — Milk Redux first-wave art (extracted from .hap)
+# SagradoKit skin — Milk Redux + donor WonderLight/icons
 format = "sagrado-skin"
 version = 1
 
 [meta]
 name = "Milk Redux"
 creator = "extracted from Hap"
-description = "Art-first seed: button, default, popup, window frame/title boxes"
+description = "Art seed: buttons, popup, gel, tick/mutex, progress, WonderLight, icons"
 version = "1.0"
 
 [colors.button]
@@ -414,5 +414,47 @@ file = "window_resize_focus.skimg"
 caps = [0, 0, 0, 0]
 positions = [0, 0, 0, 0]
 
+[art."wonderlight.off"]
+file = "wonderlight_off.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.pause"]
+file = "wonderlight_pause.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.ready"]
+file = "wonderlight_ready.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.go"]
+file = "wonderlight_go.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.finished"]
+file = "wonderlight_finished.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_off"]
+file = "wonderlight_flash_off.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_on1"]
+file = "wonderlight_flash_on1.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_on2"]
+file = "wonderlight_flash_on2.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [icons]
+"file.generic.16" = "file_generic_16.skimg"
+"file.generic.32" = "file_generic_32.skimg"
 

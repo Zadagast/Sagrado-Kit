@@ -150,6 +150,8 @@ face + 3 px on each side (`kDefaultButtonPad`).
 | Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
 | Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
 | Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
+| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — 16×16 status lamp |
+| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp |
 
 ### Menu (open list)
 

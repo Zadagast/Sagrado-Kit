@@ -42,27 +42,37 @@ struct Appearance {
     ColorMap stock;
     std::string skin_dir;
     mutable std::map<std::string, SkinImage> art_cache;
+    mutable std::map<std::string, SkinImage> icon_cache;
 
     Appearance() : skin(stock_skin()), stock(stock_colors()) {}
 
     void load_art_cache() {
         art_cache.clear();
-        for (const auto &kv : skin.art) {
-            if (kv.second.path.empty()) continue;
+        icon_cache.clear();
+        auto load_into = [&](const ArtRef &ref, std::map<std::string, SkinImage> &dst,
+                             const std::string &key) {
+            if (ref.path.empty()) return;
             SkinImage img;
-            std::string full = join_path(skin_dir, kv.second.path);
-            if (!load_skin_image(full, img)) continue;
-            if (kv.second.has_caps) std::memcpy(img.caps, kv.second.caps, 4);
-            if (kv.second.has_positions)
-                std::memcpy(img.positions, kv.second.positions, 4);
-            if (!kv.second.has_caps && img.caps[0] == 0 && img.caps[1] == 0 &&
+            std::string full = join_path(skin_dir, ref.path);
+            if (!load_skin_image(full, img)) return;
+            if (ref.has_caps) std::memcpy(img.caps, ref.caps, 4);
+            if (ref.has_positions) std::memcpy(img.positions, ref.positions, 4);
+            if (!ref.has_caps && img.caps[0] == 0 && img.caps[1] == 0 &&
                 img.caps[2] == 0 && img.caps[3] == 0 && img.w > 1 && img.h > 1) {
                 img.caps[0] = uint8_t(img.w / 2);
                 img.caps[1] = uint8_t(img.h / 2);
                 img.caps[2] = uint8_t(img.w - 1 - img.caps[0]);
                 img.caps[3] = uint8_t(img.h - 1 - img.caps[1]);
             }
-            art_cache[kv.first] = std::move(img);
+            dst[key] = std::move(img);
+        };
+        for (const auto &kv : skin.art) load_into(kv.second, art_cache, kv.first);
+        // Icons: SlotMap path → load as SkinImage (no caps required).
+        for (const auto &kv : skin.icons) {
+            if (kv.second.empty()) continue;
+            ArtRef ref;
+            ref.path = kv.second;
+            load_into(ref, icon_cache, kv.first);
         }
     }
 
@@ -91,6 +101,12 @@ struct Appearance {
     const SkinImage *art(const char *slot) const {
         auto it = art_cache.find(slot);
         if (it == art_cache.end() || it->second.empty()) return nullptr;
+        return &it->second;
+    }
+
+    const SkinImage *icon(const char *slot) const {
+        auto it = icon_cache.find(slot);
+        if (it == icon_cache.end() || it->second.empty()) return nullptr;
         return &it->second;
     }
 
@@ -1028,14 +1044,47 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
 // --- Progress / separators / box / disclosure / focus art ---------------
 
 constexpr int kProgressH = 12; // AppearanceEdit: ≤ 16
+constexpr int kWonderLight = 16;
+constexpr int kTransferRowH = 52;
+
+enum class ProgressStyle {
+    Continuous, // solid / gradient fill (finished bar in KDX)
+    Segmented,  // LED blocks in a recessed track (active transfer in KDX)
+};
 
 inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
-                           int max_value = 100) {
+                           int max_value = 100,
+                           ProgressStyle style = ProgressStyle::Continuous) {
     if (r.w <= 0 || r.h <= 0) return;
     int vmax = std::max(1, max_value);
     int v = std::clamp(value, 0, vmax);
     const SkinImage *bar = ap.art("progress.bar");
     const SkinImage *fill = ap.art("progress.fill");
+
+    // Segmented = KDX active-transfer LED blocks (app-drawn, not fill art).
+    if (style == ProgressStyle::Segmented) {
+        cv.fill(r, ap.c("progress.bkgnd"));
+        cv.frame(r, ap.c("progress.frame"));
+        cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("progress.bkgnd_dark"));
+        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_dark"));
+        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("progress.bkgnd_light"));
+        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_light"));
+        constexpr int kSegW = 6, kGap = 2, kPad = 3;
+        int inner = r.w - 2 * kPad;
+        int nseg = std::max(1, (inner + kGap) / (kSegW + kGap));
+        int lit = (nseg * v + vmax - 1) / vmax;
+        Color on = ap.c("progress.transition.5");
+        Color hi = ap.c("progress.transition.8");
+        for (int i = 0; i < lit && i < nseg; ++i) {
+            int sx = r.x + kPad + i * (kSegW + kGap);
+            Rect seg{sx, r.y + 3, kSegW, r.h - 6};
+            if (seg.right() > r.right() - kPad) break;
+            cv.fill(seg, on);
+            cv.hline(seg.x, seg.right(), seg.y, hi);
+        }
+        return;
+    }
+
     if (bar) {
         cv.nine_slice(*bar, r);
     } else {
@@ -1070,6 +1119,170 @@ inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
         cv.rect_grad_v(fr, stops, 10);
         cv.frame(fr, ap.c("progress.frame"));
     }
+}
+
+// WonderLight — 16×16 activity lamp (KDX file-transfer status spheres).
+enum class WonderLightState {
+    Off,
+    Pause,
+    Ready,
+    Go,
+    Finished,
+    FlashOff,
+    FlashOn1,
+    FlashOn2,
+};
+
+inline const char *wonderlight_art_slot(WonderLightState st) {
+    switch (st) {
+    case WonderLightState::Off: return "wonderlight.off";
+    case WonderLightState::Pause: return "wonderlight.pause";
+    case WonderLightState::Ready: return "wonderlight.ready";
+    case WonderLightState::Go: return "wonderlight.go";
+    case WonderLightState::Finished: return "wonderlight.finished";
+    case WonderLightState::FlashOff: return "wonderlight.flash_off";
+    case WonderLightState::FlashOn1: return "wonderlight.flash_on1";
+    case WonderLightState::FlashOn2: return "wonderlight.flash_on2";
+    }
+    return "wonderlight.off";
+}
+
+inline Color wonderlight_color(WonderLightState st) {
+    switch (st) {
+    case WonderLightState::Go:
+    case WonderLightState::Ready:
+        return rgb(0, 200, 40);
+    case WonderLightState::Finished:
+        return rgb(40, 120, 255);
+    case WonderLightState::Pause:
+        return rgb(220, 180, 0);
+    case WonderLightState::FlashOn1:
+    case WonderLightState::FlashOn2:
+        return rgb(255, 60, 60);
+    case WonderLightState::FlashOff:
+    case WonderLightState::Off:
+    default:
+        return rgb(90, 90, 90);
+    }
+}
+
+inline void paint_wonderlight_sphere(Canvas &cv, Rect b, Color body) {
+    // Glossy sphere: radial-ish shade + top-left highlight (colour fallback).
+    int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    int rad = std::min(b.w, b.h) / 2 - 1;
+    Color hi{uint8_t(std::min(255, int(body.r) + 90)),
+             uint8_t(std::min(255, int(body.g) + 90)),
+             uint8_t(std::min(255, int(body.b) + 90))};
+    Color lo{uint8_t(body.r * 2 / 5), uint8_t(body.g * 2 / 5), uint8_t(body.b * 2 / 5)};
+    for (int y = 0; y < b.h; ++y)
+        for (int x = 0; x < b.w; ++x) {
+            int dx = b.x + x - cx, dy = b.y + y - cy;
+            int d2 = dx * dx + dy * dy;
+            if (d2 > rad * rad) continue;
+            // Highlight bias toward top-left
+            int hx = dx + rad / 3, hy = dy + rad / 3;
+            int t = hx * hx + hy * hy;
+            Color c = t < (rad * rad) / 4 ? hi : (d2 > (rad * rad * 3) / 4 ? lo : body);
+            if (d2 > (rad - 1) * (rad - 1)) c = rgb(0, 0, 0);
+            cv.put(b.x + x, b.y + y, pack(c));
+        }
+}
+
+inline Rect paint_wonderlight(Canvas &cv, const Appearance &ap, int x, int y,
+                              WonderLightState st) {
+    Rect b{x, y, kWonderLight, kWonderLight};
+    const SkinImage *img = ap.art(wonderlight_art_slot(st));
+    if (img) {
+        if (img->w == b.w && img->h == b.h)
+            cv.blit_image(*img, b.x, b.y);
+        else {
+            // Centre if size differs (Ashen ships 12×12).
+            int dx = b.x + (b.w - img->w) / 2;
+            int dy = b.y + (b.h - img->h) / 2;
+            cv.blit_image(*img, dx, dy);
+        }
+        return b;
+    }
+    paint_wonderlight_sphere(cv, b, wonderlight_color(st));
+    return b;
+}
+
+// File / folder icon — skin [icons] slot, else a drawn document glyph.
+inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
+                       const char *slot = "file.generic.16", int size = 16) {
+    Rect b{x, y, size, size};
+    const SkinImage *img = ap.icon(slot);
+    if (!img && size >= 32) img = ap.icon("file.generic.32");
+    if (!img && size < 32) img = ap.icon("file.generic.16");
+    if (img) {
+        if (img->w == size && img->h == size)
+            cv.blit_image(*img, b.x, b.y);
+        else
+            cv.nine_slice(*img, b);
+        return b;
+    }
+    // Document plate
+    Color paper = ap.c("primary.light");
+    Color edge = ap.c("primary.dark");
+    Color ink = ap.c("primary.frame");
+    int fold = size / 4;
+    cv.fill({b.x + 2, b.y + 1, size - 5, size - 3}, paper);
+    cv.frame({b.x + 2, b.y + 1, size - 5, size - 3}, ink);
+    // dog-ear
+    for (int i = 0; i < fold; ++i) {
+        cv.hline(b.right() - 3 - fold + i, b.right() - 3, b.y + 1 + i, edge);
+        cv.put(b.right() - 3 - fold + i, b.y + 1 + i, pack(ink));
+    }
+    // text lines
+    for (int i = 0; i < 3; ++i)
+        cv.hline(b.x + 4, b.right() - 5, b.y + size / 2 + i * 3 - 2, edge);
+    return b;
+}
+
+struct TransferRow {
+    Rect bounds{};
+    Rect icon{};
+    Rect light{};
+    Rect progress{};
+};
+
+// KDX File Transfers row: icon | WonderLight | name / status | progress.
+inline TransferRow paint_transfer_row(Canvas &cv, const Appearance &ap, Rect r,
+                                      const char *name, const char *status,
+                                      WonderLightState light, int progress_pct,
+                                      bool finished) {
+    TransferRow tr;
+    tr.bounds = r;
+    cv.fill(r, ap.c("list.background"));
+    cv.hline(r.x, r.right(), r.bottom() - 1, ap.c("list.separator"));
+
+    int pad = 6;
+    tr.icon = paint_icon(cv, ap, r.x + pad, r.y + (r.h - 16) / 2 - 6, "file.generic.16", 16);
+    tr.light = paint_wonderlight(cv, ap, tr.icon.right() + 6,
+                                 r.y + 6, light);
+
+    int text_x = tr.light.right() + 8;
+    int text_w = r.right() - pad - text_x;
+    if (text_w < 40) text_w = 40;
+    cv.text(text_x, r.y + 5, name, ap.c("list.label"));
+    // Status line with a small down-arrow mark (KDX transfer direction).
+    int sy = r.y + 5 + kFontHeight + 3;
+    Color stc = finished ? rgb(80, 140, 255) : ap.c("list.label");
+    // Tiny arrow
+    cv.put(text_x, sy + 3, pack(stc));
+    cv.put(text_x + 1, sy + 4, pack(stc));
+    cv.put(text_x + 2, sy + 5, pack(stc));
+    cv.put(text_x + 1, sy + 5, pack(stc));
+    cv.put(text_x, sy + 5, pack(stc));
+    cv.put(text_x + 3, sy + 4, pack(stc));
+    cv.put(text_x + 4, sy + 3, pack(stc));
+    cv.text(text_x + 10, sy, status, ap.c("list.label"));
+
+    int bar_y = r.bottom() - 8 - kProgressH;
+    tr.progress = {text_x, bar_y, text_w, kProgressH};
+    paint_progress(cv, ap, tr.progress, progress_pct, 100,
+                   finished ? ProgressStyle::Continuous : ProgressStyle::Segmented);
+    return tr;
 }
 
 inline void paint_separator_h(Canvas &cv, const Appearance &ap, Rect r) {
@@ -1268,6 +1481,21 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     y += kProgressH + 8;
     paint_separator_h(cv, ap, {x, y, std::min(w, 320), 4});
     y += 10;
+
+    // KDX File Transfers sample — icon + WonderLight + status + progress
+    cv.text(x, y, "File Transfers", ap.c("primary.label"));
+    y += kFontHeight + 4;
+    int tw = std::min(w, 360);
+    paint_transfer_row(cv, ap, {x, y, tw, kTransferRowH},
+                       "server_info.txt @ higher intellect",
+                       "Finished. 573/sec, 1.1K, 0:02", WonderLightState::Finished,
+                       100, true);
+    y += kTransferRowH;
+    paint_transfer_row(cv, ap, {x, y, tw, kTransferRowH},
+                       "readme.txt @ higher intellect",
+                       "Receiving. 12K/sec, 48K, 0:04", WonderLightState::Go, 18,
+                       false);
+    y += kTransferRowH + 8;
 
     // Field + dropdown — AppearanceEdit: usually 20px tall
     int field_w = std::min(w, 280);
