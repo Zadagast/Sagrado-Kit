@@ -151,7 +151,8 @@ resolved colour roles). They do not hardcode a parallel palette.
 
 ## Editor responsibilities
 
-- Load / save `.sap` (also load Haxial `.hap`)
+- Load / save `.sap` (also load Haxial `.hap`; Hap is import-only — Save always writes `.sap`)
+- Panels: Colors (typed `#RRGGBB`, Import Colors, Colors Preview), Info meta typing, Images / Icons (full Hap catalogs + Paste), ♦ Groups
 - Present named colour roles for editing
 - Live preview of the kit surfaces above, driven by the same engine apps use
 - Leave incomplete skins valid (partial colour tables are fine)

@@ -19,10 +19,10 @@ Four authoring panels, in order:
 
 | Panel | What it edits | SagradoKit today |
 |---|---|---|
-| **Information** | name, version, creator, description | `[meta]` in `.sap`; no editor UI |
-| **Colors** | 204 named roles + ♦ Groups + Import Colors + RGB/hex/decimal | Named roles + RGB/hex; no Groups / Import / decimal CSV UI |
-| **Images** | paste bitmap, Caps, Positions, Transparent Color, Text Color | Editor Images panel: Paste (Ctrl+V / DIB), Caps/Positions nudges, Transparent Color menu, Text Color RGB; live Kit Preview |
-| **Icons** | full 16×16 / 32×32 catalog | `file.generic` + `folder` only; no Icons panel |
+| **Information** | name, version, creator, description | Info tab: typed fields → `[meta]` on Save `.sap` |
+| **Colors** | 204 named roles + ♦ Groups + Import Colors + RGB/hex/decimal | Named roles + RGB + typed `#RRGGBB`; Import Colors; Colors Preview. Decimal/CSV import still skipped |
+| **Images** | paste bitmap, Caps, Positions, Transparent Color, Text Color | Full Hap slot list (empties shown); Paste / Caps / Pos / Transparent / Text Color |
+| **Icons** | full 16×16 / 32×32 catalog | Full Hap icon catalog (empties shown); Paste / Transparent / Text Color |
 
 ### Authoring rules (PDF — record these)
 
@@ -375,14 +375,15 @@ Before painting art for a control in `engine/`:
 | Column header | 150 / 151 | `column_header.*` + Primary Label |
 | Window gel frame + title boxes (close / **Window Menu** / min / max) | 220+ | `window.frame.*`, `window.close.*`, `window.menu.*`, `window.minimize.*`, `window.maximize.*` + Primary Label |
 
-**Still open / deferred:**
+**Still open / deferred (kit is theme-authoring-ready without these):**
 
 | Item | Status |
 |---|---|
-| Menu Bar Hap indices | Empty across probed themes — colour/`menu_bar.*` keys only |
-| `menu.item.disabled` Hap index | Paint key ready; no probed occupancy (TBD) |
-| Full Icons catalog | Imported (type-id map + aliases); Icons panel in editor |
-| Editor Images / Icons / Information / Groups UI | Panels + Import Colors + Colors Preview |
+| Menu Bar Hap indices | Empty across probed themes — colour / `menu_bar.*` keys only until a theme authors them |
+| `menu.item.disabled` Hap index | Paint key ready; no probed occupancy (colour disable ink works) |
+| Hap write | Out of scope — Load `.hap`, Save `.sap` (+ `.skimg`) |
+| WonderLight Flash period | On1/On2 alternate; frame timing undocumented (Kit Preview shows static Flash strip) |
+| Decimal/CSV colour import | AppearanceEdit has it; Kit uses RGB sliders + hex |
 
 ---
 

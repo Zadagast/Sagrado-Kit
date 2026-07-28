@@ -801,6 +801,13 @@ inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
         cv.vline(end + 1, r.y + 3, r.bottom() - 3, ap.c("text.insertion_point"));
 }
 
+// Tick mark enum lives early so Find chrome can call paint_tick (defined later).
+enum class TickMark { Blank, Ticked, Tristate };
+constexpr int kTickBox = 14;
+inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
+                       TickMark mark, const char *label, bool pressed = false,
+                       bool disabled = false);
+
 // Find-proportioned dialog sample — Sagrado native Find size (442×176) and
 // chrome (close + min only). This is the title-bar reference, not a 72px stub.
 inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
@@ -826,29 +833,10 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     paint_field(cv, ap, repl_field, "replacement", false, false);
 
     int cy = cl.y + 74;
-    auto paint_check = [&](int cx, int cy0, bool on, const char *lab) {
-        Rect b{cx, cy0, 14, 14};
-        cv.fill(b, ap.c("button.face"));
-        rounded_frame(cv, b, ap.c("button.frame"), ap.c("primary.background"));
-        cv.hline(b.x + 1, b.right() - 1, b.y + 1, ap.c("button.light2"));
-        cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, ap.c("button.light2"));
-        cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, ap.c("button.dark2"));
-        cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, ap.c("button.dark2"));
-        if (on) {
-            Color ink = ap.c("button.label");
-            for (int i = 0; i < 4; ++i) {
-                cv.put(b.x + 3, b.y + 6 + i, pack(ink));
-                cv.put(b.x + 4, b.y + 7 + i, pack(ink));
-            }
-            for (int i = 0; i < 6; ++i) {
-                cv.put(b.x + 5 + i, b.y + 9 - i, pack(ink));
-                cv.put(b.x + 5 + i, b.y + 10 - i, pack(ink));
-            }
-        }
-        cv.text(cx + 20, cy0 + (14 - kFontHeight) / 2, lab, ap.c("primary.label"));
-    };
-    paint_check(lx, cy, true, "Case Sensitive");
-    if (cl.w > 280) paint_check(cl.x + 190, cy, false, "Stop at End of File");
+    // Real Hap tick art (not synthetic bevel checks).
+    paint_tick(cv, ap, lx, cy, TickMark::Ticked, "Case Sensitive");
+    if (cl.w > 280)
+        paint_tick(cv, ap, cl.x + 190, cy, TickMark::Blank, "Stop at End of File");
 
     int by = cl.bottom() - 34;
     if (by < cl.y + 4) by = cl.y + 4;
@@ -2228,15 +2216,10 @@ inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
     return s;
 }
 
-// --- Tick (checkbox) / Mutex (radio)
-
 // --- Tick (checkbox) / Mutex (radio) ------------------------------------
 // AppearanceEdit: Tick/Mutex Blank|Ticked|Tristate × Normal/Hilited/Disabled.
 // Title is drawn outside the box. Height ≤ 18.
-
-constexpr int kTickBox = 14;
-
-enum class TickMark { Blank, Ticked, Tristate };
+// TickMark / kTickBox declared above (Find sample forward use).
 
 inline const char *tick_art_slot(TickMark mark, bool pressed, bool disabled) {
     const char *m = mark == TickMark::Ticked     ? "ticked"
@@ -2299,8 +2282,8 @@ inline void place_tick_art(Canvas &cv, const SkinImage &img, Rect &b) {
 
 // Checkbox. Returns the hit box (glyph only).
 inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
-                       TickMark mark, const char *label, bool pressed = false,
-                       bool disabled = false) {
+                       TickMark mark, const char *label, bool pressed,
+                       bool disabled) {
     Rect b{x, y, kTickBox, kTickBox};
     const SkinImage *img = ap.art(tick_art_slot(mark, pressed, disabled));
     if (!img && pressed) img = ap.art(tick_art_slot(mark, false, disabled));
@@ -2543,18 +2526,22 @@ inline const char *wonderlight_art_slot(WonderLightState st) {
     return "wonderlight.off";
 }
 
+// Colour-path spheres — hues match Hap Milk authored WonderLights
+// (Ready amber ≠ Go green; Pause dark red; Flash On2 amber).
 inline Color wonderlight_color(WonderLightState st) {
     switch (st) {
     case WonderLightState::Go:
-    case WonderLightState::Ready:
         return rgb(0, 200, 40);
+    case WonderLightState::Ready:
+        return rgb(220, 150, 0);
     case WonderLightState::Finished:
         return rgb(40, 120, 255);
     case WonderLightState::Pause:
-        return rgb(220, 180, 0);
+        return rgb(180, 30, 50);
     case WonderLightState::FlashOn1:
-    case WonderLightState::FlashOn2:
         return rgb(255, 60, 60);
+    case WonderLightState::FlashOn2:
+        return rgb(220, 150, 0);
     case WonderLightState::FlashOff:
     case WonderLightState::Off:
     default:
@@ -2752,10 +2739,12 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
             int pw = cell.w - 6;
             if (pw < 20) pw = std::max(8, cell.w - 2);
             tr.progress = {cell.x + 3, row.y + (row.h - ph) / 2, pw, ph};
-            // Hap path: tile progress.fill art. Colour path: progress.transition.*
-            // (no WonderLight rainbow tint — that is not a Hap progress colour).
+            // Hap path: tile progress.fill art (theme owns LED colour).
+            // Colour path: tint LED body from WonderLight state.
+            Color tint = wonderlight_color(light);
+            const Color *led = ap.art("progress.fill") ? nullptr : &tint;
             paint_progress(cv, ap, tr.progress, progress_pct, 100,
-                           ProgressStyle::Segmented, nullptr);
+                           ProgressStyle::Segmented, led);
         } else if (std::strcmp(key, "Status") == 0) {
             paint_cell_text(cv, cell.x + text_pad, ty, max_w, status, ink);
         } else if (std::strcmp(key, "Rate") == 0) {
@@ -3184,6 +3173,24 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
             paint_disclosure(cv, ap, x + 528, y, DisclosureKind::MinusSmall);
         }
         y += kTickBox + 10;
+    }
+
+    // Separators + medium disclosure + Flash WonderLights (static strip).
+    if (fits(kWonderLight + 8)) {
+        paint_separator_h(cv, ap, {x, y + 6, std::min(80, w / 4), 4});
+        paint_separator_v(cv, ap, {x + 90, y, 4, kWonderLight});
+        paint_disclosure(cv, ap, x + 110, y, DisclosureKind::PlusMedium);
+        paint_disclosure(cv, ap, x + 132, y, DisclosureKind::MinusMedium);
+        int lx = x + 160;
+        WonderLightState flash[] = {WonderLightState::FlashOff,
+                                    WonderLightState::FlashOn1,
+                                    WonderLightState::FlashOn2};
+        for (WonderLightState st : flash) {
+            if (lx + kWonderLight > right) break;
+            paint_wonderlight(cv, ap, lx, y, st);
+            lx += kWonderLight + 6;
+        }
+        y += kWonderLight + 10;
     }
 
     // Progress + box/framed (one band)

@@ -155,7 +155,7 @@ static const HapArtMap kHapArtMap[] = {
     {263, "disclosure.plus.medium"},
     {267, "disclosure.minus.medium"},
 };
-static constexpr int kHapArtMapN = 137;
+static constexpr int kHapArtMapN = sizeof(kHapArtMap) / sizeof(kHapArtMap[0]);
 
 static const HapColorMap kHapColorMap[] = {
     {1, "primary.light"},
@@ -416,6 +416,29 @@ static const HapArtMap kHapIconMap[] = {
     {381, "document.saved.32"},
 };
 static constexpr int kHapIconMapN = sizeof(kHapIconMap) / sizeof(kHapIconMap[0]);
+
+// Full Hap Images / Icons catalog keys (editor lists include empty slots).
+inline std::vector<std::string> all_hap_art_keys() {
+    std::vector<std::string> keys;
+    keys.reserve(size_t(kHapArtMapN));
+    for (int i = 0; i < kHapArtMapN; ++i) keys.push_back(kHapArtMap[i].key);
+    return keys;
+}
+inline std::vector<std::string> all_hap_icon_keys() {
+    std::vector<std::string> keys;
+    keys.reserve(size_t(kHapIconMapN));
+    for (int i = 0; i < kHapIconMapN; ++i) {
+        // Skip duplicate alias rows (same key already pushed).
+        bool seen = false;
+        for (const auto &k : keys)
+            if (k == kHapIconMap[i].key) {
+                seen = true;
+                break;
+            }
+        if (!seen) keys.push_back(kHapIconMap[i].key);
+    }
+    return keys;
+}
 
 inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     SkinImage s;
