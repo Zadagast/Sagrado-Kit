@@ -7,6 +7,7 @@
 #include <string>
 
 #include "skin.h"
+#include "hap_skin.h"
 
 // RAII clip nest — intersects Canvas clip with `r`, restores on scope exit.
 struct CanvasClip {
@@ -93,6 +94,15 @@ struct Appearance {
     }
 
     bool load(const std::string &path) {
+        // Hap: Sagrado-style live import (colours + image slots → caches).
+        auto lower = path;
+        for (char &c : lower)
+            if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
+        if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".hap") == 0) {
+            Theme theme;
+            if (!load_hap(path, theme)) return false;
+            return apply_hap_theme(*this, theme);
+        }
         Skin s;
         if (!skin_toml::load(path, s)) return false;
         skin = std::move(s);
@@ -554,10 +564,21 @@ inline void paint_default_ring_color(Canvas &cv, const Appearance &ap, Rect r) {
 }
 
 // Art-first button; colour path = Sagrado draw_button.
+// Hap art themes (Milk): Button Label is often white on white plates — use
+// Primary Label for ink when art is present (KDX title-label practice).
+inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art) {
+    if (disabled) return ap.c("button_disable.label");
+    Color ink = ap.c("button.label");
+    if (has_art && ink.r > 200 && ink.g > 200 && ink.b > 200)
+        return ap.c("primary.label");
+    return ink;
+}
+
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default,
                          bool disabled = false) {
     if (disabled) pressed = false;
+    bool used_art = false;
     if (is_default) {
         const char *dslot = disabled ? "default_button.disabled"
                                      : (pressed ? "default_button.hilited"
@@ -566,18 +587,26 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
         if (!dimg && !disabled) dimg = ap.art("default_button.normal");
         if (dimg) {
             cv.nine_slice(*dimg, r);
+            used_art = true;
         } else {
             paint_default_ring_color(cv, ap, r);
             r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
                  r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
             paint_button_face(cv, ap, r, pressed, disabled);
+            used_art = ap.art(disabled ? "button.disabled"
+                                       : (pressed ? "button.hilited"
+                                                  : "button.normal")) != nullptr;
         }
     } else {
+        const char *slot = disabled ? "button.disabled"
+                                    : (pressed ? "button.hilited" : "button.normal");
+        used_art = ap.art(slot) != nullptr ||
+                   (pressed && ap.art("button.normal") != nullptr);
         paint_button_face(cv, ap, r, pressed, disabled);
     }
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
-    Color ink = disabled ? ap.c("button_disable.label") : ap.c("button.label");
+    Color ink = button_label_ink(ap, disabled, used_art);
     cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
             label, ink);
 }
@@ -1403,7 +1432,7 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
             cv.place(*sym, sx, sy);
         }
         if (no_title || !label || !*label) return;
-        Color ink = disabled ? ap.c("button_disable.label") : ap.c("button.label");
+        Color ink = button_label_ink(ap, disabled, plate != nullptr);
         int tx = r.x + 8 + (down ? 1 : 0);
         int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
         int max_w = (sym ? (sym->positions[2] > 0 ? r.w - sym->positions[2] - sym->w
@@ -2129,7 +2158,7 @@ inline void paint_icon_button(Canvas &cv, const Appearance &ap, Rect r,
         int iy = r.y + (r.h - icon_sz) / 2 + off;
         paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16",
                    icon_sz);
-        Color ink = disabled ? ap.c("button_disable.label") : ap.c("button.label");
+        Color ink = button_label_ink(ap, disabled, img != nullptr);
         cv.text(ix + icon_sz + gap, r.y + (r.h - kFontHeight) / 2 + off, title,
                 ink);
     } else {

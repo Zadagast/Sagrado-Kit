@@ -95,9 +95,11 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    // Prefer Milk Redux (Hap art) when present so Kit Preview shows icon buttons,
-    // scroll extras, etc. Fall back to stock colour skin.
+    // Prefer live Hap (Sagrado-style), then extracted Milk skin.toml, then stock.
     const char *cands[] = {
+        "\\..\\research\\haps\\Milk Redux.hap",
+        "\\..\\..\\research\\haps\\Milk Redux.hap",
+        "\\research\\haps\\Milk Redux.hap",
         "\\format\\skins\\milk-redux\\milk-redux.skin.toml",
         "\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
         "\\..\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
@@ -138,11 +140,14 @@ bool dialog_open_path(std::string &out) {
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
-    ofn.lpstrFilter = "SagradoKit Skin (*.skin.toml)\0*.skin.toml\0All\0*.*\0";
+    ofn.lpstrFilter =
+        "Appearance (*.hap;*.skin.toml)\0*.hap;*.skin.toml\0"
+        "Haxial Appearance (*.hap)\0*.hap\0"
+        "SagradoKit Skin (*.skin.toml)\0*.skin.toml\0All\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
-    ofn.lpstrDefExt = "toml";
+    ofn.lpstrDefExt = "hap";
     if (!GetOpenFileNameA(&ofn)) return false;
     out = file;
     return true;
@@ -168,7 +173,10 @@ void do_load() {
     if (!dialog_open_path(path)) return;
     if (g.ap.load(path)) {
         g.path = path;
-        set_status("Loaded " + path);
+        bool hap = path.size() >= 4 &&
+                   (path.compare(path.size() - 4, 4, ".hap") == 0 ||
+                    path.compare(path.size() - 4, 4, ".HAP") == 0);
+        set_status(std::string(hap ? "Loaded Hap " : "Loaded ") + path);
     } else {
         set_status("Failed to load " + path);
     }
@@ -313,7 +321,7 @@ void paint() {
     paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
 
     // Live kit preview — clip so tall samples cannot paint through the gel frame.
-    cv.fill(g.preview, ap.c("workspace.background3"));
+    cv.fill(g.preview, ap.c("primary.background"));
     cv.frame(g.preview, ap.c("focus.box"));
     g.preview_st.pressed_btn = (g.drag == DragPreviewBtn || g.drag == DragDropdown)
                                    ? g.drag_btn

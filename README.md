@@ -7,9 +7,10 @@ theirs.
   window with one GDI call (`SetDIBitsToDevice`). No OS widgets, no CSS.
 - **One Appearance Engine** every window speaks (`engine/`).
 - **One skin format** the engine loads (`.skin.toml` — named colour roles;
-  art/icon slots reserved).
+  art/icon slots reserved). **Also loads Haxial `.hap` live** (Sagrado-style:
+  colour table + image slots mapped into the same painters).
 - **One editor** that authors that format against a live kit preview
-  (`editor/`), like AppearanceEdit.
+  (`editor/`), like AppearanceEdit. **Load** accepts `.hap` or `.skin.toml`.
 
 Incomplete skins are valid. Token resolution: **art → colour → stock**.
 
