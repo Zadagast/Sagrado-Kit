@@ -6,7 +6,7 @@ version = 1
 [meta]
 name = "Hap Completion"
 creator = "SagradoKit"
-description = "Soft-fill icons, grips, WonderLight, menu, focus box for incomplete Haps"
+description = "Soft-fill icons, WonderLight, menu, focus box for incomplete Haps"
 
 [colors]
 
@@ -23,26 +23,6 @@ positions = [0, 0, 0, 0]
 [art."focus_box.disabled"]
 file = "focus_box_disabled.skimg"
 caps = [3, 3, 3, 3]
-positions = [0, 0, 0, 0]
-
-[art."scrollbar.h.grips.normal"]
-file = "scrollbar_h_grips_normal.skimg"
-caps = [0, 0, 0, 0]
-positions = [0, 0, 0, 0]
-
-[art."scrollbar.h.grips.hilited"]
-file = "scrollbar_h_grips_hilited.skimg"
-caps = [0, 0, 0, 0]
-positions = [0, 0, 0, 0]
-
-[art."scrollbar.v.grips.normal"]
-file = "scrollbar_v_grips_normal.skimg"
-caps = [0, 0, 0, 0]
-positions = [0, 0, 0, 0]
-
-[art."scrollbar.v.grips.hilited"]
-file = "scrollbar_v_grips_hilited.skimg"
-caps = [0, 0, 0, 0]
 positions = [0, 0, 0, 0]
 
 [art."menu.background_pattern"]

@@ -70,9 +70,10 @@ Primary Background or window frames). Incomplete themes still resolve
 
 After import, the Kit applies a small **soft-completion** pack
 (`format/skins/completion/`) that fills **empty** art/icon keys only
-(icons, WonderLight, scroll grips, menu plates, focus box). Authored Hap
-art is never overwritten. Pure Hap without the pack is still a valid
-colour path.
+(icons, WonderLight, menu plates, focus box). Authored Hap art is never
+overwritten. Scroll **grips** are not soft-filled — themes that omit them
+usually bake thumb chrome into the indicator (e.g. Aluminum Alloy). Pure Hap
+without the pack is still a valid colour path.
 
 Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
 set, paint prefers that ink for button / header / menu / title labels on

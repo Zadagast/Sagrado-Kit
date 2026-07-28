@@ -365,6 +365,10 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
 
     for (const auto &kv : pack.art) {
         if (kv.first == "primary.background") continue;
+        // Never invent scroll grips — themes that omit them (Aluminum Alloy,
+        // Milk) either bake marks into the indicator or want a clean thumb.
+        // Foreign grips read as a fake button on authored indicators.
+        if (kv.first.find(".grips.") != std::string::npos) continue;
         if (ap.art_cache.count(kv.first) && !ap.art_cache[kv.first].empty())
             continue;
         SkinImage img;

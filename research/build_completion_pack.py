@@ -19,10 +19,8 @@ ART_SLOTS = {
     101: "focus_box.normal",
     102: "focus_box.hilited",
     103: "focus_box.disabled",
-    169: "scrollbar.h.grips.normal",
-    170: "scrollbar.h.grips.hilited",
-    188: "scrollbar.v.grips.normal",
-    189: "scrollbar.v.grips.hilited",
+    # Grips intentionally omitted — many themes bake thumb chrome into the
+    # indicator; foreign grips look like a fake centre button.
     200: "menu.background_pattern",
     201: "menu.background",
     206: "menu.item.normal",
@@ -120,7 +118,7 @@ def main():
         "[meta]",
         'name = "Hap Completion"',
         'creator = "SagradoKit"',
-        'description = "Soft-fill icons, grips, WonderLight, menu, focus box for incomplete Haps"',
+        'description = "Soft-fill icons, WonderLight, menu, focus box for incomplete Haps"',
         "",
         "[colors]",
         "",
