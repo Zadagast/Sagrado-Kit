@@ -76,9 +76,9 @@ Run `build/SagradoKitEditor.exe`. Example skins are in
   Save after a Hap load writes a full `.sap` + `.skimg` art (Hap→Sap parity).
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
-- **Kit Preview** — live gel + controls; look for the **`P2  icon / menu / scroll`**
-  band at the top (icon buttons, menu bar, scroll samples) when on the P2 branch
-  with Milk Redux loaded
+- **Kit Preview** — live gel + controls (icon buttons, menu bar, Find, File
+  Transfers, fields, sliders, list/scroll). Generic push buttons use Hap’s usual
+  **20px** height; Find dialog keeps TextEdit-measured **24px**.
 
 Shortcuts: `Ctrl+O` load, `Ctrl+S` save, `Esc` quit. Drag the title bar to
 move; the close box quits.
