@@ -391,6 +391,8 @@ Before painting art for a control in `engine/`:
 | `research/AppearanceEdit-Documentation.txt` | Extracted official PDF |
 | `research/probe_haps.py` | Slot occupancy / geometry probe |
 | `research/probe-report.txt` | Last probe run |
+| `research/haps/` | Vendored Sagrado Appearances samples for Load / probes |
 | AppearanceEdit 1.24 zip | https://kdx.technowiki.info/downloads/AppearanceEdit1240-Win.zip |
 
-Do not commit the `.exe` / `.hap` binaries; re-download when probing.
+Do not commit AppearanceEdit `.exe` / zip downloads (`research/bin/`).
+`.hap` samples under `research/haps/` are tracked so the editor can Load them.
