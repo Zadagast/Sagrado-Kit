@@ -943,7 +943,33 @@ inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
 }
 
 struct ScrollLayout {
-    Rect bar, up, down, track, thumb;
+    Rect bar{}, up{}, down{}, track{}, thumb{};
+    // Double-arrows: each end is a pair (KDX / Hap). Single: only first_*.
+    Rect first_start{}, first_end{};     // start cluster (top / left)
+    Rect second_start{}, second_end{};   // end cluster (bottom / right)
+    bool double_arrows = false;
+};
+
+// Split an end zone into the outer + inner arrow plates (Hap double caps).
+inline void scroll_split_end(Rect zone, bool vertical, Rect &outer, Rect &inner) {
+    if (vertical) {
+        int half = zone.h / 2;
+        outer = {zone.x, zone.y, zone.w, half};
+        inner = {zone.x, zone.y + half, zone.w, zone.h - half};
+    } else {
+        int half = zone.w / 2;
+        outer = {zone.x, zone.y, half, zone.h};
+        inner = {zone.x + half, zone.y, zone.w - half, zone.h};
+    }
+}
+
+// Hap double-arrows: first_* = start cluster (top/left), second_* = end cluster.
+enum class ScrollArrowHot : int {
+    None = 0,
+    FirstStart = 1,
+    FirstEnd = 2,
+    SecondStart = 3,
+    SecondEnd = 4
 };
 
 // Resolve V travel insets: art Positions (T/B), else caps, else square arrow plates.
@@ -961,8 +987,8 @@ inline void scrollbar_v_insets(const Appearance &ap, int bar_w, int &top,
     } else {
         top = bot = 0;
     }
-    if (top <= 0) top = bar_w;
-    if (bot <= 0) bot = bar_w;
+    if (top <= 0) top = single ? bar_w : bar_w * 2;
+    if (bot <= 0) bot = single ? bar_w : bar_w * 2;
 }
 
 inline void scrollbar_h_insets(const Appearance &ap, int bar_h, int &left,
@@ -978,8 +1004,8 @@ inline void scrollbar_h_insets(const Appearance &ap, int bar_h, int &left,
     } else {
         left = right = 0;
     }
-    if (left <= 0) left = bar_h;
-    if (right <= 0) right = bar_h;
+    if (left <= 0) left = single ? bar_h : bar_h * 2;
+    if (right <= 0) right = single ? bar_h : bar_h * 2;
 }
 
 // Min thumb length: stretch-template floor = along-axis caps + 1px mid
@@ -1007,17 +1033,28 @@ inline int scrollbar_min_thumb_h(const Appearance &ap, int bar_h) {
 
 inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page,
                                   int inset_top = -1, int inset_bot = -1,
-                                  int min_thumb = -1) {
+                                  int min_thumb = -1, bool double_arrows = true) {
     ScrollLayout s;
     s.bar = bar;
-    int top = inset_top >= 0 ? inset_top : bar.w;
-    int bot = inset_bot >= 0 ? inset_bot : bar.w;
+    s.double_arrows = double_arrows;
+    int top = inset_top >= 0 ? inset_top : (double_arrows ? bar.w * 2 : bar.w);
+    int bot = inset_bot >= 0 ? inset_bot : (double_arrows ? bar.w * 2 : bar.w);
     if (top + bot > bar.h) {
         top = bar.h / 2;
         bot = bar.h - top;
     }
     s.up = {bar.x, bar.y, bar.w, top};
     s.down = {bar.x, bar.bottom() - bot, bar.w, bot};
+    if (double_arrows) {
+        scroll_split_end(s.up, true, s.first_start, s.first_end);
+        // End cluster: inner (toward track) then outer — second_start = up, second_end = down.
+        int half = bot / 2;
+        s.second_start = {bar.x, s.down.y, bar.w, half};
+        s.second_end = {bar.x, s.down.y + half, bar.w, bot - half};
+    } else {
+        s.first_start = s.up;
+        s.first_end = s.down;
+    }
     int track_h = s.down.y - s.up.bottom();
     if (track_h < 0) track_h = 0;
     s.track = {bar.x, s.up.bottom(), bar.w, track_h};
@@ -1041,22 +1078,32 @@ inline ScrollLayout scroll_layout(const Appearance &ap, Rect bar, int value,
     int top = 0, bot = 0;
     scrollbar_v_insets(ap, bar.w, top, bot, single);
     return scroll_layout(bar, value, max_value, page, top, bot,
-                         scrollbar_min_thumb_v(ap, bar.w));
+                         scrollbar_min_thumb_v(ap, bar.w), !single);
 }
 
 inline ScrollLayout scroll_layout_h(Rect bar, int value, int max_value, int page,
                                     int inset_left = -1, int inset_right = -1,
-                                    int min_thumb = -1) {
+                                    int min_thumb = -1, bool double_arrows = true) {
     ScrollLayout s;
     s.bar = bar;
-    int left = inset_left >= 0 ? inset_left : bar.h;
-    int right = inset_right >= 0 ? inset_right : bar.h;
+    s.double_arrows = double_arrows;
+    int left = inset_left >= 0 ? inset_left : (double_arrows ? bar.h * 2 : bar.h);
+    int right = inset_right >= 0 ? inset_right : (double_arrows ? bar.h * 2 : bar.h);
     if (left + right > bar.w) {
         left = bar.w / 2;
         right = bar.w - left;
     }
-    s.up = {bar.x, bar.y, left, bar.h}; // left arrow
-    s.down = {bar.right() - right, bar.y, right, bar.h}; // right arrow
+    s.up = {bar.x, bar.y, left, bar.h}; // left cluster
+    s.down = {bar.right() - right, bar.y, right, bar.h}; // right cluster
+    if (double_arrows) {
+        scroll_split_end(s.up, false, s.first_start, s.first_end);
+        int half = right / 2;
+        s.second_start = {s.down.x, bar.y, half, bar.h};
+        s.second_end = {s.down.x + half, bar.y, right - half, bar.h};
+    } else {
+        s.first_start = s.up;
+        s.first_end = s.down;
+    }
     int track_w = s.down.x - s.up.right();
     if (track_w < 0) track_w = 0;
     s.track = {s.up.right(), bar.y, track_w, bar.h};
@@ -1081,7 +1128,33 @@ inline ScrollLayout scroll_layout_h(const Appearance &ap, Rect bar, int value,
     int left = 0, right = 0;
     scrollbar_h_insets(ap, bar.h, left, right, single);
     return scroll_layout_h(bar, value, max_value, page, left, right,
-                           scrollbar_min_thumb_h(ap, bar.h));
+                           scrollbar_min_thumb_h(ap, bar.h), !single);
+}
+
+// Which arrow plate was hit (Hap first_* = start cluster, second_* = end).
+inline ScrollArrowHot scroll_arrow_hit(const ScrollLayout &s, int x, int y) {
+    if (s.first_start.w > 0 && s.first_start.contains(x, y))
+        return ScrollArrowHot::FirstStart;
+    if (s.first_end.w > 0 && s.first_end.contains(x, y))
+        return ScrollArrowHot::FirstEnd;
+    if (s.double_arrows && s.second_start.w > 0 && s.second_start.contains(x, y))
+        return ScrollArrowHot::SecondStart;
+    if (s.double_arrows && s.second_end.w > 0 && s.second_end.contains(x, y))
+        return ScrollArrowHot::SecondEnd;
+    return ScrollArrowHot::None;
+}
+
+inline int scroll_arrow_dir(ScrollArrowHot hot) {
+    switch (hot) {
+    case ScrollArrowHot::FirstStart:
+    case ScrollArrowHot::SecondStart:
+        return -1;
+    case ScrollArrowHot::FirstEnd:
+    case ScrollArrowHot::SecondEnd:
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 inline void paint_arrow(Canvas &cv, Rect r, bool up, Color ink) {
@@ -1190,16 +1263,6 @@ inline void paint_scroll_arrow_overlay(Canvas &cv, const SkinImage *ov, Rect bar
     cv.blit_image(*ov, x, y);
 }
 
-// arrow_hot: 0 none, 1 first/single start, 2 first/single end,
-//            3 second start, 4 second end (double-arrows only).
-enum class ScrollArrowHot : int {
-    None = 0,
-    FirstStart = 1,
-    FirstEnd = 2,
-    SecondStart = 3,
-    SecondEnd = 4
-};
-
 inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
                                     const ScrollLayout &s, bool hilite_thumb) {
     cv.fill(s.track, ap.c("scrollbar.track"));
@@ -1209,6 +1272,7 @@ inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
     cv.vline(s.track.right() - 1, s.track.y, s.track.bottom(), ap.c("scrollbar.track_dark1"));
 
     auto paint_btn = [&](Rect r) {
+        if (r.w <= 0 || r.h <= 0) return;
         cv.fill(r, ap.c("scrollbar.face"));
         cv.frame(r, ap.c("scrollbar.frame"));
         cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("scrollbar.light"));
@@ -1216,10 +1280,22 @@ inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
         cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("scrollbar.dark"));
         cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("scrollbar.dark"));
     };
-    paint_btn(s.up);
-    paint_btn(s.down);
-    paint_arrow(cv, s.up, true, ap.c("scrollbar.label"));
-    paint_arrow(cv, s.down, false, ap.c("scrollbar.label"));
+    Color ink = ap.c("scrollbar.label");
+    if (s.double_arrows) {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_btn(s.second_start);
+        paint_btn(s.second_end);
+        paint_arrow(cv, s.first_start, true, ink);
+        paint_arrow(cv, s.first_end, false, ink);
+        paint_arrow(cv, s.second_start, true, ink);
+        paint_arrow(cv, s.second_end, false, ink);
+    } else {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_arrow(cv, s.first_start, true, ink);
+        paint_arrow(cv, s.first_end, false, ink);
+    }
 
     Color il = hilite_thumb ? ap.c("scrollbar.indicator_hilite_light")
                             : ap.c("scrollbar.indicator_light");
@@ -1244,6 +1320,7 @@ inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
     cv.hline(s.track.x, s.track.right(), s.track.bottom() - 1, ap.c("scrollbar.track_dark1"));
 
     auto paint_btn = [&](Rect r) {
+        if (r.w <= 0 || r.h <= 0) return;
         cv.fill(r, ap.c("scrollbar.face"));
         cv.frame(r, ap.c("scrollbar.frame"));
         cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("scrollbar.light"));
@@ -1251,10 +1328,22 @@ inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
         cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("scrollbar.dark"));
         cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("scrollbar.dark"));
     };
-    paint_btn(s.up);
-    paint_btn(s.down);
-    paint_arrow_h(cv, s.up, true, ap.c("scrollbar.label"));
-    paint_arrow_h(cv, s.down, false, ap.c("scrollbar.label"));
+    Color ink = ap.c("scrollbar.label");
+    if (s.double_arrows) {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_btn(s.second_start);
+        paint_btn(s.second_end);
+        paint_arrow_h(cv, s.first_start, true, ink);
+        paint_arrow_h(cv, s.first_end, false, ink);
+        paint_arrow_h(cv, s.second_start, true, ink);
+        paint_arrow_h(cv, s.second_end, false, ink);
+    } else {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_arrow_h(cv, s.first_start, true, ink);
+        paint_arrow_h(cv, s.first_end, false, ink);
+    }
 
     Color il = hilite_thumb ? ap.c("scrollbar.indicator_hilite_light")
                             : ap.c("scrollbar.indicator_light");
@@ -2869,6 +2958,7 @@ struct KitPreviewLayout {
     SliderLayout slider_lay{};
     Rect list{};
     Rect sbar{};
+    Rect hsbar{};
     int page_rows = 1;
     int row_count = 8;
 };
@@ -2876,11 +2966,15 @@ struct KitPreviewLayout {
 struct KitPreviewState {
     int pressed_btn = 0; // 0 none, 1 OK, 2 Cancel, 3 Pressed
     bool thumb_hot = false;
+    bool h_thumb_hot = false;
+    ScrollArrowHot arrow_hot = ScrollArrowHot::None;
+    ScrollArrowHot h_arrow_hot = ScrollArrowHot::None;
     bool dropdown_open = false;
     int menu_hot = -1;
     int menu_sel = 0;
     int slider_value = 40;
     bool slider_hot = false;
+    int h_scroll = 2;
 };
 
 // Full kit preview panel inside a gel client rect.
@@ -3049,16 +3143,15 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += 52;
     }
 
-    // List + header + scrollbars (the scroll fill sample).
+    // List + header + V/H scrollbars (KDX list chrome: H inside list bounds).
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
     lay.row_count = 8;
-    int list_h = client.bottom() - y - pad - (kScrollbarW + 4);
-    if (list_h < kHeaderH + kRowH)
-        list_h = client.bottom() - y - pad;
-    if (list_h >= kHeaderH + kRowH) {
+    int list_h = client.bottom() - y - pad;
+    if (list_h >= kHeaderH + kRowH + kScrollbarW) {
         lay.list = {x, y, std::min(w, 320), list_h};
-        lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
+        int body_h = lay.list.h - kHeaderH - kScrollbarW;
+        lay.page_rows = std::max(1, body_h / kRowH);
         int max_scroll = std::max(0, lay.row_count - lay.page_rows);
         if (scroll_val < 0) scroll_val = 0;
         if (scroll_val > max_scroll) scroll_val = max_scroll;
@@ -3069,8 +3162,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         paint_column_header(cv, ap,
                             {hdr.x + split, hdr.y, hdr.w - split, hdr.h}, "Off",
                             false, true);
-        Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW,
-                  lay.list.h - kHeaderH};
+        Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW, body_h};
         cv.fill(body, ap.c("list.background"));
         cv.frame(body, ap.c("primary.frame"));
         for (int i = 0; i < lay.page_rows; ++i) {
@@ -3088,14 +3180,24 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             }
             cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
         }
-        lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
-                    lay.list.h - kHeaderH};
+        // V bar spans header+body (stops above H bar); H sits under body.
+        lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y, kScrollbarW,
+                    lay.list.h - kScrollbarW};
         paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows,
-                        st.thumb_hot);
+                        st.thumb_hot, false, false, st.arrow_hot);
 
-        Rect hsbar{lay.list.x, lay.list.bottom() + 4, lay.list.w, kScrollbarW};
-        if (hsbar.bottom() <= client.bottom() - 2)
-            paint_scrollbar_h(cv, ap, hsbar, 2, 8, 4, false);
+        lay.hsbar = {lay.list.x, lay.list.bottom() - kScrollbarW,
+                     lay.list.w - kScrollbarW, kScrollbarW};
+        int h_max = 8;
+        int h_page = 4;
+        int h_val = std::clamp(st.h_scroll, 0, h_max);
+        paint_scrollbar_h(cv, ap, lay.hsbar, h_val, h_max, h_page, st.h_thumb_hot,
+                          false, false, st.h_arrow_hot);
+
+        // Corner between V and H (KDX list join).
+        Rect corner{lay.hsbar.right(), lay.hsbar.y, kScrollbarW, kScrollbarW};
+        cv.fill(corner, ap.c("scrollbar.face"));
+        cv.frame(corner, ap.c("scrollbar.frame"));
     }
 
     // Open dropdown menu painted last so it stacks above the list (still clipped).

@@ -37,6 +37,8 @@ enum Drag : int {
     DragMinBox,
     DragScrollArrowRoles,
     DragScrollArrowPreview,
+    DragScrollArrowPreviewH,
+    DragThumbPreviewH,
     DragSliderKit,
     DragDropdown,
 };
@@ -60,7 +62,9 @@ struct App {
     int drag_target = 0;    // original press target (survives move-off)
     int thumb_grab = 0;     // mouse y offset within thumb
     int arrow_dir = 0;      // -1 up / +1 down
+    ScrollArrowHot arrow_hot = ScrollArrowHot::None;
     int pressed_box = 0;
+    int h_thumb_grab = 0;   // mouse x offset within H thumb
 
     std::string path;
     std::string status = "Stock skin — edit colours, Save to write a .sap";
@@ -330,7 +334,10 @@ void paint() {
                 roles[size_t(idx)].label, ink);
     }
     bool roles_thumb_hot = g.drag == DragThumbRoles;
-    paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page, roles_thumb_hot);
+    ScrollArrowHot roles_arrow =
+        g.drag == DragScrollArrowRoles ? g.arrow_hot : ScrollArrowHot::None;
+    paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page, roles_thumb_hot,
+                    false, false, roles_arrow);
 
     Color cur = selected_color();
     paint_slider(cv, g.slider_r, "R", cur.r, rgb(200, 40, 40));
@@ -345,6 +352,11 @@ void paint() {
                                    ? g.drag_btn
                                    : 0;
     g.preview_st.thumb_hot = g.drag == DragThumbPreview;
+    g.preview_st.h_thumb_hot = g.drag == DragThumbPreviewH;
+    g.preview_st.arrow_hot =
+        g.drag == DragScrollArrowPreview ? g.arrow_hot : ScrollArrowHot::None;
+    g.preview_st.h_arrow_hot =
+        g.drag == DragScrollArrowPreviewH ? g.arrow_hot : ScrollArrowHot::None;
     g.preview_st.slider_hot = g.drag == DragSliderKit;
     {
         CanvasClip preview_clip(cv, g.preview);
@@ -384,6 +396,14 @@ int scroll_from_thumb_y(const ScrollLayout &sl, int my, int max_scroll) {
     return travel ? ty * max_scroll / travel : 0;
 }
 
+int scroll_from_thumb_x(const ScrollLayout &sl, int mx, int max_scroll) {
+    if (max_scroll <= 0 || sl.track.w <= sl.thumb.w) return 0;
+    int travel = sl.track.w - sl.thumb.w;
+    int tx = mx - g.h_thumb_grab - sl.track.x;
+    tx = std::clamp(tx, 0, travel);
+    return travel ? tx * max_scroll / travel : 0;
+}
+
 void on_arrow_tick() {
     if (g.drag == DragScrollArrowRoles) {
         g.scroll = std::clamp(g.scroll + g.arrow_dir, 0, g.roles_max_scroll());
@@ -391,6 +411,9 @@ void on_arrow_tick() {
     } else if (g.drag == DragScrollArrowPreview) {
         g.preview_scroll =
             std::clamp(g.preview_scroll + g.arrow_dir, 0, g.preview_max_scroll());
+        redraw();
+    } else if (g.drag == DragScrollArrowPreviewH) {
+        g.preview_st.h_scroll = std::clamp(g.preview_st.h_scroll + g.arrow_dir, 0, 8);
         redraw();
     }
 }
@@ -444,18 +467,13 @@ void mouse_down(int mx, int my) {
     if (g.role_sbar.contains(mx, my)) {
         ScrollLayout sl =
             scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
-        if (sl.up.contains(mx, my)) {
+        ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
+        if (hot != ScrollArrowHot::None) {
             g.drag = DragScrollArrowRoles;
-            g.arrow_dir = -1;
+            g.arrow_hot = hot;
+            g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
             SetTimer(g_hwnd, 2, 400, nullptr); // initial delay, then faster
-            return;
-        }
-        if (sl.down.contains(mx, my)) {
-            g.drag = DragScrollArrowRoles;
-            g.arrow_dir = 1;
-            on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
             return;
         }
         if (sl.thumb.contains(mx, my)) {
@@ -579,21 +597,16 @@ void mouse_down(int mx, int my) {
         return;
     }
 
-    // Preview scrollbar
+    // Preview vertical scrollbar
     if (g.preview_lay.sbar.contains(mx, my)) {
         int max_s = g.preview_max_scroll();
         ScrollLayout sl = scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, max_s,
                                         g.preview_lay.page_rows);
-        if (sl.up.contains(mx, my)) {
+        ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
+        if (hot != ScrollArrowHot::None) {
             g.drag = DragScrollArrowPreview;
-            g.arrow_dir = -1;
-            on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
-            return;
-        }
-        if (sl.down.contains(mx, my)) {
-            g.drag = DragScrollArrowPreview;
-            g.arrow_dir = 1;
+            g.arrow_hot = hot;
+            g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
             SetTimer(g_hwnd, 2, 400, nullptr);
             return;
@@ -613,10 +626,39 @@ void mouse_down(int mx, int my) {
         }
     }
 
-    // Preview list rows
+    // Preview horizontal scrollbar
+    if (g.preview_lay.hsbar.contains(mx, my)) {
+        constexpr int kHMax = 8, kHPage = 4;
+        ScrollLayout sl = scroll_layout_h(g.ap, g.preview_lay.hsbar, g.preview_st.h_scroll,
+                                          kHMax, kHPage);
+        ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
+        if (hot != ScrollArrowHot::None) {
+            g.drag = DragScrollArrowPreviewH;
+            g.arrow_hot = hot;
+            g.arrow_dir = scroll_arrow_dir(hot);
+            on_arrow_tick();
+            SetTimer(g_hwnd, 2, 400, nullptr);
+            return;
+        }
+        if (sl.thumb.contains(mx, my)) {
+            g.drag = DragThumbPreviewH;
+            g.h_thumb_grab = mx - sl.thumb.x;
+            redraw();
+            return;
+        }
+        if (sl.track.contains(mx, my)) {
+            if (mx < sl.thumb.x) g.preview_st.h_scroll -= kHPage;
+            else g.preview_st.h_scroll += kHPage;
+            g.preview_st.h_scroll = std::clamp(g.preview_st.h_scroll, 0, kHMax);
+            redraw();
+            return;
+        }
+    }
+
+    // Preview list rows (exclude V and H bars)
     Rect list = g.preview_lay.list;
     if (list.w > 0 && mx >= list.x && mx < list.right() - kScrollbarW &&
-        my >= list.y + kHeaderH && my < list.bottom()) {
+        my >= list.y + kHeaderH && my < list.bottom() - kScrollbarW) {
         int row = (my - (list.y + kHeaderH)) / kRowH;
         int idx = g.preview_scroll + row;
         if (idx >= 0 && idx < g.preview_lay.row_count) {
@@ -638,6 +680,10 @@ void mouse_move(int mx, int my) {
             scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, g.preview_max_scroll(),
                           g.preview_lay.page_rows);
         g.preview_scroll = scroll_from_thumb_y(sl, my, g.preview_max_scroll());
+        redraw();
+    } else if (g.drag == DragThumbPreviewH) {
+        ScrollLayout sl = scroll_layout_h(g.ap, g.preview_lay.hsbar, g.preview_st.h_scroll, 8, 4);
+        g.preview_st.h_scroll = scroll_from_thumb_x(sl, mx, 8);
         redraw();
     } else if (g.drag == DragSliderR) {
         Color c = selected_color();
@@ -701,6 +747,7 @@ void mouse_up(int mx, int my) {
     g.drag_target = 0;
     g.pressed_box = 0;
     g.arrow_dir = 0;
+    g.arrow_hot = ScrollArrowHot::None;
     ReleaseCapture();
 
     if (was == DragCloseBox && g.gel.close_box.contains(mx, my)) {
