@@ -1045,7 +1045,6 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
 
 constexpr int kProgressH = 15; // AppearanceEdit: ≤ 16; Milk Hap bar/fill are 15
 constexpr int kWonderLight = 16;
-constexpr int kTransferRowH = 56;
 
 enum class ProgressStyle {
     Continuous, // AppearanceEdit: stretch Hap fill (or colour gradient)
@@ -1140,7 +1139,6 @@ inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
         for (int i = 0; i < lit; ++i) {
             int sx = track.x + kPad + i * (seg_w + kGap);
             if (sx + seg_w > track.right() - kPad) break;
-            Rect seg{sx, track.y, seg_w, track.h};
             if (fill) {
                 // Art-first: tile Hap fill column; gap shows trough through.
                 // Theme owns LED colour — led_tint is colour-path only.
@@ -1312,52 +1310,182 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
 
 struct TransferRow {
     Rect bounds{};
-    Rect icon{};
     Rect light{};
     Rect progress{};
 };
 
-// KDX File Transfers row: icon | WonderLight | name / status | LED progress.
+struct TransferCol {
+    const char *title;
+    int w;
+};
+
+// KDX File Transfers list row — single line, columns, LED meter in Progress.
+inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
+                                           Rect row, const TransferCol *cols,
+                                           int ncols, const char *name,
+                                           const char *size, const char *status,
+                                           const char *rate, WonderLightState light,
+                                           int progress_pct, bool selected) {
+    TransferRow tr;
+    tr.bounds = row;
+    if (selected)
+        cv.fill(row, ap.c("list.hilite_background"));
+    Color ink = selected ? ap.c("list.hilite_foreground") : ap.c("list.label");
+    int ty = row.y + (row.h - kFontHeight) / 2;
+    int x = row.x;
+    for (int i = 0; i < ncols; ++i) {
+        Rect cell{x, row.y, cols[i].w, row.h};
+        const char *key = cols[i].title ? cols[i].title : "";
+        if (std::strcmp(key, "") == 0 || std::strcmp(key, " ") == 0) {
+            // Lamp column — WonderLight only.
+            int ly = row.y + (row.h - kWonderLight) / 2;
+            tr.light = paint_wonderlight(cv, ap, cell.x + (cell.w - kWonderLight) / 2,
+                                         ly, light);
+        } else if (std::strcmp(key, "Name") == 0) {
+            cv.text(cell.x + 4, ty, name, ink);
+        } else if (std::strcmp(key, "Size") == 0) {
+            cv.text(cell.x + 4, ty, size, ink);
+        } else if (std::strcmp(key, "Progress") == 0) {
+            int ph = progress_art_height(ap.art("progress.bar"), ap.art("progress.fill"));
+            int pw = cell.w - 6;
+            if (pw < 20) pw = cell.w;
+            tr.progress = {cell.x + 3, row.y + (row.h - ph) / 2, pw, ph};
+            Color tint = wonderlight_color(light);
+            paint_progress(cv, ap, tr.progress, progress_pct, 100,
+                           ProgressStyle::Segmented, &tint);
+        } else if (std::strcmp(key, "Status") == 0) {
+            cv.text(cell.x + 4, ty, status, ink);
+        } else if (std::strcmp(key, "Rate") == 0) {
+            cv.text(cell.x + 4, ty, rate, ink);
+        }
+        x += cols[i].w;
+    }
+    cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
+    return tr;
+}
+
+struct FileTransfersLayout {
+    GelLayout gel{};
+    Rect list{};
+    Rect btn_close{}, btn_stop{}, btn_clear{};
+};
+
+// Official-style KDX File Transfers window sample (gel + columns + LEDs + footer).
+inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
+                                                       const Appearance &ap,
+                                                       Rect win) {
+    FileTransfersLayout ft;
+    ft.gel = gel_layout(win.x, win.y, win.w, win.h, GelStyle::Dialog, &ap, true);
+    paint_gel(cv, ap, win, "File Transfers", true, 0, GelStyle::Dialog);
+
+    Rect cl = ft.gel.client;
+    constexpr int kPad = 6;
+    constexpr int kFootH = kButtonH + 8;
+    int list_h = cl.h - 2 * kPad - kFootH;
+    if (list_h < kHeaderH + kRowH) list_h = kHeaderH + kRowH;
+    ft.list = {cl.x + kPad, cl.y + kPad, cl.w - 2 * kPad, list_h};
+
+    // Columns sized to the list width (lamp leads — no document icon).
+    TransferCol cols[6] = {
+        {"", 22},
+        {"Name", 100},
+        {"Size", 44},
+        {"Progress", 100},
+        {"Status", 56},
+        {"Rate", 40},
+    };
+    int fixed = 0;
+    for (int i = 0; i < 5; ++i) fixed += cols[i].w;
+    cols[5].w = std::max(36, ft.list.w - fixed);
+    // If Progress would starve, steal from Name.
+    int total = 0;
+    for (int i = 0; i < 6; ++i) total += cols[i].w;
+    if (total > ft.list.w) {
+        int overflow = total - ft.list.w;
+        cols[1].w = std::max(60, cols[1].w - overflow);
+    }
+    // Grow Progress with leftover.
+    total = 0;
+    for (int i = 0; i < 6; ++i) total += cols[i].w;
+    if (total < ft.list.w) cols[3].w += ft.list.w - total;
+
+    // Header plates per column (KDX list).
+    int hx = ft.list.x;
+    for (int i = 0; i < 6; ++i) {
+        Rect hdr{hx, ft.list.y, cols[i].w, kHeaderH};
+        const char *lab = cols[i].title;
+        if (!lab || !*lab) lab = " ";
+        paint_column_header(cv, ap, hdr, lab, i == 3); // Progress sorted
+        hx += cols[i].w;
+    }
+
+    Rect body{ft.list.x, ft.list.y + kHeaderH, ft.list.w, ft.list.h - kHeaderH};
+    cv.fill(body, ap.c("list.background"));
+    cv.frame(body, ap.c("primary.frame"));
+
+    struct Sample {
+        const char *name;
+        const char *size;
+        const char *status;
+        const char *rate;
+        WonderLightState light;
+        int pct;
+        bool sel;
+    };
+    static const Sample samples[] = {
+        {"server_info.txt", "1.1K", "Finished", "573/sec", WonderLightState::Finished,
+         100, false},
+        {"readme.txt", "48K", "Receiving", "12K/sec", WonderLightState::Go, 42, true},
+        {"patch.zip", "2.4M", "Awaiting", "—", WonderLightState::Pause, 10, false},
+    };
+    constexpr int kSamples = 3;
+    int visible = body.h / kRowH;
+    if (visible > kSamples) visible = kSamples;
+    for (int i = 0; i < visible; ++i) {
+        Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+        if (!samples[i].sel && i % 2)
+            cv.fill(row, ap.c("list.sort_column_background"));
+        paint_transfer_list_row(cv, ap, row, cols, 6, samples[i].name, samples[i].size,
+                                samples[i].status, samples[i].rate, samples[i].light,
+                                samples[i].pct, samples[i].sel);
+    }
+
+    // Footer buttons — Close / Stop All / Clear Finished
+    int by = cl.bottom() - kPad - kButtonH;
+    int bw = 88;
+    int gap = 8;
+    int bx = cl.x + kPad;
+    ft.btn_close = {bx, by, bw, kButtonH};
+    ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
+    ft.btn_clear = {bx + 2 * (bw + gap), by, 110, kButtonH};
+    if (ft.btn_clear.right() > cl.right() - kPad) {
+        // Narrow panel: shrink buttons to fit.
+        int avail = cl.w - 2 * kPad - 2 * gap;
+        bw = avail / 3;
+        ft.btn_close = {bx, by, bw, kButtonH};
+        ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
+        ft.btn_clear = {bx + 2 * (bw + gap), by, bw, kButtonH};
+    }
+    paint_button(cv, ap, ft.btn_close, "Close", false, false);
+    paint_button(cv, ap, ft.btn_stop, "Stop All", false, false);
+    paint_button(cv, ap, ft.btn_clear, "Clear Finished", false, false);
+    return ft;
+}
+
+// Legacy stacked transfer card — thin wrapper kept for call sites / smoke.
+constexpr int kTransferRowH = 56;
 inline TransferRow paint_transfer_row(Canvas &cv, const Appearance &ap, Rect r,
                                       const char *name, const char *status,
                                       WonderLightState light, int progress_pct,
                                       bool /*finished*/) {
-    TransferRow tr;
-    tr.bounds = r;
+    // Map into a one-row column strip so old call sites still paint LEDs.
+    TransferCol cols[6] = {{"", 22}, {"Name", 120}, {"Size", 1}, {"Progress", 140},
+                           {"Status", 1}, {"Rate", 1}};
+    cols[3].w = std::max(80, r.w - 22 - 120 - 3);
     cv.fill(r, ap.c("list.background"));
-    cv.hline(r.x, r.right(), r.bottom() - 1, ap.c("list.separator"));
-
-    int pad = 6;
-    tr.icon = paint_icon(cv, ap, r.x + pad, r.y + (r.h - 16) / 2 - 6, "file.generic.16", 16);
-    tr.light = paint_wonderlight(cv, ap, tr.icon.right() + 6,
-                                 r.y + 6, light);
-
-    int text_x = tr.light.right() + 8;
-    int text_w = r.right() - pad - text_x;
-    if (text_w < 40) text_w = 40;
-    cv.text(text_x, r.y + 5, name, ap.c("list.label"));
-    // Status line with a small down-arrow mark (KDX transfer direction).
-    int sy = r.y + 5 + kFontHeight + 3;
-    Color stc = wonderlight_color(light);
-    // Tiny arrow
-    cv.put(text_x, sy + 3, pack(stc));
-    cv.put(text_x + 1, sy + 4, pack(stc));
-    cv.put(text_x + 2, sy + 5, pack(stc));
-    cv.put(text_x + 1, sy + 5, pack(stc));
-    cv.put(text_x, sy + 5, pack(stc));
-    cv.put(text_x + 3, sy + 4, pack(stc));
-    cv.put(text_x + 4, sy + 3, pack(stc));
-    cv.text(text_x + 10, sy, status, ap.c("list.label"));
-
-    int bar_h = progress_art_height(ap.art("progress.bar"), ap.art("progress.fill"));
-    int bar_y = r.bottom() - 6 - bar_h;
-    tr.progress = {text_x, bar_y, text_w, bar_h};
-    // File Transfers always use LED meters (finished = full lit). Colour-path
-    // LEDs tint to WonderLight; Hap fill art keeps theme colours.
-    Color tint = wonderlight_color(light);
-    paint_progress(cv, ap, tr.progress, progress_pct, 100, ProgressStyle::Segmented,
-                   &tint);
-    return tr;
+    Rect row{r.x, r.y + (r.h - kRowH) / 2, r.w, kRowH};
+    return paint_transfer_list_row(cv, ap, row, cols, 6, name, "", status, "", light,
+                                   progress_pct, false);
 }
 
 inline void paint_separator_h(Canvas &cv, const Appearance &ap, Rect r) {
@@ -1557,20 +1685,11 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     paint_separator_h(cv, ap, {x, y, std::min(w, 320), 4});
     y += 10;
 
-    // KDX File Transfers sample — icon + WonderLight + status + progress
-    cv.text(x, y, "File Transfers", ap.c("primary.label"));
-    y += kFontHeight + 4;
-    int tw = std::min(w, 360);
-    paint_transfer_row(cv, ap, {x, y, tw, kTransferRowH},
-                       "server_info.txt @ higher intellect",
-                       "Finished. 573/sec, 1.1K, 0:02", WonderLightState::Finished,
-                       100, true);
-    y += kTransferRowH;
-    paint_transfer_row(cv, ap, {x, y, tw, kTransferRowH},
-                       "readme.txt @ higher intellect",
-                       "Receiving. 12K/sec, 48K, 0:04", WonderLightState::Go, 42,
-                       false);
-    y += kTransferRowH + 8;
+    // Official-style KDX File Transfers window (columns + LEDs + footer).
+    int ftw = std::min(w, 380);
+    int fth = 158;
+    paint_file_transfers_window(cv, ap, {x, y, ftw, fth});
+    y += fth + 8;
 
     // Field + dropdown — AppearanceEdit: usually 20px tall
     int field_w = std::min(w, 280);

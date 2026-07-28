@@ -124,7 +124,7 @@ Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 10. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
 11. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
 12. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
-13. **Transfer row** — KDX File Transfers sample (`paint_transfer_row`)
+13. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.
