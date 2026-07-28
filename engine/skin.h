@@ -99,7 +99,7 @@ inline ColorMap stock_colors() {
         set_role(m, (std::string(g) + ".frame").c_str(), frame);
         set_role(m, (std::string(g) + ".label").c_str(), label);
     };
-    button("button", rgb(102, 102, 102), rgb(68, 68, 68), rgb(51, 51, 51),
+    button("button", rgb(102, 102, 102), rgb(85, 85, 85), rgb(68, 68, 68),
            rgb(34, 34, 34), rgb(17, 17, 17), rgb(0, 0, 0), rgb(255, 255, 255));
     button("button_hilite", rgb(136, 136, 136), rgb(102, 102, 102),
            rgb(68, 68, 68), rgb(34, 34, 34), rgb(17, 17, 17), rgb(0, 0, 0),

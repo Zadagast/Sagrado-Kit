@@ -256,78 +256,71 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
 
 // --- Controls ------------------------------------------------------------
 
-// Soft round corners like KDX Settings buttons (not just 1 corner pixel).
-// `rad` 3 reads as a real curve on 20–26px controls.
-inline void punch_round_corner(Canvas &cv, int cx, int cy, int dx, int dy,
-                               int rad, Color bg) {
-    // Cut pixels outside a quarter-circle of radius `rad` at corner (cx,cy).
-    // dx/dy are +1 or -1 toward the interior.
-    for (int y = 0; y <= rad; ++y) {
-        for (int x = 0; x <= rad; ++x) {
-            // Outside the circle centred at (cx+dx*rad, cy+dy*rad)
-            int ox = rad - x;
-            int oy = rad - y;
-            if (ox * ox + oy * oy > rad * rad)
-                cv.put(cx + dx * x, cy + dy * y, pack(bg));
-        }
+// Soft Haxial round: 2px chamfer corners (reads as a curve on 24px buttons).
+// Stronger than Sagrado's 1px punch; cleaner than a broken rad-3 arc.
+inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
+    if (r.w < 6 || r.h < 6) {
+        cv.frame(r, frame);
+        return;
     }
+    // Straight edges, inset 2 so corners can curve
+    cv.hline(r.x + 2, r.right() - 2, r.y, frame);
+    cv.hline(r.x + 2, r.right() - 2, r.bottom() - 1, frame);
+    cv.vline(r.x, r.y + 2, r.bottom() - 2, frame);
+    cv.vline(r.right() - 1, r.y + 2, r.bottom() - 2, frame);
+    // Diagonal frame pixels (the "curve")
+    cv.put(r.x + 1, r.y + 1, pack(frame));
+    cv.put(r.right() - 2, r.y + 1, pack(frame));
+    cv.put(r.x + 1, r.bottom() - 2, pack(frame));
+    cv.put(r.right() - 2, r.bottom() - 2, pack(frame));
+    // Punch outer corner stubs to workspace
+    auto punch = [&](int x, int y) { cv.put(x, y, pack(bg)); };
+    punch(r.x, r.y);
+    punch(r.x + 1, r.y);
+    punch(r.x, r.y + 1);
+    punch(r.right() - 1, r.y);
+    punch(r.right() - 2, r.y);
+    punch(r.right() - 1, r.y + 1);
+    punch(r.x, r.bottom() - 1);
+    punch(r.x + 1, r.bottom() - 1);
+    punch(r.x, r.bottom() - 2);
+    punch(r.right() - 1, r.bottom() - 1);
+    punch(r.right() - 2, r.bottom() - 1);
+    punch(r.right() - 1, r.bottom() - 2);
 }
 
-inline void round_punch(Canvas &cv, Rect r, Color bg, int rad) {
-    if (r.w < rad * 2 + 2 || r.h < rad * 2 + 2) rad = 1;
-    punch_round_corner(cv, r.x, r.y, +1, +1, rad, bg);
-    punch_round_corner(cv, r.right() - 1, r.y, -1, +1, rad, bg);
-    punch_round_corner(cv, r.x, r.bottom() - 1, +1, -1, rad, bg);
-    punch_round_corner(cv, r.right() - 1, r.bottom() - 1, -1, -1, rad, bg);
-}
-
-// Outline that follows the soft round (Haxial button silhouette).
-inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg, int rad = 3) {
-    if (r.w <= 0 || r.h <= 0) return;
-    if (r.w < rad * 2 + 2 || r.h < rad * 2 + 2) rad = 1;
-    // Straight edges
-    cv.hline(r.x + rad, r.right() - rad, r.y, frame);
-    cv.hline(r.x + rad, r.right() - rad, r.bottom() - 1, frame);
-    cv.vline(r.x, r.y + rad, r.bottom() - rad, frame);
-    cv.vline(r.right() - 1, r.y + rad, r.bottom() - rad, frame);
-    // Quarter-circle arcs (Bresenham-ish: plot rim pixels)
-    auto arc = [&](int cx, int cy, int sx, int sy) {
-        for (int y = 0; y <= rad; ++y) {
-            for (int x = 0; x <= rad; ++x) {
-                int d = x * x + y * y;
-                int outer = rad * rad;
-                int inner = (rad - 1) * (rad - 1);
-                if (d <= outer && d > inner)
-                    cv.put(cx + sx * x, cy + sy * y, pack(frame));
-            }
-        }
-    };
-    // Arc centres sit `rad` inward from each corner
-    arc(r.x + rad, r.y + rad, -1, -1);
-    arc(r.right() - 1 - rad, r.y + rad, +1, -1);
-    arc(r.x + rad, r.bottom() - 1 - rad, -1, +1);
-    arc(r.right() - 1 - rad, r.bottom() - 1 - rad, +1, +1);
-    round_punch(cv, r, bg, rad);
-}
-
-// Raised (button) or inset (popup trough) 2px bevel that follows round corners.
-inline void round_bevel(Canvas &cv, Rect r, Color l2, Color l1, Color d1, Color d2,
-                        bool inset, int rad = 3) {
-    if (inset) {
+// 2px raised bevel (Sagrado/Haxial). `pressed` inverts light/shadow.
+inline void button_bevel(Canvas &cv, Rect r, Color l2, Color l1, Color d1,
+                         Color d2, bool pressed) {
+    if (pressed) {
         Color t;
         t = l2; l2 = d2; d2 = t;
         t = l1; l1 = d1; d1 = t;
     }
-    // Outer bevel ring
-    cv.hline(r.x + rad, r.right() - rad, r.y + 1, l2);
-    cv.vline(r.x + 1, r.y + rad, r.bottom() - rad, l2);
-    cv.hline(r.x + rad, r.right() - rad, r.bottom() - 2, d2);
-    cv.vline(r.right() - 2, r.y + rad, r.bottom() - rad, d2);
-    // Inner bevel ring
-    cv.hline(r.x + rad + 1, r.right() - rad - 1, r.y + 2, l1);
-    cv.vline(r.x + 2, r.y + rad + 1, r.bottom() - rad - 1, l1);
-    cv.hline(r.x + rad + 1, r.right() - rad - 1, r.bottom() - 3, d1);
-    cv.vline(r.right() - 3, r.y + rad + 1, r.bottom() - rad - 1, d1);
+    cv.hline(r.x + 1, r.right() - 1, r.y + 1, l2);
+    cv.hline(r.x + 2, r.right() - 2, r.y + 2, l1);
+    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, l2);
+    cv.vline(r.x + 2, r.y + 2, r.bottom() - 2, l1);
+    cv.hline(r.x + 2, r.right() - 2, r.bottom() - 3, d1);
+    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
+    cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
+    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
+}
+
+// Shared face for push buttons and popup buttons.
+inline void paint_button_face(Canvas &cv, const Appearance &ap, Rect r,
+                              bool pressed, bool disabled = false) {
+    Color workspace = ap.c("primary.background");
+    const char *grp = disabled ? "button_disable" : "button";
+    auto bc = [&](const char *s) {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%s.%s", grp, s);
+        return ap.c(buf);
+    };
+    cv.fill(r, bc("face"));
+    rounded_frame(cv, r, bc("frame"), workspace);
+    button_bevel(cv, r, bc("light2"), bc("light1"), bc("dark1"), bc("dark2"),
+                 pressed);
 }
 
 // `r` is the outer hit/layout rect. Default buttons use a slightly taller
@@ -335,25 +328,17 @@ inline void round_bevel(Canvas &cv, Rect r, Color l2, Color l1, Color d1, Color 
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default) {
     Color workspace = ap.c("primary.background");
-    constexpr int kRad = 3;
     if (is_default) {
-        rounded_frame(cv, r, ap.c("default_button.frame"), workspace, kRad);
-        rounded_frame(cv, {r.x + 1, r.y + 1, r.w - 2, r.h - 2},
-                      ap.c("default_button.light"), workspace, kRad);
-        rounded_frame(cv, {r.x + 2, r.y + 2, r.w - 4, r.h - 4},
-                      ap.c("default_button.face"), workspace, kRad > 1 ? kRad - 1 : 1);
+        rounded_frame(cv, r, ap.c("default_button.frame"), workspace);
+        // Soft red rings follow the same chamfer
+        Rect r1{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
+        Rect r2{r.x + 2, r.y + 2, r.w - 4, r.h - 4};
+        rounded_frame(cv, r1, ap.c("default_button.light"), workspace);
+        rounded_frame(cv, r2, ap.c("default_button.face"), workspace);
         r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
              r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
     }
-    Color face = ap.c("button.face");
-    Color l2 = ap.c("button.light2");
-    Color l1 = ap.c("button.light1");
-    Color d1 = ap.c("button.dark1");
-    Color d2 = ap.c("button.dark2");
-    cv.fill(r, face);
-    round_punch(cv, r, workspace, kRad);
-    rounded_frame(cv, r, ap.c("button.frame"), workspace, kRad);
-    round_bevel(cv, r, l2, l1, d1, d2, /*inset=*/pressed, kRad);
+    paint_button_face(cv, ap, r, pressed, false);
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
     cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
@@ -624,49 +609,36 @@ inline int menu_hit_row(const MenuLayout &lay, int mx, int my) {
     return row;
 }
 
-// Haxial Popup Button — one recessed trough, bevelled all the way through.
-// Arrow lives in the same sunken face behind a divider (not an inverted well).
-// Matches KDX Settings "General Settings" / "Sound List".
+// Haxial Popup Button — same raised plate as a push button, bevelled all the
+// way through. Divider + arrow sit on that face (not an inset/inverted well).
 inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
                            const char *label, bool open, bool pressed,
                            bool disabled = false) {
-    Color workspace = ap.c("primary.background");
-    constexpr int kRad = 3;
+    bool down = pressed || open;
+    paint_button_face(cv, ap, r, down, disabled);
+
     const char *grp = disabled ? "button_disable" : "button";
-    auto bc = [&](const char *suffix) {
+    auto bc = [&](const char *s) {
         char buf[48];
-        std::snprintf(buf, sizeof(buf), "%s.%s", grp, suffix);
+        std::snprintf(buf, sizeof(buf), "%s.%s", grp, s);
         return ap.c(buf);
     };
-
-    // Trough face is darker than the workspace so the inset reads clearly
-    // (KDX Settings sunken plate — not the same grey as a raised button).
-    Color face = disabled ? bc("face")
-                : (pressed || open) ? bc("dark2") : bc("dark1");
-    Color l2 = bc("light2");
-    Color l1 = bc("light1");
-    Color d1 = bc("dark1");
-    Color d2 = bc("dark2");
     Color ink = bc("label");
-
-    cv.fill(r, face);
-    round_punch(cv, r, workspace, kRad);
-    rounded_frame(cv, r, bc("frame"), workspace, kRad);
-    // Whole control is INSET (sunken trough) — same bevel on text + arrow.
-    round_bevel(cv, r, l2, l1, d1, d2, /*inset=*/true, kRad);
+    Color seam_d = down ? bc("light2") : bc("dark2");
+    Color seam_l = down ? bc("dark2") : bc("light2");
 
     int aw = std::min(kDropArrowW, r.w / 3);
     if (aw < 14) aw = std::min(14, r.w);
     int div_x = r.right() - aw;
-    // Divider shares the trough — no second bevel, just a seam
-    cv.vline(div_x, r.y + 3, r.bottom() - 3, d2);
-    cv.vline(div_x + 1, r.y + 3, r.bottom() - 3, l2);
+    // Seam only — bevel already runs across the whole plate
+    cv.vline(div_x, r.y + 4, r.bottom() - 4, seam_d);
+    cv.vline(div_x + 1, r.y + 4, r.bottom() - 4, seam_l);
 
-    Rect well{div_x + 2, r.y, r.right() - (div_x + 2), r.h};
+    Rect well{div_x + 1, r.y, r.right() - (div_x + 1), r.h};
     paint_arrow(cv, well, false, ink);
 
-    int tx = r.x + 8;
-    int ty = r.y + (r.h - kFontHeight) / 2 + ((pressed || open) ? 1 : 0);
+    int tx = r.x + 8 + (down ? 1 : 0);
+    int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
     int max_w = div_x - tx - 4;
     if (max_w < 8) max_w = 8;
     if (cv.text_width(label) <= max_w)

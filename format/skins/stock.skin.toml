@@ -42,8 +42,8 @@ separator = "#111111"
 
 [colors.button]
 light2 = "#666666"
-light1 = "#444444"
-face = "#333333"
+light1 = "#555555"
+face = "#444444"
 dark1 = "#222222"
 dark2 = "#111111"
 frame = "#000000"
