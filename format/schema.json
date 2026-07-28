@@ -52,12 +52,12 @@
     },
     "art": {
       "type": "object",
-      "description": "Reserved widget-chrome art slots. Keys are slot names; values are relative image paths.",
+      "description": "Widget-chrome art slots named after AppearanceEdit Images entries (see docs/haxial-surface-map.md). Values are relative image paths for now; caps/positions metadata lands with art painting. Incomplete OK — missing slots fall through to colours.",
       "additionalProperties": { "type": "string" }
     },
     "icons": {
       "type": "object",
-      "description": "Reserved icon slots. Keys are slot names; values are relative image paths.",
+      "description": "Icon slots (16/32 marks). Separate from art. See docs/haxial-surface-map.md.",
       "additionalProperties": { "type": "string" }
     }
   },
