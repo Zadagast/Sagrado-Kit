@@ -47,11 +47,9 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 # Debian/Ubuntu
 sudo apt install g++-mingw-w64-i686 wine
 
-# Draft PR waves live on feature branches (main is behind):
-#   git fetch origin && git checkout cursor/haxial-p2-polish-9daa
-
 make          # → build/SagradoKitEditor.exe + copied example skins
-make run      # launch under Wine (defaults to Milk Redux when present)
+make run      # launch under Wine (needs `wine` installed)
+# without Wine: copy the .exe to Windows, or: sudo apt install wine
 ```
 
 ### Windows

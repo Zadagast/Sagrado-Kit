@@ -32,6 +32,12 @@ skins: | $(BUILD)
 	done
 
 run: $(EDITOR) skins
+	@command -v wine >/dev/null 2>&1 || { \
+	  echo "wine not found — this editor is a Win32 .exe (MinGW)."; \
+	  echo "  Debian/Ubuntu:  sudo apt install wine"; \
+	  echo "  Or copy build/SagradoKitEditor.exe to a Windows box and run it there."; \
+	  exit 127; \
+	}
 	wine $(EDITOR)
 
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
