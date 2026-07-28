@@ -39,6 +39,8 @@ constexpr int kRowH = 18;
 constexpr int kButtonH = 24;
 constexpr int kDefaultButtonH = 26;
 constexpr int kDefaultButtonPad = 3; // ring inset inside default outer
+// AppearanceEdit usual push-button height for generic kit samples (not Find).
+constexpr int kKitButtonH = 20;
 constexpr int kFieldH = 20;
 constexpr int kFindDlgW = 442; // Sagrado Find window size
 constexpr int kFindDlgH = 176;
@@ -2738,87 +2740,54 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(x, y, "Kit Preview", ap.c("primary.label"));
     y += kFontHeight + 8;
 
-    // P2 samples first so short editor panels still show them (Find gel is tall).
-    // Hap: scrollbar cross-axis is exactly 16 (kScrollbarW). Icon buttons size
-    // from art so hilited caps are not crushed; scroll thumbs need ~47px travel.
-    if (fits(kButtonH + kMenuBarH + 90)) {
-        cv.text(x, y, "P2  icon / menu / scroll", ap.c("important.label"));
-        y += kFontHeight + 4;
-
+    // Icon buttons + menu bar (one band). Scroll samples live with the list.
+    {
         const SkinImage *ib_hi = ap.art("icon_button.hilited");
         const SkinImage *ib_n = ap.art("icon_button.normal");
         int ib_w = 32;
-        int ib_h = kButtonH;
+        int ib_h = std::max(kKitButtonH, ib_n ? ib_n->h : kKitButtonH);
         if (ib_hi) {
             ib_w = std::max(ib_w, ib_hi->caps[0] + ib_hi->caps[2] + 2);
             ib_h = std::max(ib_h, ib_hi->h);
         } else if (ib_n) {
             ib_w = std::max(ib_w, ib_n->w);
-            ib_h = std::max(ib_h, ib_n->h);
         }
-
-        Rect ib0{x, y, ib_w, ib_h};
-        Rect ib1{ib0.right() + 6, y, ib_w, ib_h};
-        Rect ib2{ib1.right() + 6, y, std::max(72, ib_w + 44), ib_h};
-        if (ib0.right() <= right)
-            paint_icon_button(cv, ap, ib0, "folder.16", nullptr, false, false);
-        if (ib1.right() <= right)
-            paint_icon_button(cv, ap, ib1, "file.generic.16", nullptr, true, false);
-        if (ib2.right() <= right)
-            paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
-        Rect ibd{ib2.right() + 6, y, ib_w, ib_h};
-        if (ibd.right() <= right)
-            paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
-
-        constexpr int sb = kScrollbarW;
-        const SkinImage *v_ind = ap.art("scrollbar.v.indicator.normal");
-        const SkinImage *h_ind = ap.art("scrollbar.h.indicator.normal");
-
-        int v_top = 0, v_bot = 0;
-        scrollbar_v_insets(ap, sb, v_top, v_bot, true);
-        int v_min_thumb = scrollbar_min_thumb_v(ap, sb);
-        int v_h = v_top + v_bot + std::max(v_min_thumb, v_ind ? v_ind->h : 24) + 4;
-
-        int h_left = 0, h_right = 0;
-        scrollbar_h_insets(ap, sb, h_left, h_right, false);
-        int h_min_thumb = scrollbar_min_thumb_h(ap, sb);
-        int h_w = h_left + h_right + std::max(h_min_thumb, h_ind ? h_ind->w : 24) + 8;
-
-        Rect v1{ibd.right() + 14, y, sb, v_h};
-        int row_h = std::max(ib_h, v_h);
-        if (v1.bottom() <= client.bottom() - pad && v1.right() + 40 <= right) {
-            paint_scrollbar(cv, ap, v1, 2, 6, 2, true, true, false,
-                            ScrollArrowHot::FirstStart);
-            Rect h1{v1.right() + 8, y + (row_h - sb) / 2, h_w, sb};
-            if (h1.right() + 20 <= right)
-                paint_scrollbar_h(cv, ap, h1, 2, 6, 2, true, false, false,
-                                  ScrollArrowHot::FirstEnd);
-            Rect tiny{h1.right() + 6, h1.y, 12, sb};
-            if (tiny.right() <= right)
-                paint_scrollbar_h(cv, ap, tiny, 0, 0, 1, false);
+        int need = ib_h + kMenuBarH + 16;
+        if (fits(need)) {
+            Rect ib0{x, y, ib_w, ib_h};
+            Rect ib1{ib0.right() + 6, y, ib_w, ib_h};
+            Rect ib2{ib1.right() + 6, y, std::max(72, ib_w + 44), ib_h};
+            if (ib0.right() <= right)
+                paint_icon_button(cv, ap, ib0, "folder.16", nullptr, false, false);
+            if (ib1.right() <= right)
+                paint_icon_button(cv, ap, ib1, "file.generic.16", nullptr, true, false);
+            if (ib2.right() <= right)
+                paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
+            Rect ibd{ib2.right() + 6, y, ib_w, ib_h};
+            if (ibd.right() <= right)
+                paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
+            y += ib_h + 6;
+            static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
+            paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
+                           1, 0);
+            y += kMenuBarH + 10;
         }
-        y += row_h + 8;
-        static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
-        paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
-                       1, 0);
-        y += kMenuBarH + 10;
     }
 
-    // Find-sized dialog chrome — title bar / icons at real TextEdit proportions
-    // (Sagrado Find is 442×176). Not a stubby 72px nested gel.
+    // Find dialog — TextEdit-measured gel + 24px buttons (not kKitButtonH).
     if (fits(kFindDlgH)) {
         paint_find_chrome_sample(cv, ap, x, y, w, caret_on);
         y += kFindDlgH + 10;
     }
 
-    // Buttons — Find metrics: regular 24px; default OK 26px outer, same top.
+    // Push buttons — AppearanceEdit usual 20px; default OK is +3px ring (26 outer).
     if (fits(kDefaultButtonH)) {
         constexpr int kBtnW = 72;
         constexpr int kBtnGap = 10;
         lay.btn_ok = default_button_rect(x, y, kBtnW);
-        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kButtonH};
-        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kButtonH};
-        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kButtonH};
+        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kKitButtonH};
+        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kKitButtonH};
+        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kKitButtonH};
         paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
         if (lay.btn_cancel.right() <= right)
             paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
@@ -2829,7 +2798,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += kDefaultButtonH + 8;
     }
 
-    // Tick (checkbox) + Mutex (radio) + disclosure — only place what fits width.
+    // Tick / mutex / disclosure
     if (fits(kTickBox)) {
         paint_tick(cv, ap, x, y, TickMark::Ticked, "Tick on");
         if (x + 110 + 80 <= right)
@@ -2847,45 +2816,23 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += kTickBox + 10;
     }
 
-    // Progress + separators + box / framed samples
-    if (fits(kProgressH + 8)) {
-        cv.text(x, y + 1, "Progress", ap.c("primary.label"));
-        paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
-        y += kProgressH + 8;
-    }
-    if (fits(14)) {
-        int sep_w = std::min(w, 220);
-        paint_separator_h(cv, ap, {x, y, sep_w, 4});
-        if (x + sep_w + 12 <= right)
-            paint_separator_v(cv, ap, {x + sep_w + 8, y - 6, 4, 20});
-        y += 10;
+    // Progress + box/framed (one band)
+    if (fits(std::max(kProgressH, 36) + 8)) {
+        int row_h = std::max(kProgressH, 36);
+        paint_progress(cv, ap, {x, y + (row_h - kProgressH) / 2,
+                                std::min(w / 2, 180), kProgressH}, 65, 100);
+        int bx = x + std::min(w / 2, 180) + 12;
+        if (bx + 100 <= right) {
+            paint_box(cv, ap, {bx, y, 100, 36}, "Box");
+            if (bx + 210 <= right) {
+                paint_framed_raised(cv, ap, {bx + 110, y, 100, 36});
+                cv.text(bx + 120, y + 12, "Framed", ap.c("primary.label"));
+            }
+        }
+        y += row_h + 10;
     }
 
-    if (fits(44)) {
-        paint_box(cv, ap, {x, y, std::min(120, w / 2), 36}, "Box");
-        if (x + 230 <= right) {
-            paint_framed_raised(cv, ap, {x + 130, y, 100, 36});
-            cv.text(x + 140, y + 12, "Framed", ap.c("primary.label"));
-        }
-        if (x + 290 <= right) {
-            paint_icon(cv, ap, x + 250, y + 8, "file.generic.16", 16);
-            paint_icon(cv, ap, x + 274, y + 8, "folder.16", 16);
-        }
-        y += 44;
-    }
-
-    // Compact Main gel (title + grip) sample — clip ink to its own frame.
-    if (fits(56)) {
-        int gel_w = std::min(w, 220);
-        Rect gel_win{x, y, gel_w, 56};
-        {
-            CanvasClip gel_clip(cv, gel_win);
-            paint_gel(cv, ap, gel_win, "Main Gel", true, 0, GelStyle::Main);
-        }
-        y += 64;
-    }
-
-    // Official-style KDX File Transfers window (columns + LEDs + footer).
+    // KDX File Transfers — the gel + list + progress LED sample.
     int ftw = std::min(w, 450);
     int fth = 158;
     if (fits(fth)) {
@@ -2893,10 +2840,9 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += fth + 8;
     }
 
-    // Field + dropdown — AppearanceEdit: usually 20px tall
+    // Field + popup (AppearanceEdit: usually 20px)
     if (fits(kFieldH)) {
         int field_w = std::min(w, 280);
-        // Leave room for optional no-title well.
         if (field_w + kDropArrowW + 8 > w) field_w = std::max(80, w - kDropArrowW - 8);
         lay.field = {x, y, field_w, kFieldH};
         paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
@@ -2906,28 +2852,25 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += kFieldH + 8;
     }
 
-    // Popup buttons — real bevelled plates (KDX Settings), not text fields.
     static const char *menu_items[] = {"Standard", "Slate", "-", "Custom...", "Disabled"};
     static const unsigned kMenuDisabled = 1u << 4;
     const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 4)];
-    if (st.menu_sel == 2) drop_label = "Standard"; // separator not selectable
-    int pop_h = kButtonH;
-    if (fits(pop_h)) {
-        lay.dropdown = {x, y, std::min(w, 200), pop_h};
+    if (st.menu_sel == 2) drop_label = "Standard";
+    if (fits(kKitButtonH)) {
+        lay.dropdown = {x, y, std::min(w, 200), kKitButtonH};
         paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
                        st.pressed_btn == 4, false);
         Rect drop_dis{lay.dropdown.right() + 10, y,
-                      std::min(120, right - (lay.dropdown.right() + 10)), pop_h};
+                      std::min(120, right - (lay.dropdown.right() + 10)), kKitButtonH};
         if (drop_dis.w > 60)
             paint_dropdown(cv, ap, drop_dis, "None", false, false, true);
-        y += pop_h + 8;
+        y += kKitButtonH + 8;
     }
 
-    // Slider H + V (art-first when present)
-    if (fits(28)) {
-        cv.text(x, y + 2, "Slider", ap.c("primary.label"));
-        int slide_w = std::min(std::max(80, w - 100), 200);
-        lay.slider = {x + 56, y, slide_w, 22};
+    // One H slider + one pointed V — enough to exercise fill/travel.
+    if (fits(48)) {
+        int slide_w = std::min(std::max(80, w - 80), 200);
+        lay.slider = {x, y, slide_w, 22};
         if (lay.slider.right() > right) lay.slider.w = std::max(40, right - lay.slider.x);
         lay.slider_lay =
             paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
@@ -2935,68 +2878,19 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
         if (lay.slider.right() + 28 <= right)
             cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
-        Rect vslide{lay.slider.right() + 48, y - 4, 22, 72};
+        Rect vslide{lay.slider.right() + 48, y - 2, 22, 48};
         if (vslide.right() <= right && vslide.bottom() <= client.bottom() - pad)
-            paint_slider_v(cv, ap, vslide, st.slider_value, 100, false);
-        // Pointed indicators (scale below / to the right)
-        Rect pslide{x + 56, y + 28, std::min(120, w / 3), 22};
-        if (pslide.bottom() <= client.bottom() - pad && fits(52)) {
-            paint_slider(cv, ap, pslide, st.slider_value, 100, false, true);
-            Rect pv{pslide.right() + 12, y + 24, 22, 48};
-            if (pv.right() <= right)
-                paint_slider_v(cv, ap, pv, st.slider_value, 100, true, true);
-            y += 28;
-        }
-        y += 28;
+            paint_slider_v(cv, ap, vslide, st.slider_value, 100, true, true);
+        y += 52;
     }
 
-    // Compact V + H scrollbar samples (double + single + arrow hilite + too-small)
-    {
-        constexpr int sb = kScrollbarW;
-        int v_top = 0, v_bot = 0;
-        scrollbar_v_insets(ap, sb, v_top, v_bot, false);
-        int v_h = std::max(72, v_top + v_bot + scrollbar_min_thumb_v(ap, sb) + 8);
-        int h_left = 0, h_right = 0;
-        scrollbar_h_insets(ap, sb, h_left, h_right, false);
-        int h_need = h_left + h_right + scrollbar_min_thumb_h(ap, sb) + 8;
-        if (fits(v_h + 8)) {
-            cv.text(x, y + 2, "Scroll", ap.c("primary.label"));
-            Rect vdemo{x + 56, y, sb, v_h};
-            paint_scrollbar(cv, ap, vdemo, 3, 10, 4, false, false, false,
-                            ScrollArrowHot::FirstStart);
-            int after_v = vdemo.right() + 8;
-            Rect vsingle{after_v, y, sb, v_h};
-            if (vsingle.right() <= right) {
-                paint_scrollbar(cv, ap, vsingle, 3, 10, 4, true, true, false,
-                                ScrollArrowHot::FirstEnd);
-                after_v = vsingle.right() + 10;
-            }
-            int h_w = std::min(std::max(h_need, right - after_v - 50), 200);
-            Rect hdemo{after_v, y + (v_h - sb) / 2, h_w, sb};
-            if (hdemo.w >= h_need)
-                paint_scrollbar_h(cv, ap, hdemo, 2, 8, 4, true, false, false,
-                                  ScrollArrowHot::SecondStart);
-            else
-                hdemo.w = 0;
-            Rect htiny{(hdemo.w > 0 ? hdemo.right() : after_v) + 8,
-                       y + (v_h - sb) / 2, 12, sb};
-            if (htiny.right() <= right)
-                paint_scrollbar_h(cv, ap, htiny, 0, 0, 1, false);
-            Rect vtiny{htiny.right() + 8, y, sb, 12};
-            if (vtiny.right() <= right)
-                paint_scrollbar(cv, ap, vtiny, 0, 0, 1, false);
-            y += v_h + 8;
-        }
-    }
-
-    // List + header + scrollbar (file_label tints on unselected rows)
+    // List + header + scrollbars (the scroll fill sample).
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
     lay.row_count = 8;
-    // Room for optional H-scrollbar under the list; never force past the panel.
     int list_h = client.bottom() - y - pad - (kScrollbarW + 4);
     if (list_h < kHeaderH + kRowH)
-        list_h = client.bottom() - y - pad; // drop H-scrollbar budget
+        list_h = client.bottom() - y - pad;
     if (list_h >= kHeaderH + kRowH) {
         lay.list = {x, y, std::min(w, 320), list_h};
         lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
@@ -3048,3 +2942,4 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     }
     return lay;
 }
+
