@@ -459,6 +459,25 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
     }
 }
 
+// Prefer Hap plate Text Color when set; else Button Label with white-on-art
+// fallback to Primary Label (KDX title-label practice).
+inline Color plate_text_color(const SkinImage *plate) {
+    if (!plate || !plate->has_text_color) return {0, 0, 0};
+    return {uint8_t((plate->text_color >> 16) & 0xff),
+            uint8_t((plate->text_color >> 8) & 0xff),
+            uint8_t(plate->text_color & 0xff)};
+}
+
+inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
+                              const SkinImage *plate = nullptr) {
+    if (disabled) return ap.c("button_disable.label");
+    if (plate && plate->has_text_color) return plate_text_color(plate);
+    Color ink = ap.c("button.label");
+    if (has_art && ink.r > 200 && ink.g > 200 && ink.b > 200)
+        return ap.c("primary.label");
+    return ink;
+}
+
 // True when a title-button plate is near-uniform (Milk blank spheres) so
 // Standard glyphs should be stamped on top. Art that already draws an X/−/+
 // has enough luminance variance to skip the overlay.
@@ -708,25 +727,6 @@ inline void paint_default_ring_color(Canvas &cv, const Appearance &ap, Rect r) {
     rounded_frame(cv, r, ap.c("default_button.frame"), workspace);
     cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("default_button.light"));
     cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ap.c("default_button.face"));
-}
-
-// Prefer Hap plate Text Color when set; else Button Label with white-on-art
-// fallback to Primary Label (KDX title-label practice).
-inline Color plate_text_color(const SkinImage *plate) {
-    if (!plate || !plate->has_text_color) return {0, 0, 0};
-    return {uint8_t((plate->text_color >> 16) & 0xff),
-            uint8_t((plate->text_color >> 8) & 0xff),
-            uint8_t(plate->text_color & 0xff)};
-}
-
-inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
-                              const SkinImage *plate = nullptr) {
-    if (disabled) return ap.c("button_disable.label");
-    if (plate && plate->has_text_color) return plate_text_color(plate);
-    Color ink = ap.c("button.label");
-    if (has_art && ink.r > 200 && ink.g > 200 && ink.b > 200)
-        return ap.c("primary.label");
-    return ink;
 }
 
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
