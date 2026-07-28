@@ -69,8 +69,8 @@ Run `build/SagradoKitEditor.exe`. Example skins are in
 - **Load / Save** — `.skin.toml` files (same format apps load)
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
-- **Kit Preview** — live gel window, button, field, list+header, scrollbar
-  painted by the Appearance Engine
+- **Kit Preview** — live gel window, button, field, dropdown menu, slider,
+  list+header, scrollbar — painted by the Appearance Engine
 
 Shortcuts: `Ctrl+O` load, `Ctrl+S` save, `Esc` quit. Drag the title bar to
 move; the close box quits.

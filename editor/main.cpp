@@ -34,6 +34,8 @@ enum Drag : int {
     DragCloseBox,
     DragScrollArrowRoles,
     DragScrollArrowPreview,
+    DragSliderKit,
+    DragDropdown,
 };
 
 struct App {
@@ -48,6 +50,7 @@ struct App {
     int selected = 0;
     int list_sel = 1;
     int preview_scroll = 0;
+    KitPreviewState preview_st{};
 
     int drag = DragNone;
     int drag_btn = 0;       // active preview button id (1..3) while over it
@@ -301,10 +304,13 @@ void paint() {
     // Live kit preview
     cv.fill(g.preview, ap.c("workspace.background3"));
     cv.frame(g.preview, ap.c("focus.box"));
-    int prev_btn = (g.drag == DragPreviewBtn) ? g.drag_btn : 0;
-    g.preview_lay =
-        paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
-                          g.preview_scroll, prev_btn, g.drag == DragThumbPreview);
+    g.preview_st.pressed_btn = (g.drag == DragPreviewBtn || g.drag == DragDropdown)
+                                   ? g.drag_btn
+                                   : 0;
+    g.preview_st.thumb_hot = g.drag == DragThumbPreview;
+    g.preview_st.slider_hot = g.drag == DragSliderKit;
+    g.preview_lay = paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
+                                      g.preview_scroll, g.preview_st);
 }
 
 void blit(HWND hwnd) {
@@ -451,6 +457,28 @@ void mouse_down(int mx, int my) {
         return;
     }
 
+    // Open dropdown menu takes clicks first (stacked above list)
+    if (g.preview_st.dropdown_open && g.preview_lay.menu.contains(mx, my)) {
+        int row = menu_hit_row(g.preview_lay.menu_lay, mx, my);
+        if (row >= 0 && row != 3) { // 3 = Disabled
+            g.preview_st.menu_sel = row;
+            g.preview_st.menu_hot = row;
+            g.preview_st.dropdown_open = false;
+            static const char *names[] = {"Standard", "Slate", "Custom...", "Disabled"};
+            set_status(std::string("Menu: ") + names[row]);
+            redraw();
+        }
+        return;
+    }
+    if (g.preview_st.dropdown_open && !g.preview_lay.dropdown.contains(mx, my) &&
+        !g.preview_lay.menu.contains(mx, my)) {
+        // Click outside closes the menu (and consumes the click)
+        g.preview_st.dropdown_open = false;
+        g.preview_st.menu_hot = -1;
+        redraw();
+        return;
+    }
+
     // Preview buttons
     if (g.preview_lay.btn_ok.contains(mx, my)) {
         g.drag = DragPreviewBtn;
@@ -470,6 +498,28 @@ void mouse_down(int mx, int my) {
         g.drag = DragPreviewBtn;
         g.drag_target = g.drag_btn = 3;
         set_status("Preview: Pressed");
+        redraw();
+        return;
+    }
+
+    // Dropdown
+    if (g.preview_lay.dropdown.contains(mx, my)) {
+        g.drag = DragDropdown;
+        g.drag_btn = 4;
+        g.drag_target = 4;
+        g.preview_st.dropdown_open = !g.preview_st.dropdown_open;
+        g.preview_st.menu_hot = g.preview_st.menu_sel;
+        set_status(g.preview_st.dropdown_open ? "Menu open" : "Menu closed");
+        redraw();
+        return;
+    }
+
+    // Kit slider
+    if (g.preview_lay.slider.contains(mx, my)) {
+        g.drag = DragSliderKit;
+        g.preview_st.slider_value =
+            slider_value_at_x(g.preview_lay.slider_lay, mx);
+        set_status("Slider: " + std::to_string(g.preview_st.slider_value));
         redraw();
         return;
     }
@@ -549,11 +599,19 @@ void mouse_move(int mx, int my) {
         c.b = uint8_t(slider_value_at(g.slider_b, mx));
         set_selected_color(c);
         redraw();
+    } else if (g.drag == DragSliderKit) {
+        g.preview_st.slider_value =
+            slider_value_at_x(slider_layout(g.preview_lay.slider,
+                                            g.preview_st.slider_value, 100),
+                              mx);
+        set_status("Slider: " + std::to_string(g.preview_st.slider_value));
+        redraw();
     } else if (g.drag == DragCloseBox) {
         g.pressed_box = g.gel.close_box.contains(mx, my) ? 1 : 0;
         redraw();
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
-               g.drag == DragBtnStock || g.drag == DragPreviewBtn) {
+               g.drag == DragBtnStock || g.drag == DragPreviewBtn ||
+               g.drag == DragDropdown) {
         if (g.drag == DragPreviewBtn) {
             bool over =
                 (g.drag_target == 1 && g.preview_lay.btn_ok.contains(mx, my)) ||
@@ -562,6 +620,13 @@ void mouse_move(int mx, int my) {
             g.drag_btn = over ? g.drag_target : 0;
         }
         redraw();
+    } else if (g.preview_st.dropdown_open && g.preview_lay.menu.w > 0) {
+        // Hover-hilite menu rows while open (no button held)
+        int row = menu_hit_row(g.preview_lay.menu_lay, mx, my);
+        if (row != g.preview_st.menu_hot) {
+            g.preview_st.menu_hot = row;
+            redraw();
+        }
     }
 }
 
@@ -650,9 +715,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_LBUTTONDOWN:
         mouse_down(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
-    case WM_MOUSEMOVE:
-        if (wp & MK_LBUTTON) mouse_move(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+    case WM_MOUSEMOVE: {
+        int mx = GET_X_LPARAM(lp), my = GET_Y_LPARAM(lp);
+        if (wp & MK_LBUTTON) {
+            mouse_move(mx, my);
+        } else if (g.preview_st.dropdown_open) {
+            layout();
+            int row = menu_hit_row(g.preview_lay.menu_lay, mx, my);
+            if (row != g.preview_st.menu_hot) {
+                g.preview_st.menu_hot = row;
+                redraw();
+            }
+        }
         return 0;
+    }
     case WM_LBUTTONUP:
         mouse_up(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;

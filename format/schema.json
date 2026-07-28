@@ -44,6 +44,7 @@
         "window": { "$ref": "#/$defs/windowGroup" },
         "window_focus": { "$ref": "#/$defs/windowGroup" },
         "menu": { "$ref": "#/$defs/menuGroup" },
+        "slider": { "$ref": "#/$defs/sliderGroup" },
         "scrollbar": { "$ref": "#/$defs/scrollbarGroup" },
         "column_header": { "$ref": "#/$defs/columnHeaderGroup" },
         "workspace": { "$ref": "#/$defs/workspaceGroup" }
@@ -174,6 +175,28 @@
         "hilite_dark": { "$ref": "#/$defs/color" },
         "hilite_label": { "$ref": "#/$defs/color" },
         "disable_label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "sliderGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bar": { "$ref": "#/$defs/color" },
+        "bar_frame": { "$ref": "#/$defs/color" },
+        "bar_hilite": { "$ref": "#/$defs/color" },
+        "bar_hilite_frame": { "$ref": "#/$defs/color" },
+        "indicator_light": { "$ref": "#/$defs/color" },
+        "indicator": { "$ref": "#/$defs/color" },
+        "indicator_dark": { "$ref": "#/$defs/color" },
+        "indicator_frame": { "$ref": "#/$defs/color" },
+        "indicator_hilite_light": { "$ref": "#/$defs/color" },
+        "indicator_hilite": { "$ref": "#/$defs/color" },
+        "indicator_hilite_dark": { "$ref": "#/$defs/color" },
+        "indicator_hilite_frame": { "$ref": "#/$defs/color" },
+        "disable_light": { "$ref": "#/$defs/color" },
+        "disable": { "$ref": "#/$defs/color" },
+        "disable_dark": { "$ref": "#/$defs/color" },
+        "disable_frame": { "$ref": "#/$defs/color" }
       }
     },
     "scrollbarGroup": {

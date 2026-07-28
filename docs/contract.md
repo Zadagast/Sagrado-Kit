@@ -71,6 +71,7 @@ Art/icon maps are reserved in this slice (paths accepted, painting later).
 | `window` | `light2`, `light1`, `face`, `dark1`, `dark2`, `frame`, `label` + `transition` (18 colours) |
 | `window_focus` | same as `window` |
 | `menu` | `light`, `background`, `dark`, `label`, `hilite_light`, `hilite_background`, `hilite_dark`, `hilite_label`, `disable_label` |
+| `slider` | `bar`, `bar_frame`, `bar_hilite`, `bar_hilite_frame`, `indicator_light`, `indicator`, `indicator_dark`, `indicator_frame`, `indicator_hilite_*`, `disable_*` |
 | `scrollbar` | `frame`, `light`, `face`, `dark`, `label`, `hilite_light`, `hilite`, `hilite_dark`, `hilite_label`, `indicator_light`, `indicator`, `indicator_dark`, `track_light2`, `track_light1`, `track`, `track_dark1`, `track_dark2` |
 | `column_header` | `frame`, `light`, `face`, `dark`, `label`, `hilite_light`, `hilite`, `hilite_dark`, `hilite_label` |
 | `workspace` | `background1` … `background4` |
@@ -82,7 +83,7 @@ are still stock-white (Haxial authoring practice).
 
 | Namespace | Examples (reserved) |
 |---|---|
-| `art` | `window.frame.normal`, `window.frame.focus`, `button.push.normal`, `button.push.hilite`, `scrollbar.v.arrows`, `scrollbar.v.indicator`, `column_header.normal`, `column_header.hilite` |
+| `art` | `window.frame.normal`, `window.frame.focus`, `button.push.normal`, `button.push.hilite`, `menu.popup`, `slider.indicator`, `scrollbar.v.arrows`, `scrollbar.v.indicator`, `column_header.normal`, `column_header.hilite` |
 | `icons` | `file.generic.16`, `file.generic.32`, `folder.16`, `folder.32`, `user.16`, `user.32` |
 
 ## Token resolution
@@ -97,15 +98,17 @@ resolve(token):
 The engine never leaves a hole: every kit surface paints from stock when the
 skin is incomplete.
 
-## Kit surfaces (first slice)
+## Kit surfaces
 
 Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 
 1. **Gel window** — framed window with title bar, traffic-light boxes, client fill
 2. **Button** — raised bevel push button (pressed / default variants)
 3. **Field** — sunken text field with focus ring and caret
-4. **List + header** — column header plate + list rows with hilite
-5. **Scrollbar** — track, arrows, proportional thumb
+4. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
+5. **Slider** — bar + draggable indicator thumb
+6. **List + header** — column header plate + list rows with hilite
+7. **Scrollbar** — track, arrows, proportional thumb
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.
@@ -114,7 +117,7 @@ resolved colour roles). They do not hardcode a parallel palette.
 
 - Load / save `.skin.toml`
 - Present named colour roles for editing
-- Live preview of the five kit surfaces above, driven by the same engine apps use
+- Live preview of the kit surfaces above, driven by the same engine apps use
 - Leave incomplete skins valid (partial colour tables are fine)
 
 ## Stack

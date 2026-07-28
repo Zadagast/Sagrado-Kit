@@ -326,23 +326,180 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
 }
 
+constexpr int kMenuItemH = 18;
+constexpr int kSliderThumbW = 10;
+constexpr int kSliderThumbH = 18;
+constexpr int kDropArrowW = 18;
+
+struct MenuLayout {
+    Rect frame{};
+    Rect items_bounds{};
+    int item_h = kMenuItemH;
+    int count = 0;
+};
+
+// Popup / drop-down menu panel. `hot` is the hilited row (-1 none).
+// Optional `disabled_mask` bit i disables item i.
+inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
+                             int width, const char *const *items, int count,
+                             int hot = -1, unsigned disabled_mask = 0) {
+    MenuLayout lay;
+    lay.count = count;
+    lay.item_h = kMenuItemH;
+    int h = 4 + count * kMenuItemH;
+    lay.frame = {x, y, width, h};
+    // Outer ring uses focus box (Haxial: Window Focus / Focus Box)
+    cv.fill(lay.frame, ap.c("menu.background"));
+    cv.frame(lay.frame, ap.c("focus.box"));
+    cv.frame({x + 1, y + 1, width - 2, h - 2}, ap.c("menu.dark"));
+    // Bevel
+    cv.hline(x + 2, x + width - 2, y + 2, ap.c("menu.light"));
+    cv.vline(x + 2, y + 2, y + h - 2, ap.c("menu.light"));
+
+    lay.items_bounds = {x + 2, y + 2, width - 4, count * kMenuItemH};
+    for (int i = 0; i < count; ++i) {
+        Rect row{lay.items_bounds.x, lay.items_bounds.y + i * kMenuItemH,
+                 lay.items_bounds.w, kMenuItemH};
+        bool dis = (disabled_mask >> i) & 1;
+        bool is_hot = (!dis && i == hot);
+        if (is_hot) {
+            cv.fill(row, ap.c("menu.hilite_background"));
+            cv.hline(row.x, row.right(), row.y, ap.c("menu.hilite_light"));
+            cv.vline(row.x, row.y, row.bottom(), ap.c("menu.hilite_light"));
+            cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("menu.hilite_dark"));
+            cv.vline(row.right() - 1, row.y, row.bottom(), ap.c("menu.hilite_dark"));
+        }
+        Color ink = dis ? ap.c("menu.disable_label")
+                        : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        cv.text(row.x + 8, row.y + (kMenuItemH - kFontHeight) / 2, items[i], ink);
+    }
+    return lay;
+}
+
+inline int menu_hit_row(const MenuLayout &lay, int mx, int my) {
+    if (!lay.items_bounds.contains(mx, my) || lay.item_h <= 0) return -1;
+    int row = (my - lay.items_bounds.y) / lay.item_h;
+    if (row < 0 || row >= lay.count) return -1;
+    return row;
+}
+
+// Closed drop-down (popup button): field face + label + arrow well.
+inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
+                           const char *label, bool open, bool pressed) {
+    Color bg = ap.c("text.background");
+    Color workspace = ap.c("primary.background");
+    cv.fill(r, bg);
+    if (open)
+        cv.frame(r, ap.c("focus.box"));
+    else
+        rounded_frame(cv, r, ap.c("primary.frame"), workspace);
+
+    Rect arrow{r.right() - kDropArrowW, r.y, kDropArrowW, r.h};
+    // Arrow well like a mini button
+    Color face = pressed || open ? ap.c("button.dark1") : ap.c("button.face");
+    cv.fill(arrow, face);
+    cv.vline(arrow.x, arrow.y, arrow.bottom(), ap.c("button.frame"));
+    paint_arrow(cv, arrow, false, ap.c("button.label"));
+
+    int tx = r.x + 6;
+    int ty = r.y + (r.h - kFontHeight) / 2;
+    int max_w = arrow.x - tx - 4;
+    // Clip label visually by not drawing past the arrow (simple truncation)
+    if (cv.text_width(label) <= max_w)
+        cv.text(tx, ty, label, ap.c("text.foreground"));
+    else {
+        std::string s(label);
+        while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w) s.pop_back();
+        s += "..";
+        cv.text(tx, ty, s.c_str(), ap.c("text.foreground"));
+    }
+}
+
+struct SliderLayout {
+    Rect bounds{};
+    Rect bar{};
+    Rect thumb{};
+    int value = 0;
+    int max_value = 100;
+};
+
+inline SliderLayout slider_layout(Rect r, int value, int max_value) {
+    SliderLayout s;
+    s.bounds = r;
+    s.max_value = std::max(1, max_value);
+    s.value = std::clamp(value, 0, s.max_value);
+    int bar_h = 6;
+    s.bar = {r.x + 2, r.y + (r.h - bar_h) / 2, r.w - 4, bar_h};
+    int travel = std::max(0, s.bar.w - kSliderThumbW);
+    int tx = s.bar.x + (travel * s.value) / s.max_value;
+    s.thumb = {tx, r.y + (r.h - kSliderThumbH) / 2, kSliderThumbW, kSliderThumbH};
+    return s;
+}
+
+inline int slider_value_at_x(const SliderLayout &s, int mx) {
+    int travel = std::max(1, s.bar.w - kSliderThumbW);
+    int rel = mx - s.bar.x - kSliderThumbW / 2;
+    return std::clamp(rel * s.max_value / travel, 0, s.max_value);
+}
+
+inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
+                                 int value, int max_value, bool hilite) {
+    SliderLayout s = slider_layout(r, value, max_value);
+    // Bar track
+    cv.fill(s.bar, ap.c("slider.bar"));
+    cv.frame(s.bar, ap.c("slider.bar_frame"));
+    // Filled portion
+    if (s.value > 0) {
+        int fill_w = (s.thumb.x + kSliderThumbW / 2) - s.bar.x;
+        fill_w = std::clamp(fill_w, 0, s.bar.w);
+        Rect fill{s.bar.x, s.bar.y, fill_w, s.bar.h};
+        cv.fill(fill, ap.c("slider.bar_hilite"));
+        cv.frame(fill, ap.c("slider.bar_hilite_frame"));
+    }
+    // Thumb
+    Color il = hilite ? ap.c("slider.indicator_hilite_light") : ap.c("slider.indicator_light");
+    Color ind = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
+    Color id = hilite ? ap.c("slider.indicator_hilite_dark") : ap.c("slider.indicator_dark");
+    Color fr = hilite ? ap.c("slider.indicator_hilite_frame") : ap.c("slider.indicator_frame");
+    cv.fill(s.thumb, ind);
+    rounded_frame(cv, s.thumb, fr, ap.c("primary.background"));
+    cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.y + 1, il);
+    cv.vline(s.thumb.x + 1, s.thumb.y + 1, s.thumb.bottom() - 1, il);
+    cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.bottom() - 2, id);
+    cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
+    return s;
+}
+
 struct KitPreviewLayout {
     Rect bounds{};
     Rect btn_ok{}, btn_cancel{}, btn_press{};
     Rect field{};
+    Rect dropdown{};
+    Rect menu{};
+    MenuLayout menu_lay{};
+    Rect slider{};
+    SliderLayout slider_lay{};
     Rect list{};
     Rect sbar{};
     int page_rows = 1;
     int row_count = 8;
 };
 
+struct KitPreviewState {
+    int pressed_btn = 0; // 0 none, 1 OK, 2 Cancel, 3 Pressed
+    bool thumb_hot = false;
+    bool dropdown_open = false;
+    int menu_hot = -1;
+    int menu_sel = 0;
+    int slider_value = 40;
+    bool slider_hot = false;
+};
+
 // Full kit preview panel inside a gel client rect.
-// `pressed_btn`: 0 none, 1 OK, 2 Cancel, 3 Pressed demo.
 inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
                                           Rect client, bool caret_on,
                                           int list_sel, int scroll_val,
-                                          int pressed_btn = 0,
-                                          bool thumb_hot = false) {
+                                          const KitPreviewState &st = {}) {
     KitPreviewLayout lay;
     lay.bounds = client;
     int pad = 10;
@@ -353,39 +510,58 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(x, y, "Kit Preview", ap.c("primary.label"));
     y += kFontHeight + 8;
 
-    // Nested gel sample
-    Rect gel{x, y, std::min(w, 280), 120};
+    // Nested gel sample (compact)
+    Rect gel{x, y, std::min(w, 280), 72};
     paint_gel(cv, ap, gel, "Preview Window", true, 0);
     GelLayout gl = gel_layout(gel.x, gel.y, gel.w, gel.h);
-    cv.text(gl.client.x + 8, gl.client.y + 8, "Client area", ap.c("primary.label"));
-    y = gel.bottom() + 12;
+    cv.text(gl.client.x + 8, gl.client.y + 4, "Client area", ap.c("primary.label"));
+    y = gel.bottom() + 10;
 
-    // Buttons + field
+    // Buttons
     lay.btn_ok = {x, y, 90, 24};
     lay.btn_cancel = {x + 100, y, 90, 24};
     lay.btn_press = {x + 200, y, 90, 24};
-    paint_button(cv, ap, lay.btn_ok, "OK", pressed_btn == 1, true);
-    paint_button(cv, ap, lay.btn_cancel, "Cancel", pressed_btn == 2, false);
-    // Sample always reads as depressed; holding it keeps the same look.
+    paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
+    paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
     paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
-    y += 34;
-    lay.field = {x, y, std::min(w, 290), 24};
-    paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
-    y += 34;
+    y += 30;
 
-    // List + header + scrollbar (scroll_val is first visible row)
+    // Field + dropdown on one row when wide enough
+    int field_w = std::min(w, 290);
+    lay.field = {x, y, field_w, 24};
+    paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
+    y += 30;
+
+    static const char *menu_items[] = {"Standard", "Slate", "Custom...", "Disabled"};
+    static const unsigned kMenuDisabled = 1u << 3;
+    const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 3)];
+    lay.dropdown = {x, y, std::min(w, 200), 24};
+    paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
+                   st.pressed_btn == 4);
+    y += 30;
+
+    // Slider
+    cv.text(x, y, "Slider", ap.c("primary.label"));
+    lay.slider = {x + 56, y, std::min(w - 56, 220), 22};
+    lay.slider_lay =
+        paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
+    char sval[16];
+    std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
+    cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
+    y += 28;
+
+    // List + header + scrollbar
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
     lay.row_count = 8;
     int list_h = client.bottom() - y - pad;
-    if (list_h < 80) list_h = 80;
+    if (list_h < 72) list_h = 72;
     lay.list = {x, y, std::min(w, 320), list_h};
     lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
     int max_scroll = std::max(0, lay.row_count - lay.page_rows);
     if (scroll_val < 0) scroll_val = 0;
     if (scroll_val > max_scroll) scroll_val = max_scroll;
 
-    // Paint header + scrolled body
     Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, kHeaderH};
     paint_column_header(cv, ap, hdr, "Name", true);
     Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW,
@@ -408,6 +584,14 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     }
     lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
                 lay.list.h - kHeaderH};
-    paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows, thumb_hot);
+    paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows, st.thumb_hot);
+
+    // Open dropdown menu painted last so it stacks above the list
+    if (st.dropdown_open) {
+        lay.menu_lay = paint_menu(cv, ap, lay.dropdown.x, lay.dropdown.bottom(),
+                                  lay.dropdown.w, menu_items, 4, st.menu_hot,
+                                  kMenuDisabled);
+        lay.menu = lay.menu_lay.frame;
+    }
     return lay;
 }

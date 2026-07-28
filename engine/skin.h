@@ -146,6 +146,23 @@ inline ColorMap stock_colors() {
     set_role(m, "menu.hilite_dark", rgb(68, 0, 0));
     set_role(m, "menu.hilite_label", rgb(255, 255, 255));
     set_role(m, "menu.disable_label", rgb(136, 136, 136));
+    // Slider (Haxial Slider Bar / Indicator groups)
+    set_role(m, "slider.bar", rgb(34, 34, 34));
+    set_role(m, "slider.bar_frame", rgb(0, 0, 0));
+    set_role(m, "slider.bar_hilite", rgb(136, 0, 0));
+    set_role(m, "slider.bar_hilite_frame", rgb(0, 0, 0));
+    set_role(m, "slider.indicator_light", rgb(102, 102, 102));
+    set_role(m, "slider.indicator", rgb(68, 68, 68));
+    set_role(m, "slider.indicator_dark", rgb(17, 17, 17));
+    set_role(m, "slider.indicator_frame", rgb(0, 0, 0));
+    set_role(m, "slider.indicator_hilite_light", rgb(170, 68, 68));
+    set_role(m, "slider.indicator_hilite", rgb(136, 0, 0));
+    set_role(m, "slider.indicator_hilite_dark", rgb(68, 0, 0));
+    set_role(m, "slider.indicator_hilite_frame", rgb(0, 0, 0));
+    set_role(m, "slider.disable_light", rgb(85, 85, 85));
+    set_role(m, "slider.disable", rgb(58, 58, 58));
+    set_role(m, "slider.disable_dark", rgb(34, 34, 34));
+    set_role(m, "slider.disable_frame", rgb(0, 0, 0));
     // Scrollbar
     set_role(m, "scrollbar.frame", rgb(0, 0, 0));
     set_role(m, "scrollbar.light", rgb(102, 102, 102));
@@ -269,6 +286,27 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"window_focus.dark2", "Window Focus Dark 2"},
         {"window_focus.frame", "Window Focus Frame"},
         {"window_focus.label", "Window Focus Label"},
+        {"menu.light", "Menu Light"},
+        {"menu.background", "Menu Background"},
+        {"menu.dark", "Menu Dark"},
+        {"menu.label", "Menu Label"},
+        {"menu.hilite_light", "Menu Hilite Light"},
+        {"menu.hilite_background", "Menu Hilite Background"},
+        {"menu.hilite_dark", "Menu Hilite Dark"},
+        {"menu.hilite_label", "Menu Hilite Label"},
+        {"menu.disable_label", "Menu Disable Label"},
+        {"slider.bar", "Slider Bar"},
+        {"slider.bar_frame", "Slider Bar Frame"},
+        {"slider.bar_hilite", "Slider Bar Hilite"},
+        {"slider.bar_hilite_frame", "Slider Bar Hilite Frame"},
+        {"slider.indicator_light", "Slider Indicator Light"},
+        {"slider.indicator", "Slider Indicator"},
+        {"slider.indicator_dark", "Slider Indicator Dark"},
+        {"slider.indicator_frame", "Slider Indicator Frame"},
+        {"slider.indicator_hilite_light", "Slider Indicator Hilite Light"},
+        {"slider.indicator_hilite", "Slider Indicator Hilite"},
+        {"slider.indicator_hilite_dark", "Slider Indicator Hilite Dark"},
+        {"slider.indicator_hilite_frame", "Slider Indicator Hilite Frame"},
         {"scrollbar.frame", "ScrollBar Frame"},
         {"scrollbar.light", "ScrollBar Light"},
         {"scrollbar.face", "ScrollBar Face"},
