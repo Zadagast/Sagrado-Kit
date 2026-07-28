@@ -48,8 +48,8 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 sudo apt install g++-mingw-w64-i686 wine
 
 make          # → build/SagradoKitEditor.exe + copied example skins
-make run      # launch under Wine (needs `wine` installed)
-# without Wine: copy the .exe to Windows, or: sudo apt install wine
+make run      # launch under Wine (prefers `wine64`, then `wine`)
+# without Wine: copy the .exe to Windows, or install WineHQ and use wine64
 ```
 
 ### Windows
