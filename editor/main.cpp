@@ -254,7 +254,6 @@ void paint() {
     Appearance &ap = g.ap;
 
     paint_gel(cv, ap, {0, 0, W, H}, "SagradoKit Editor", g.focused, g.pressed_box);
-    Rect client = g.gel.client;
 
     // Depress only while the cursor is still over the pressed button.
     POINT pt;

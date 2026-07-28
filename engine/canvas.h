@@ -150,7 +150,7 @@ struct Canvas {
 
     // Draw label centred on the ink bounds inside r (not the advance box).
     void text_centered(Rect r, const char *s, Color c, int press_off = 0) {
-        int x0, y0, x1, y1;
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
         if (!text_ink(s, x0, y0, x1, y1)) return;
         int iw = x1 - x0 + 1;
         int ih = y1 - y0 + 1;
