@@ -110,10 +110,21 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
     return lay;
 }
 
-inline void gel_flat_box(Canvas &cv, Rect r, bool pressed, Color deep, Color frame) {
+// Title-bar box as KDX Settings draws it: red plate inset into the bar
+// (dark top-left / bright bottom-right). Pressed fills deeper.
+inline void gel_bevel_box(Canvas &cv, Rect r, bool pressed, Color bright,
+                          Color body, Color deep, Color frame) {
     if (r.w <= 0 || r.h <= 0) return;
-    if (pressed) cv.fill(r, deep);
+    cv.fill(r, pressed ? deep : body);
     cv.frame(r, frame);
+    // Idle = inset into the title slab (matches real KDX Settings).
+    // Pressed = even deeper / inverted highlight.
+    Color tl = pressed ? bright : deep;
+    Color br = pressed ? deep : bright;
+    cv.hline(r.x + 1, r.right() - 1, r.y + 1, tl);
+    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, tl);
+    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, br);
+    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, br);
 }
 
 inline void gel_close_glyph(Canvas &cv, Rect r, Color c) {
@@ -222,23 +233,23 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
             label);
 
     if (lay.close_box.w > 0) {
-        gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame);
+        gel_bevel_box(cv, lay.close_box, pressed_box == 1, bright, body, deep, frame);
         gel_close_glyph(cv, lay.close_box, label);
     }
     if (lay.hatch_box.w > 0) {
-        gel_flat_box(cv, lay.hatch_box, false, deep, frame);
+        gel_bevel_box(cv, lay.hatch_box, false, bright, body, deep, frame);
         gel_diagonal_hatch(cv,
                            {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
                             lay.hatch_box.w - 4, lay.hatch_box.h - 4},
                            label);
     }
     if (lay.max_box.w > 0) {
-        gel_flat_box(cv, lay.max_box, pressed_box == 3, deep, frame);
+        gel_bevel_box(cv, lay.max_box, pressed_box == 3, bright, body, deep, frame);
         cv.fill({lay.max_box.x + 1, lay.max_box.y + 6, 10, 2}, label);
         cv.fill({lay.max_box.x + 5, lay.max_box.y + 2, 2, 10}, label);
     }
     if (lay.min_box.w > 0) {
-        gel_flat_box(cv, lay.min_box, pressed_box == 4, deep, frame);
+        gel_bevel_box(cv, lay.min_box, pressed_box == 4, bright, body, deep, frame);
         cv.fill({lay.min_box.x + 1, lay.min_box.y + 6, 10, 2}, label);
     }
 }
@@ -498,9 +509,9 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
 }
 
 constexpr int kMenuItemH = 18;
-constexpr int kSliderThumbW = 10;
+constexpr int kSliderThumbW = 11;
 constexpr int kSliderThumbH = 18;
-constexpr int kDropArrowW = 18;
+constexpr int kDropArrowW = 20; // AppearanceEdit: No-Title popup usually 20×20
 
 struct MenuLayout {
     Rect frame{};
@@ -554,35 +565,75 @@ inline int menu_hit_row(const MenuLayout &lay, int mx, int my) {
     return row;
 }
 
-// Closed drop-down (popup button): field face + label + arrow well.
+// Haxial Popup Button — a real push-button plate with a recessed arrow well.
+// NOT a text field. AppearanceEdit: usually ~20px; KDX Settings matches sibling
+// dialog buttons. Colour path uses Button / Button Hilite groups + Symbol.
 inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
-                           const char *label, bool open, bool pressed) {
-    Color bg = ap.c("text.background");
+                           const char *label, bool open, bool pressed,
+                           bool disabled = false) {
     Color workspace = ap.c("primary.background");
-    cv.fill(r, bg);
-    if (open)
-        cv.frame(r, ap.c("focus.box"));
-    else
-        rounded_frame(cv, r, ap.c("primary.frame"), workspace);
+    const char *grp = disabled ? "button_disable"
+                     : (pressed || open) ? "button_hilite" : "button";
+    auto bc = [&](const char *suffix) {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%s.%s", grp, suffix);
+        return ap.c(buf);
+    };
 
-    Rect arrow{r.right() - kDropArrowW, r.y, kDropArrowW, r.h};
-    // Arrow well like a mini button
-    Color face = pressed || open ? ap.c("button.dark1") : ap.c("button.face");
-    cv.fill(arrow, face);
-    cv.vline(arrow.x, arrow.y, arrow.bottom(), ap.c("button.frame"));
-    paint_arrow(cv, arrow, false, ap.c("button.label"));
+    Color face = bc("face");
+    Color l2 = bc("light2");
+    Color l1 = bc("light1");
+    Color d1 = bc("dark1");
+    Color d2 = bc("dark2");
+    Color fr = bc("frame");
+    Color ink = bc("label");
 
-    int tx = r.x + 6;
-    int ty = r.y + (r.h - kFontHeight) / 2;
-    int max_w = arrow.x - tx - 4;
-    // Clip label visually by not drawing past the arrow (simple truncation)
+    // Whole control = button chrome (rounded frame + 2px bevel)
+    cv.fill(r, face);
+    rounded_frame(cv, r, fr, workspace);
+    if (!pressed && !open) {
+        cv.hline(r.x + 1, r.right() - 1, r.y + 1, l2);
+        cv.hline(r.x + 2, r.right() - 2, r.y + 2, l1);
+        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, l2);
+        cv.vline(r.x + 2, r.y + 2, r.bottom() - 2, l1);
+        cv.hline(r.x + 2, r.right() - 2, r.bottom() - 3, d1);
+        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
+        cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
+        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
+    } else {
+        // Depressed / open — invert bevel
+        cv.hline(r.x + 1, r.right() - 1, r.y + 1, d2);
+        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, d2);
+        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, l2);
+        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, l2);
+    }
+
+    // Recessed arrow well on the right (KDX Settings)
+    int aw = std::min(kDropArrowW, r.w / 3);
+    if (aw < 14) aw = std::min(14, r.w);
+    Rect well{r.right() - aw - 1, r.y + 2, aw - 1, r.h - 4};
+    if (well.w > 4 && well.h > 4) {
+        cv.fill(well, d1);
+        // Inset bevel: dark top-left, light bottom-right
+        cv.hline(well.x, well.right(), well.y, d2);
+        cv.vline(well.x, well.y, well.bottom(), d2);
+        cv.hline(well.x, well.right(), well.bottom() - 1, l2);
+        cv.vline(well.right() - 1, well.y, well.bottom(), l2);
+        paint_arrow(cv, well, false, ink);
+    }
+
+    // Title left of the well
+    int tx = r.x + 8;
+    int ty = r.y + (r.h - kFontHeight) / 2 + ((pressed || open) ? 1 : 0);
+    int max_w = well.x - tx - 4;
+    if (max_w < 8) max_w = 8;
     if (cv.text_width(label) <= max_w)
-        cv.text(tx, ty, label, ap.c("text.foreground"));
+        cv.text(tx, ty, label, ink);
     else {
         std::string s(label);
         while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w) s.pop_back();
         s += "..";
-        cv.text(tx, ty, s.c_str(), ap.c("text.foreground"));
+        cv.text(tx, ty, s.c_str(), ink);
     }
 }
 
@@ -638,6 +689,10 @@ inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
     cv.vline(s.thumb.x + 1, s.thumb.y + 1, s.thumb.bottom() - 1, il);
     cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.bottom() - 2, id);
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
+    // Grip ridges — three horizontal lines like KDX Settings volume thumb
+    int mid = s.thumb.y + s.thumb.h / 2;
+    for (int i = -2; i <= 2; i += 2)
+        cv.hline(s.thumb.x + 2, s.thumb.right() - 2, mid + i, il);
     return s;
 }
 
@@ -703,13 +758,21 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
     y += kFieldH + 8;
 
+    // Popup buttons — real bevelled plates (KDX Settings), not text fields.
+    // AppearanceEdit default ~20px; match sibling buttons when in a dialog row.
     static const char *menu_items[] = {"Standard", "Slate", "Custom...", "Disabled"};
     static const unsigned kMenuDisabled = 1u << 3;
     const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 3)];
-    lay.dropdown = {x, y, std::min(w, 180), kButtonH};
+    int pop_h = kButtonH; // KDX Settings: popup matches sibling dialog buttons
+    lay.dropdown = {x, y, std::min(w, 200), pop_h};
     paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
-                   st.pressed_btn == 4);
-    y += kButtonH + 8;
+                   st.pressed_btn == 4, false);
+    // Disabled companion (KDX Settings "Sound List" / None)
+    Rect drop_dis{lay.dropdown.right() + 10, y, std::min(120, w - lay.dropdown.w - 10),
+                  pop_h};
+    if (drop_dis.w > 60)
+        paint_dropdown(cv, ap, drop_dis, "None", false, false, true);
+    y += pop_h + 8;
 
     // Slider (bar centred in a ≤30px total height band per AppearanceEdit)
     cv.text(x, y + 2, "Slider", ap.c("primary.label"));
