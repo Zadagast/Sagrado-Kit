@@ -215,11 +215,41 @@ inline Rect gel_place_title_btn(const SkinImage *img, int win_x, int win_y,
     return {win_x + bx, win_y + by, img->w, img->h};
 }
 
+// disabled_mask bits match pressed_box ids: 1=close, 2=menu, 3=max, 4=min.
+// Hap contract: Disabled art optional — if absent, hide the button.
+inline const SkinImage *gel_title_btn_art(const Appearance *ap, bool focused,
+                                          bool disabled, bool pressed,
+                                          const char *normal, const char *focus,
+                                          const char *hilited,
+                                          const char *disabled_slot) {
+    if (!ap) return nullptr;
+    if (disabled) return ap->art(disabled_slot);
+    const SkinImage *img = nullptr;
+    if (pressed) img = ap->art(hilited);
+    if (!img) img = focused ? ap->art(focus) : ap->art(normal);
+    if (!img) img = ap->art(normal);
+    return img;
+}
+
+// Solid Primary Background colour, then optional tiled Primary Background art.
+inline void paint_primary_background(Canvas &cv, const Appearance &ap, Rect r) {
+    if (r.w <= 0 || r.h <= 0) return;
+    cv.fill(r, ap.c("primary.background"));
+    const SkinImage *pat = ap.art("primary.background");
+    if (!pat || pat->empty() || pat->w <= 0 || pat->h <= 0) return;
+    Rect prev = cv.push_clip(r);
+    for (int py = r.y; py < r.bottom(); py += pat->h)
+        for (int px = r.x; px < r.right(); px += pat->w)
+            cv.blit_image(*pat, px, py);
+    cv.pop_clip(prev);
+}
+
 // Placement: art frame Positions when present, else Standard metrics.
 inline GelLayout gel_layout(int x, int y, int w, int h,
                             GelStyle style = GelStyle::Main,
                             const Appearance *ap = nullptr,
-                            bool focused = true) {
+                            bool focused = true,
+                            unsigned disabled_mask = 0) {
     GelLayout lay;
     lay.window = {x, y, w, h};
     lay.title = {x, y, w, kTitleH};
@@ -239,27 +269,43 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         if (bb <= 0) bb = kBorder;
         lay.title_h = bt;
         lay.client = {x + bl, y + bt, w - bl - br, h - bt - bb};
-        const char *close_n = focused ? "window.close.focus" : "window.close.normal";
-        const char *min_n = focused ? "window.minimize.focus" : "window.minimize.normal";
-        const char *max_n = focused ? "window.maximize.focus" : "window.maximize.normal";
-        const char *menu_n = focused ? "window.menu.focus" : "window.menu.normal";
-        const SkinImage *close_img = ap->art(close_n);
-        if (!close_img) close_img = ap->art("window.close.normal");
-        const SkinImage *min_img = ap->art(min_n);
-        if (!min_img) min_img = ap->art("window.minimize.normal");
-        const SkinImage *max_img = ap->art(max_n);
-        if (!max_img) max_img = ap->art("window.maximize.normal");
-        const SkinImage *menu_img = ap->art(menu_n);
-        if (!menu_img) menu_img = ap->art("window.menu.normal");
-        lay.close_box = gel_place_title_btn(close_img, x, y, w);
-        lay.min_box = gel_place_title_btn(min_img, x, y, w);
-        lay.max_box = gel_place_title_btn(max_img, x, y, w);
-        lay.hatch_box = gel_place_title_btn(menu_img, x, y, w);
-        // No menu art → Standard rectangle next to Close (every Haxial window).
-        if (lay.hatch_box.w <= 0 && lay.close_box.w > 0)
+        bool close_dis = (disabled_mask & (1u << 1)) != 0;
+        bool menu_dis = (disabled_mask & (1u << 2)) != 0;
+        bool max_dis = (disabled_mask & (1u << 3)) != 0;
+        bool min_dis = (disabled_mask & (1u << 4)) != 0;
+        const SkinImage *close_img =
+            gel_title_btn_art(ap, focused, close_dis, false, "window.close.normal",
+                              "window.close.focus", "window.close.hilited",
+                              "window.close.disabled");
+        const SkinImage *min_img =
+            gel_title_btn_art(ap, focused, min_dis, false, "window.minimize.normal",
+                              "window.minimize.focus", "window.minimize.hilited",
+                              "window.minimize.disabled");
+        const SkinImage *max_img =
+            gel_title_btn_art(ap, focused, max_dis, false, "window.maximize.normal",
+                              "window.maximize.focus", "window.maximize.hilited",
+                              "window.maximize.disabled");
+        const SkinImage *menu_img =
+            gel_title_btn_art(ap, focused, menu_dis, false, "window.menu.normal",
+                              "window.menu.focus", "window.menu.hilited",
+                              "window.menu.disabled");
+        // Disabled without art → hide (empty rect). Otherwise place from art.
+        lay.close_box = close_dis && !close_img
+                            ? Rect{0, 0, 0, 0}
+                            : gel_place_title_btn(close_img, x, y, w);
+        lay.min_box = min_dis && !min_img ? Rect{0, 0, 0, 0}
+                                          : gel_place_title_btn(min_img, x, y, w);
+        lay.max_box = max_dis && !max_img ? Rect{0, 0, 0, 0}
+                                          : gel_place_title_btn(max_img, x, y, w);
+        lay.hatch_box = menu_dis && !menu_img
+                            ? Rect{0, 0, 0, 0}
+                            : gel_place_title_btn(menu_img, x, y, w);
+        // No menu art → Standard rectangle next to Close (every Haxial window),
+        // unless the menu button is disabled-and-hidden.
+        if (!menu_dis && lay.hatch_box.w <= 0 && lay.close_box.w > 0)
             lay.hatch_box = {lay.close_box.right() + 8, lay.close_box.y, kHatchW,
                             lay.close_box.h};
-        else if (lay.hatch_box.w <= 0)
+        else if (!menu_dis && lay.hatch_box.w <= 0)
             lay.hatch_box = {x + 5 + kBtnBox + 8, y + kBtnTop, kHatchW, kBtnBox};
         const SkinImage *resize = focused ? ap->art("window.resize.focus")
                                           : ap->art("window.resize.normal");
@@ -277,10 +323,22 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder,
                       h - kTitleH - kBorder};
         int by = y + kBtnTop;
-        lay.close_box = {x + 5, by, kBtnBox, kBtnBox};
-        lay.hatch_box = {lay.close_box.right() + 8, by, kHatchW, kBtnBox};
-        lay.min_box = {x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
-        lay.max_box = {lay.min_box.x - 4 - kBtnBox, by, kBtnBox, kBtnBox};
+        bool close_dis = (disabled_mask & (1u << 1)) != 0;
+        bool menu_dis = (disabled_mask & (1u << 2)) != 0;
+        bool max_dis = (disabled_mask & (1u << 3)) != 0;
+        bool min_dis = (disabled_mask & (1u << 4)) != 0;
+        // Colour-path gel has no Disabled art → hide when disabled.
+        lay.close_box = close_dis ? Rect{0, 0, 0, 0} : Rect{x + 5, by, kBtnBox, kBtnBox};
+        lay.hatch_box = menu_dis ? Rect{0, 0, 0, 0}
+                                 : Rect{(lay.close_box.w > 0 ? lay.close_box.right() + 8
+                                                             : x + 5 + kBtnBox + 8),
+                                        by, kHatchW, kBtnBox};
+        lay.min_box = min_dis ? Rect{0, 0, 0, 0}
+                              : Rect{x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
+        lay.max_box = max_dis ? Rect{0, 0, 0, 0}
+                              : Rect{(lay.min_box.w > 0 ? lay.min_box.x - 4 - kBtnBox
+                                                        : x + w - 5 - 2 * kBtnBox - 4),
+                                     by, kBtnBox, kBtnBox};
         lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
     }
 
@@ -389,10 +447,13 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
 }
 
 // Gel: art frame + title boxes when present; else Standard colour chrome.
+// disabled_mask bits: 1=close, 2=menu, 3=max, 4=min — Disabled art or hide.
 inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                       const char *title, bool focused, int pressed_box = 0,
-                      GelStyle style = GelStyle::Main) {
-    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style, &ap, focused);
+                      GelStyle style = GelStyle::Main,
+                      unsigned disabled_mask = 0) {
+    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style, &ap, focused,
+                               disabled_mask);
 
     const SkinImage *frame =
         focused ? ap.art("window.frame.focus") : ap.art("window.frame.normal");
@@ -403,39 +464,42 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         int tw = cv.text_width(title);
         cv.text(win.x + (win.w - tw) / 2,
                 win.y + (lay.title_h - kFontHeight) / 2, title, tc);
-        auto paint_btn = [&](Rect r, const char *normal, const char *focus,
-                             const char *hilited, bool pressed,
+        auto paint_btn = [&](Rect r, int box_id, const char *normal,
+                             const char *focus, const char *hilited,
+                             const char *disabled_slot,
                              void (*glyph)(Canvas &, Rect, Color)) {
             if (r.w <= 0) return;
-            const SkinImage *img = nullptr;
-            if (pressed) img = ap.art(hilited);
-            if (!img) img = focused ? ap.art(focus) : ap.art(normal);
-            if (!img) img = ap.art(normal);
-            if (img) {
-                // Title buttons are placed 1:1 — never 9-slice (caps are 0 and
-                // nine_slice would invent mid caps that smear the sphere).
-                if (img->w == r.w && img->h == r.h)
-                    cv.blit_image(*img, r.x, r.y);
-                else
-                    cv.place(*img, r.x + (r.w - img->w) / 2,
-                             r.y + (r.h - img->h) / 2);
-            }
-            // Milk Redux plates are blank spheres — draw Standard glyphs on top.
-            if (glyph) glyph(cv, r, tc);
+            bool disabled = (disabled_mask & (1u << box_id)) != 0;
+            bool pressed = !disabled && pressed_box == box_id;
+            const SkinImage *img =
+                gel_title_btn_art(&ap, focused, disabled, pressed, normal, focus,
+                                  hilited, disabled_slot);
+            if (!img) return; // disabled without art → already hidden in layout
+            if (img->w == r.w && img->h == r.h)
+                cv.blit_image(*img, r.x, r.y);
+            else
+                cv.place(*img, r.x + (r.w - img->w) / 2,
+                         r.y + (r.h - img->h) / 2);
+            // Milk Redux plates are blank spheres — draw Standard glyphs on top
+            // for interactive states only (disabled art carries its own look).
+            if (!disabled && glyph) glyph(cv, r, tc);
         };
-        paint_btn(lay.close_box, "window.close.normal", "window.close.focus",
-                  "window.close.hilited", pressed_box == 1, gel_close_glyph);
-        paint_btn(lay.max_box, "window.maximize.normal", "window.maximize.focus",
-                  "window.maximize.hilited", pressed_box == 3, gel_max_glyph);
-        paint_btn(lay.min_box, "window.minimize.normal", "window.minimize.focus",
-                  "window.minimize.hilited", pressed_box == 4, gel_min_glyph);
+        paint_btn(lay.close_box, 1, "window.close.normal", "window.close.focus",
+                  "window.close.hilited", "window.close.disabled", gel_close_glyph);
+        paint_btn(lay.max_box, 3, "window.maximize.normal", "window.maximize.focus",
+                  "window.maximize.hilited", "window.maximize.disabled",
+                  gel_max_glyph);
+        paint_btn(lay.min_box, 4, "window.minimize.normal", "window.minimize.focus",
+                  "window.minimize.hilited", "window.minimize.disabled",
+                  gel_min_glyph);
         // Window Menu rectangle — Hap art when present, else striped plate.
         if (lay.hatch_box.w > 0) {
-            const SkinImage *mimg = nullptr;
-            if (pressed_box == 2) mimg = ap.art("window.menu.hilited");
-            if (!mimg) mimg = focused ? ap.art("window.menu.focus")
-                                      : ap.art("window.menu.normal");
-            if (!mimg) mimg = ap.art("window.menu.normal");
+            bool menu_dis = (disabled_mask & (1u << 2)) != 0;
+            bool menu_pressed = !menu_dis && pressed_box == 2;
+            const SkinImage *mimg =
+                gel_title_btn_art(&ap, focused, menu_dis, menu_pressed,
+                                  "window.menu.normal", "window.menu.focus",
+                                  "window.menu.hilited", "window.menu.disabled");
             if (mimg) {
                 if (mimg->w == lay.hatch_box.w && mimg->h == lay.hatch_box.h)
                     cv.blit_image(*mimg, lay.hatch_box.x, lay.hatch_box.y);
@@ -443,8 +507,8 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                     cv.place(*mimg,
                              lay.hatch_box.x + (lay.hatch_box.w - mimg->w) / 2,
                              lay.hatch_box.y + (lay.hatch_box.h - mimg->h) / 2);
-            } else {
-                gel_flat_box(cv, lay.hatch_box, pressed_box == 2, ap.c("window_focus.dark1"),
+            } else if (!menu_dis) {
+                gel_flat_box(cv, lay.hatch_box, menu_pressed, ap.c("window_focus.dark1"),
                              ap.c("window_focus.frame"));
                 gel_diagonal_hatch(cv,
                                    {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
@@ -452,7 +516,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                                    tc);
             }
         }
-        cv.fill(lay.client, ap.c("primary.background"));
+        paint_primary_background(cv, ap, lay.client);
         return;
     }
 
@@ -501,7 +565,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     // Single client hole outline (no parallel deep/bright tracks around it).
     cv.frame(win, frame_c);
     cv.frame(client, frame_c);
-    cv.fill(client, ap.c("primary.background"));
+    paint_primary_background(cv, ap, client);
 
     // Soft inset: one pixel inside the hole, top/left deep, bottom/right bright.
     if (client.w > 2 && client.h > 2) {
@@ -1427,6 +1491,19 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
                 cv.hline(row.x + 4, row.right() - 4, mid + 1, ap.c("menu.light"));
             }
             continue;
+        }
+
+        const char *pslot = dis ? "menu.item.pattern.disabled"
+                                : (is_hot ? "menu.item.pattern.hilited"
+                                          : "menu.item.pattern.normal");
+        const SkinImage *ipat = ap.art(pslot);
+        if (!ipat && is_hot) ipat = ap.art("menu.item.pattern.normal");
+        if (ipat && !ipat->empty() && ipat->w > 0 && ipat->h > 0) {
+            Rect prev = cv.push_clip(row);
+            for (int py = row.y; py < row.bottom(); py += ipat->h)
+                for (int px = row.x; px < row.right(); px += ipat->w)
+                    cv.blit_image(*ipat, px, py);
+            cv.pop_clip(prev);
         }
 
         const char *islot = dis ? "menu.item.disabled"

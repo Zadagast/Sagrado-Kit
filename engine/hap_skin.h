@@ -14,6 +14,7 @@ struct HapColorMap { int index; const char *role; };
 
 
 static const HapArtMap kHapArtMap[] = {
+    {17, "primary.background"},
     {25, "button.normal"},
     {26, "button.hilited"},
     {27, "button.disabled"},
@@ -52,6 +53,9 @@ static const HapArtMap kHapArtMap[] = {
     {97, "popup.symbol.normal"},
     {98, "popup.symbol.hilited"},
     {99, "popup.symbol.disabled"},
+    {101, "focus_box.normal"},
+    {102, "focus_box.hilited"},
+    {103, "focus_box.disabled"},
     {105, "separator.h"},
     {106, "separator.v"},
     {107, "box"},
@@ -109,6 +113,9 @@ static const HapArtMap kHapArtMap[] = {
     {196, "scrollbar.v.arrow_hilite.single_down"},
     {200, "menu.background_pattern"},
     {201, "menu.background"},
+    {202, "menu.item.pattern.normal"},
+    {203, "menu.item.pattern.hilited"},
+    {204, "menu.item.pattern.disabled"},
     {206, "menu.item.normal"},
     {207, "menu.item.hilited"},
     {208, "menu.separator"},
@@ -117,16 +124,23 @@ static const HapArtMap kHapArtMap[] = {
     {223, "window.close.normal"},
     {224, "window.close.focus"},
     {225, "window.close.hilited"},
+    {226, "window.close.disabled"},
     {228, "window.minimize.normal"},
     {229, "window.minimize.focus"},
     {230, "window.minimize.hilited"},
+    {231, "window.minimize.disabled"},
     {233, "window.maximize.normal"},
     {234, "window.maximize.focus"},
     {235, "window.maximize.hilited"},
+    {236, "window.maximize.disabled"},
     {238, "window.menu.normal"},
     {239, "window.menu.focus"},
+    {240, "window.menu.hilited"},
+    {241, "window.menu.disabled"},
     {243, "window.resize.normal"},
     {244, "window.resize.focus"},
+    {248, "popup_frame.normal"},
+    {249, "popup_frame.focus"},
     {251, "wonderlight.off"},
     {252, "wonderlight.pause"},
     {253, "wonderlight.ready"},
@@ -135,8 +149,10 @@ static const HapArtMap kHapArtMap[] = {
     {256, "wonderlight.flash_off"},
     {257, "wonderlight.flash_on1"},
     {258, "wonderlight.flash_on2"},
+    {263, "disclosure.plus.medium"},
+    {267, "disclosure.minus.medium"},
 };
-static constexpr int kHapArtMapN = 121;
+static constexpr int kHapArtMapN = 137;
 
 static const HapColorMap kHapColorMap[] = {
     {1, "primary.light"},

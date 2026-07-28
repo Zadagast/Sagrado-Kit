@@ -2,6 +2,12 @@ themes: 11  unique slots used: 136
 
 === Known Sagrado mappings — presence & typical geometry ===
 
+[17] Primary Background  — in 4/11 themes
+  Boilerplate          128x128  caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         64x64   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
 [25] Button Normal  — in 9/11 themes
   Ashen                 15x23   caps=[7, 11, 7, 11]  pos=[0, 0, 0, 0]
   BeOS                   9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
@@ -24,6 +30,525 @@ themes: 11  unique slots used: 136
   Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
   WinXP                  9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
 
+[27] Button Disabled  — in 9/11 themes
+  Ashen                 13x23   caps=[6, 11, 6, 11]  pos=[0, 0, 0, 0]
+  BeOS                   9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+  Boilerplate           39x21   caps=[19, 10, 19, 10]  pos=[0, 0, 0, 0]
+  Function 2.0          35x15   caps=[17, 7, 17, 7]  pos=[0, 0, 0, 0]
+  MacOS Classic          9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+  Milk Redux            26x23   caps=[13, 11, 12, 11]  pos=[0, 0, 0, 0]
+  Mjolnir                5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                  8x8    caps=[4, 4, 3, 3]  pos=[0, 0, 0, 0]
+
+[37] Default Button Normal  — in 9/11 themes
+  Ashen                 14x23   caps=[7, 11, 6, 11]  pos=[0, 0, 0, 0]
+  BeOS                  17x17   caps=[8, 8, 8, 8]  pos=[0, 0, 0, 0]
+  Boilerplate           45x27   caps=[22, 13, 22, 13]  pos=[0, 0, 0, 0]
+  Function 2.0          36x18   caps=[17, 9, 18, 8]  pos=[0, 0, 0, 0]
+  MacOS Classic         15x15   caps=[7, 7, 7, 7]  pos=[0, 0, 0, 0]
+  Milk Redux            26x23   caps=[13, 11, 12, 11]  pos=[0, 0, 0, 0]
+  Mjolnir               11x11   caps=[5, 5, 5, 5]  pos=[0, 0, 0, 0]
+  Terminal-TRON         22x22   caps=[11, 11, 10, 10]  pos=[0, 0, 0, 0]
+  WinXP                 13x27   caps=[6, 13, 6, 13]  pos=[0, 0, 0, 0]
+
+[38] Default Button Hilited  — in 9/11 themes
+  Ashen                 13x23   caps=[6, 11, 6, 11]  pos=[0, 0, 0, 0]
+  BeOS                  17x17   caps=[8, 8, 8, 8]  pos=[0, 0, 0, 0]
+  Boilerplate           45x27   caps=[22, 13, 22, 13]  pos=[0, 0, 0, 0]
+  Function 2.0          36x18   caps=[17, 9, 18, 8]  pos=[0, 0, 0, 0]
+  MacOS Classic         15x15   caps=[7, 7, 7, 7]  pos=[0, 0, 0, 0]
+  Milk Redux            31x23   caps=[15, 11, 15, 11]  pos=[0, 0, 0, 0]
+  Mjolnir               11x11   caps=[5, 5, 5, 5]  pos=[0, 0, 0, 0]
+  Terminal-TRON         22x22   caps=[11, 11, 10, 10]  pos=[0, 0, 0, 0]
+  WinXP                 15x15   caps=[7, 7, 7, 7]  pos=[0, 0, 0, 0]
+
+[39] Default Button Disabled  — in 9/11 themes
+  Ashen                 13x23   caps=[6, 11, 6, 11]  pos=[0, 0, 0, 0]
+  BeOS                  17x17   caps=[8, 8, 8, 8]  pos=[0, 0, 0, 0]
+  Boilerplate           45x27   caps=[22, 13, 22, 13]  pos=[0, 0, 0, 0]
+  Function 2.0          36x18   caps=[17, 9, 18, 8]  pos=[0, 0, 0, 0]
+  MacOS Classic         11x11   caps=[5, 5, 5, 5]  pos=[0, 0, 0, 0]
+  Milk Redux            26x23   caps=[13, 11, 12, 11]  pos=[0, 0, 0, 0]
+  Mjolnir               11x11   caps=[5, 5, 5, 5]  pos=[0, 0, 0, 0]
+  Terminal-TRON         22x22   caps=[11, 11, 10, 10]  pos=[0, 0, 0, 0]
+  WinXP                 14x14   caps=[7, 7, 6, 6]  pos=[0, 0, 0, 0]
+
+[49] Icon Button Normal  — in 8/11 themes
+  Ashen                 15x22   caps=[7, 11, 7, 10]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Boilerplate           15x15   caps=[7, 7, 7, 7]  pos=[0, 0, 0, 0]
+  Function 2.0          35x15   caps=[17, 7, 17, 7]  pos=[0, 0, 0, 0]
+  MacOS Classic          5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Milk Redux            26x23   caps=[13, 11, 12, 11]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                 12x19   caps=[6, 9, 5, 9]  pos=[0, 0, 0, 0]
+
+[50] Icon Button Hilited  — in 8/11 themes
+  Ashen                 13x22   caps=[6, 11, 6, 10]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Boilerplate            9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+  Function 2.0          35x15   caps=[17, 7, 17, 7]  pos=[0, 0, 0, 0]
+  MacOS Classic          5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Milk Redux            31x23   caps=[15, 11, 15, 11]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                  9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+
+[51] Icon Button Disabled  — in 8/11 themes
+  Ashen                 13x22   caps=[6, 11, 6, 10]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Boilerplate            7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Function 2.0          35x15   caps=[17, 7, 17, 7]  pos=[0, 0, 0, 0]
+  MacOS Classic          3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Milk Redux            26x23   caps=[13, 11, 12, 11]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                  8x8    caps=[4, 4, 3, 3]  pos=[0, 0, 0, 0]
+
+[57] Tick Button Blank Normal  — in 8/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[58] Tick Button Blank Hilited  — in 8/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[59] Tick Button Blank Disabled  — in 8/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[61] Tick Button Ticked Normal  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[62] Tick Button Ticked Hilited  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[63] Tick Button Ticked Disabled  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[65] Tick Button Tristated Normal  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[66] Tick Button Tristated Hilited  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[67] Tick Button Tristated Disabled  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[69] Mutex Button Blank Normal  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[70] Mutex Button Blank Hilited  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[71] Mutex Button Blank Disabled  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x15   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[73] Mutex Button Ticked Normal  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[74] Mutex Button Ticked Hilited  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[75] Mutex Button Ticked Disabled  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[77] Mutex Button Tristated Normal  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[78] Mutex Button Tristated Hilited  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[79] Mutex Button Tristated Disabled  — in 9/11 themes
+  Ashen                 11x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 13x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[81] Small Plus Button Normal  — in 7/11 themes
+  Ashen                 10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             6x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[85] Small Minus Button Normal  — in 7/11 themes
+  Ashen                 10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             8x6    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[89] Popup Button Normal  — in 9/11 themes
+  Ashen                 31x24   caps=[8, 12, 22, 11]  pos=[0, 0, 0, 0]
+  BeOS                   6x6    caps=[2, 2, 3, 3]  pos=[0, 0, 0, 0]
+  Boilerplate           48x19   caps=[16, 6, 31, 12]  pos=[0, 0, 0, 0]
+  Function 2.0          23x17   caps=[2, 2, 20, 14]  pos=[0, 0, 0, 0]
+  MacOS Classic         26x7    caps=[3, 3, 22, 3]  pos=[0, 0, 0, 0]
+  Milk Redux            22x20   caps=[2, 10, 19, 9]  pos=[0, 0, 0, 0]
+  Mjolnir               23x5    caps=[2, 2, 20, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         23x5    caps=[2, 2, 20, 2]  pos=[0, 0, 0, 0]
+  WinXP                 20x13   caps=[1, 6, 18, 6]  pos=[0, 0, 0, 0]
+
+[90] Popup Button Hilited  — in 9/11 themes
+  Ashen                 31x24   caps=[8, 12, 22, 11]  pos=[0, 0, 0, 0]
+  BeOS                   6x6    caps=[2, 2, 3, 3]  pos=[0, 0, 0, 0]
+  Boilerplate           48x19   caps=[16, 6, 31, 12]  pos=[0, 0, 0, 0]
+  Function 2.0          23x17   caps=[2, 2, 20, 14]  pos=[0, 0, 0, 0]
+  MacOS Classic         26x7    caps=[3, 3, 22, 3]  pos=[0, 0, 0, 0]
+  Milk Redux            22x20   caps=[2, 10, 19, 9]  pos=[0, 0, 0, 0]
+  Mjolnir               23x5    caps=[2, 2, 20, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         23x5    caps=[2, 2, 20, 2]  pos=[0, 0, 0, 0]
+  WinXP                 20x13   caps=[1, 6, 18, 6]  pos=[0, 0, 0, 0]
+
+[91] Popup Button Disabled  — in 9/11 themes
+  Ashen                 31x24   caps=[8, 12, 22, 11]  pos=[0, 0, 0, 0]
+  BeOS                   6x6    caps=[2, 2, 3, 3]  pos=[0, 0, 0, 0]
+  Boilerplate           48x19   caps=[16, 6, 31, 12]  pos=[0, 0, 0, 0]
+  Function 2.0          23x17   caps=[2, 2, 20, 14]  pos=[0, 0, 0, 0]
+  MacOS Classic         25x5    caps=[2, 2, 22, 2]  pos=[0, 0, 0, 0]
+  Milk Redux            22x20   caps=[2, 10, 19, 9]  pos=[0, 0, 0, 0]
+  Mjolnir               23x5    caps=[2, 2, 20, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         23x5    caps=[2, 2, 20, 2]  pos=[0, 0, 0, 0]
+  WinXP                 20x13   caps=[1, 6, 18, 6]  pos=[0, 0, 0, 0]
+
+[93] Popup Button No Title Normal  — in 7/11 themes
+  Ashen                 24x24   caps=[11, 12, 12, 11]  pos=[0, 0, 0, 0]
+  Boilerplate           20x20   caps=[8, 7, 11, 12]  pos=[0, 0, 0, 0]
+  Function 2.0          17x17   caps=[8, 8, 8, 8]  pos=[0, 0, 0, 0]
+  MacOS Classic          7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Mjolnir                5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                 12x19   caps=[6, 9, 5, 9]  pos=[0, 0, 0, 0]
+
+[94] Popup Button No Title Hilited  — in 7/11 themes
+  Ashen                 24x24   caps=[11, 12, 12, 11]  pos=[0, 0, 0, 0]
+  Boilerplate           20x20   caps=[8, 7, 11, 12]  pos=[0, 0, 0, 0]
+  Function 2.0          17x17   caps=[8, 8, 8, 8]  pos=[0, 0, 0, 0]
+  MacOS Classic          7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Mjolnir                5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                  9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+
+[95] Popup Button No Title Disabled  — in 7/11 themes
+  Ashen                 24x24   caps=[11, 12, 12, 11]  pos=[0, 0, 0, 0]
+  Boilerplate           20x20   caps=[8, 7, 11, 12]  pos=[0, 0, 0, 0]
+  Function 2.0          17x17   caps=[8, 8, 8, 8]  pos=[0, 0, 0, 0]
+  MacOS Classic          5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Mjolnir                5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+  WinXP                  8x8    caps=[4, 4, 3, 3]  pos=[0, 0, 0, 0]
+
+[97] Popup Button Symbol Normal  — in 8/11 themes
+  Ashen                  8x8    caps=[0, 0, 0, 0]  pos=[0, 6, 4, 5]
+  Boilerplate            7x4    caps=[0, 0, 0, 0]  pos=[0, 0, 11, 0]
+  Function 2.0           8x10   caps=[0, 0, 0, 0]  pos=[0, 5, 8, 5]
+  MacOS Classic          7x10   caps=[0, 0, 0, 0]  pos=[0, 5, 8, 5]
+  Milk Redux            10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                6x4    caps=[0, 0, 0, 0]  pos=[0, 0, 7, 0]
+  Terminal-TRON          6x6    caps=[0, 0, 0, 0]  pos=[0, 7, 7, 0]
+  WinXP                  9x6    caps=[0, 0, 0, 0]  pos=[0, 0, 5, 0]
+
+[98] Popup Button Symbol Hilited  — in 8/11 themes
+  Ashen                  8x8    caps=[0, 0, 0, 0]  pos=[0, 6, 4, 5]
+  Boilerplate            7x4    caps=[0, 0, 0, 0]  pos=[0, 0, 11, 0]
+  Function 2.0           8x10   caps=[0, 0, 0, 0]  pos=[0, 5, 8, 5]
+  MacOS Classic          7x10   caps=[0, 0, 0, 0]  pos=[0, 5, 8, 5]
+  Milk Redux            10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                6x4    caps=[0, 0, 0, 0]  pos=[0, 0, 7, 0]
+  Terminal-TRON          6x6    caps=[0, 0, 0, 0]  pos=[0, 7, 7, 0]
+  WinXP                  9x6    caps=[0, 0, 0, 0]  pos=[0, 0, 5, 0]
+
+[99] Popup Button Symbol Disabled  — in 8/11 themes
+  Ashen                  5x5    caps=[0, 0, 0, 0]  pos=[0, 6, 4, 5]
+  Boilerplate            7x4    caps=[0, 0, 0, 0]  pos=[0, 0, 11, 0]
+  Function 2.0           7x10   caps=[0, 0, 0, 0]  pos=[0, 5, 8, 5]
+  MacOS Classic          7x10   caps=[0, 0, 0, 0]  pos=[0, 5, 8, 5]
+  Milk Redux            10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                6x4    caps=[0, 0, 0, 0]  pos=[0, 0, 7, 0]
+  Terminal-TRON          6x6    caps=[0, 0, 0, 0]  pos=[0, 7, 7, 0]
+  WinXP                  9x6    caps=[0, 0, 0, 0]  pos=[0, 0, 5, 0]
+
+[101] Focus Box Normal  — in 4/11 themes
+  BeOS                   7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Mjolnir                7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Terminal-TRON          7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  WinXP                  7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+
+[102] Focus Box Hilited  — in 6/11 themes
+  Ashen                  5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  MacOS Classic          7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Mjolnir                7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Terminal-TRON          7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  WinXP                  7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+
+[103] Focus Box Disabled  — in 3/11 themes
+  Boilerplate            7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  Mjolnir                7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+  WinXP                  7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
+
+[105] Horiz Separator Line  — in 7/11 themes
+  Ashen                  6x2    caps=[3, 0, 2, 0]  pos=[0, 0, 0, 0]
+  BeOS                   1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic          3x2    caps=[1, 0, 1, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             4x2    caps=[2, 0, 1, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON          1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                  2x2    caps=[1, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[106] Vert Separator Line  — in 7/11 themes
+  Ashen                  2x6    caps=[0, 3, 0, 2]  pos=[0, 0, 0, 0]
+  BeOS                   2x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic          2x3    caps=[0, 1, 0, 1]  pos=[0, 0, 0, 0]
+  Milk Redux             2x3    caps=[0, 1, 0, 1]  pos=[0, 0, 0, 0]
+  Mjolnir                1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON          1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                  2x3    caps=[0, 1, 0, 1]  pos=[0, 0, 0, 0]
+
+[107] Box  — in 8/11 themes
+  Ashen                  9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+  BeOS                   4x4    caps=[2, 2, 1, 1]  pos=[0, 0, 0, 0]
+  Function 2.0           5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  MacOS Classic          5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Milk Redux             5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Mjolnir                3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Terminal-TRON          3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  WinXP                  9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+
+[108] Framed Raised Box  — in 7/11 themes
+  Ashen                  9x9    caps=[4, 4, 4, 4]  pos=[0, 0, 0, 0]
+  BeOS                   5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Function 2.0           5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  MacOS Classic          5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Milk Redux             5x5    caps=[2, 2, 2, 2]  pos=[0, 0, 0, 0]
+  Mjolnir                3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Terminal-TRON          3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+
+[111] Progress Bar  — in 8/11 themes
+  Ashen                 14x13   caps=[6, 0, 7, 0]  pos=[0, 0, 0, 0]
+  BeOS                   4x13   caps=[2, 0, 1, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           27x14   caps=[13, 0, 13, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          17x14   caps=[8, 0, 8, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic          9x14   caps=[5, 0, 3, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             7x15   caps=[3, 0, 3, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                5x14   caps=[2, 0, 2, 0]  pos=[0, 0, 0, 0]
+  WinXP                  9x15   caps=[4, 0, 4, 0]  pos=[0, 0, 0, 0]
+
+[112] Progress Bar Fill  — in 8/11 themes
+  Ashen                 12x13   caps=[6, 0, 5, 0]  pos=[0, 0, 0, 0]
+  BeOS                   3x10   caps=[1, 0, 1, 0]  pos=[2, 2, 1, 1]
+  Boilerplate           15x14   caps=[7, 0, 7, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          17x14   caps=[8, 0, 8, 0]  pos=[0, 0, 1, 1]
+  MacOS Classic          8x12   caps=[3, 0, 4, 0]  pos=[1, 1, 1, 1]
+  Milk Redux             4x15   caps=[2, 0, 1, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                5x14   caps=[2, 0, 2, 0]  pos=[0, 0, 0, 0]
+  WinXP                  1x15   caps=[0, 0, 0, 0]  pos=[4, 0, 4, 0]
+
+[134] H Slider Pointed Indicator Normal  — in 9/11 themes
+  Ashen                  8x16   caps=[0, 0, 0, 0]  pos=[0, 5, 0, 0]
+  BeOS                  15x12   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  Boilerplate           19x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          14x18   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  MacOS Classic         15x16   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  Milk Redux             9x11   caps=[0, 0, 0, 0]  pos=[0, 3, 0, 0]
+  Mjolnir               13x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  WinXP                 11x21   caps=[0, 0, 0, 0]  pos=[0, 7, 0, 0]
+
+[135] H Slider Pointed Indicator Hilited  — in 9/11 themes
+  Ashen                  8x16   caps=[0, 0, 0, 0]  pos=[0, 5, 0, 0]
+  BeOS                  15x12   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  Boilerplate           19x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          14x18   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  MacOS Classic         15x16   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  Milk Redux             9x11   caps=[0, 0, 0, 0]  pos=[0, 3, 0, 0]
+  Mjolnir               13x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  WinXP                 11x21   caps=[0, 0, 0, 0]  pos=[0, 7, 0, 0]
+
+[136] H Slider Pointed Indicator Disabled  — in 9/11 themes
+  Ashen                  5x5    caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  BeOS                  15x12   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  Boilerplate           19x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          14x18   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  MacOS Classic         15x16   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  Milk Redux            10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               13x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 4, 0, 0]
+  WinXP                 11x21   caps=[0, 0, 0, 0]  pos=[0, 7, 0, 0]
+
+[146] V Slider Pointed Indicator Normal  — in 9/11 themes
+  Ashen                 16x8    caps=[0, 0, 0, 0]  pos=[5, 0, 0, 0]
+  BeOS                  12x15   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  Boilerplate           16x19   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          18x14   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  MacOS Classic         16x15   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  Milk Redux            11x9    caps=[0, 0, 0, 0]  pos=[3, 0, 0, 0]
+  Mjolnir               16x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  WinXP                 21x11   caps=[0, 0, 0, 0]  pos=[7, 0, 0, 0]
+
+[147] V Slider Pointed Indicator Hilited  — in 9/11 themes
+  Ashen                 16x8    caps=[0, 0, 0, 0]  pos=[5, 0, 0, 0]
+  BeOS                  12x15   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  Boilerplate           16x19   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          18x14   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  MacOS Classic         16x15   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  Milk Redux            11x9    caps=[0, 0, 0, 0]  pos=[3, 0, 0, 0]
+  Mjolnir               16x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  WinXP                 21x11   caps=[0, 0, 0, 0]  pos=[7, 0, 0, 0]
+
+[148] V Slider Pointed Indicator Disabled  — in 9/11 themes
+  Ashen                  5x5    caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  BeOS                  12x15   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  Boilerplate           16x19   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          18x14   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  MacOS Classic         16x15   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  Milk Redux            10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x13   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[4, 0, 0, 0]
+  WinXP                 21x11   caps=[0, 0, 0, 0]  pos=[7, 0, 0, 0]
+
 [150] Column Header Normal  — in 6/11 themes
   Ashen                  8x20   caps=[4, 9, 3, 10]  pos=[0, 0, 0, 0]
   BeOS                   7x7    caps=[3, 3, 3, 3]  pos=[0, 0, 0, 0]
@@ -40,6 +565,12 @@ themes: 11  unique slots used: 136
   Milk Redux             5x20   caps=[2, 10, 2, 9]  pos=[0, 0, 0, 0]
   Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
 
+[152] Column Header Disabled  — in 4/11 themes
+  Ashen                  3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Function 2.0          18x18   caps=[8, 8, 9, 9]  pos=[0, 0, 0, 0]
+  MacOS Classic          3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[8, 8, 7, 7]  pos=[0, 0, 0, 0]
+
 [162] H Scroll Bar Double Arrows  — in 9/11 themes
   Ashen                 64x15   caps=[32, 0, 31, 0]  pos=[28, 0, 28, 0]
   BeOS                  66x15   caps=[34, 0, 31, 0]  pos=[31, 0, 30, 0]
@@ -50,6 +581,39 @@ themes: 11  unique slots used: 136
   Mjolnir               63x16   caps=[31, 0, 31, 0]  pos=[30, 0, 30, 0]
   Terminal-TRON         73x16   caps=[36, 0, 36, 0]  pos=[30, 0, 30, 0]
   WinXP                 65x16   caps=[32, 0, 32, 0]  pos=[32, 0, 32, 0]
+
+[163] H Scroll Bar Single Arrows  — in 9/11 themes
+  Ashen                 38x15   caps=[19, 0, 18, 0]  pos=[15, 0, 15, 0]
+  BeOS                  36x15   caps=[19, 0, 16, 0]  pos=[16, 0, 15, 0]
+  Boilerplate           57x16   caps=[28, 0, 28, 0]  pos=[20, 0, 20, 0]
+  Function 2.0          37x16   caps=[18, 0, 18, 0]  pos=[15, 0, 15, 0]
+  MacOS Classic         35x16   caps=[18, 0, 16, 0]  pos=[15, 0, 15, 0]
+  Milk Redux            32x15   caps=[15, 0, 16, 0]  pos=[15, 0, 15, 0]
+  Mjolnir               33x16   caps=[16, 0, 16, 0]  pos=[15, 0, 15, 0]
+  Terminal-TRON         41x16   caps=[20, 0, 20, 0]  pos=[14, 0, 14, 0]
+  WinXP                 35x16   caps=[17, 0, 17, 0]  pos=[17, 0, 17, 0]
+
+[164] H Scroll Bar Disabled  — in 9/11 themes
+  Ashen                 38x15   caps=[19, 0, 18, 0]  pos=[0, 0, 0, 0]
+  BeOS                  34x15   caps=[17, 0, 16, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           81x16   caps=[40, 0, 40, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          67x16   caps=[33, 0, 33, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic         33x16   caps=[16, 0, 16, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            32x15   caps=[15, 0, 16, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               33x16   caps=[16, 0, 16, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         41x16   caps=[20, 0, 20, 0]  pos=[0, 0, 0, 0]
+  WinXP                 35x16   caps=[17, 0, 17, 0]  pos=[0, 0, 0, 0]
+
+[165] H Scroll Bar Too Small  — in 9/11 themes
+  Ashen                  4x15   caps=[2, 0, 1, 0]  pos=[0, 0, 0, 0]
+  BeOS                   5x15   caps=[3, 0, 1, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           17x16   caps=[8, 0, 8, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           7x16   caps=[3, 0, 3, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic          5x16   caps=[2, 0, 2, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             5x15   caps=[2, 0, 2, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                3x16   caps=[1, 0, 1, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON          3x16   caps=[1, 0, 1, 0]  pos=[0, 0, 0, 0]
+  WinXP                  3x16   caps=[1, 0, 1, 0]  pos=[0, 0, 0, 0]
 
 [166] H Scroll Bar Indicator Normal  — in 9/11 themes
   Ashen                  5x15   caps=[3, 0, 1, 0]  pos=[0, 0, 0, 0]
@@ -71,6 +635,15 @@ themes: 11  unique slots used: 136
   Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
   WinXP                  8x7    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
 
+[170] H Scroll Bar Indicator Grips Hilited  — in 7/11 themes
+  Ashen                  6x15   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                  12x5    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           6x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic          8x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               20x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                  8x7    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
 [181] V Scroll Bar Double Arrows  — in 9/11 themes
   Ashen                 15x64   caps=[0, 32, 0, 31]  pos=[0, 28, 0, 28]
   BeOS                  15x66   caps=[0, 34, 0, 31]  pos=[0, 31, 0, 30]
@@ -81,6 +654,39 @@ themes: 11  unique slots used: 136
   Mjolnir               16x63   caps=[0, 31, 0, 31]  pos=[0, 30, 0, 30]
   Terminal-TRON         16x73   caps=[0, 36, 0, 36]  pos=[0, 30, 0, 30]
   WinXP                 16x65   caps=[0, 32, 0, 32]  pos=[0, 32, 0, 32]
+
+[182] V Scroll Bar Single Arrows  — in 9/11 themes
+  Ashen                 15x38   caps=[0, 19, 0, 18]  pos=[0, 15, 0, 15]
+  BeOS                  15x36   caps=[0, 19, 0, 16]  pos=[0, 16, 0, 15]
+  Boilerplate           16x57   caps=[0, 28, 0, 28]  pos=[0, 20, 0, 20]
+  Function 2.0          16x37   caps=[0, 18, 0, 18]  pos=[0, 15, 0, 15]
+  MacOS Classic         16x35   caps=[0, 18, 0, 16]  pos=[0, 15, 0, 15]
+  Milk Redux            15x32   caps=[0, 15, 0, 16]  pos=[0, 15, 0, 15]
+  Mjolnir               16x33   caps=[0, 16, 0, 16]  pos=[0, 15, 0, 15]
+  Terminal-TRON         16x41   caps=[0, 20, 0, 20]  pos=[0, 14, 0, 14]
+  WinXP                 16x35   caps=[0, 17, 0, 17]  pos=[0, 17, 0, 17]
+
+[183] V Scroll Bar Disabled  — in 9/11 themes
+  Ashen                 15x38   caps=[0, 19, 0, 18]  pos=[0, 0, 0, 0]
+  BeOS                  15x34   caps=[0, 17, 0, 16]  pos=[0, 0, 0, 0]
+  Boilerplate           16x81   caps=[0, 40, 0, 40]  pos=[0, 0, 0, 0]
+  Function 2.0          16x67   caps=[0, 33, 0, 33]  pos=[0, 0, 0, 0]
+  MacOS Classic         16x33   caps=[0, 16, 0, 16]  pos=[0, 0, 0, 0]
+  Milk Redux            15x32   caps=[0, 15, 0, 16]  pos=[0, 0, 0, 0]
+  Mjolnir               16x33   caps=[0, 16, 0, 16]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x41   caps=[0, 20, 0, 20]  pos=[0, 0, 0, 0]
+  WinXP                 16x35   caps=[0, 17, 0, 17]  pos=[0, 0, 0, 0]
+
+[184] V Scroll Bar Too Small  — in 9/11 themes
+  Ashen                 15x4    caps=[0, 2, 0, 1]  pos=[0, 0, 0, 0]
+  BeOS                  15x5    caps=[0, 3, 0, 1]  pos=[0, 0, 0, 0]
+  Boilerplate           16x17   caps=[0, 8, 0, 8]  pos=[0, 0, 0, 0]
+  Function 2.0          16x7    caps=[0, 3, 0, 3]  pos=[0, 0, 0, 0]
+  MacOS Classic         16x5    caps=[0, 2, 0, 2]  pos=[0, 0, 0, 0]
+  Milk Redux            15x5    caps=[0, 2, 0, 2]  pos=[0, 0, 0, 0]
+  Mjolnir               16x3    caps=[0, 1, 0, 1]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x3    caps=[0, 1, 0, 1]  pos=[0, 0, 0, 0]
+  WinXP                 16x3    caps=[0, 1, 0, 1]  pos=[0, 0, 0, 0]
 
 [185] V Scroll Bar Indicator Normal  — in 9/11 themes
   Ashen                 15x5    caps=[0, 2, 0, 2]  pos=[0, 0, 0, 0]
@@ -101,6 +707,47 @@ themes: 11  unique slots used: 136
   Mjolnir                8x20   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
   Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
   WinXP                  7x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[189] V Scroll Bar Indicator Grips Hilited  — in 7/11 themes
+  Ashen                 15x6    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                   5x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          16x6    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  MacOS Classic          8x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                8x20   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                  7x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[200] Menu Background Pattern  — in 2/11 themes
+  Boilerplate          128x128  caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[201] Menu Background  — in 1/11 themes
+  Boilerplate           65x37   caps=[32, 21, 32, 15]  pos=[0, 0, 0, 0]
+
+[202] Menu Item Pattern Normal  — in 1/11 themes
+  Function 2.0           1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[203] Menu Item Pattern Hilited  — in 2/11 themes
+  Boilerplate          100x32   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[204] Menu Item Pattern Disabled  — in 1/11 themes
+  Function 2.0           1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[206] Menu Item Normal  — in 2/11 themes
+  Ashen                 19x16   caps=[9, 8, 9, 7]  pos=[0, 0, 0, 0]
+  Boilerplate           38x18   caps=[19, 9, 18, 8]  pos=[0, 0, 0, 0]
+
+[207] Menu Item Hilited  — in 0/11 themes
+
+[208] Menu Separator  — in 7/11 themes
+  Ashen                 20x2    caps=[9, 0, 10, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           37x6    caps=[20, 0, 16, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           1x2    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux            28x36   caps=[14, 0, 13, 0]  pos=[0, 0, 0, 0]
+  Mjolnir                1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON          1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                  7x1    caps=[3, 0, 3, 0]  pos=[0, 0, 0, 0]
 
 [220] Window Frame Normal  — in 9/11 themes
   Ashen                 84x31   caps=[31, 25, 52, 5]  pos=[4, 24, 4, 4]
@@ -157,6 +804,10 @@ themes: 11  unique slots used: 136
   Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[5, 4, 0, 0]
   WinXP                 21x21   caps=[0, 0, 0, 0]  pos=[0, 4, 5, 0]
 
+[226] Window Close Button Disabled  — in 2/11 themes
+  Ashen                  5x5    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  WinXP                 21x21   caps=[0, 0, 0, 0]  pos=[0, 4, 5, 0]
+
 [228] Window Minimize Button Normal  — in 8/11 themes
   Ashen                 11x11   caps=[0, 0, 0, 0]  pos=[0, 6, 33, 0]
   Boilerplate           26x26   caps=[0, 0, 0, 0]  pos=[0, 0, 5, 0]
@@ -186,6 +837,9 @@ themes: 11  unique slots used: 136
   Mjolnir               14x14   caps=[0, 0, 0, 0]  pos=[0, 5, 5, 0]
   Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 4, 5, 0]
   WinXP                 21x21   caps=[0, 0, 0, 0]  pos=[0, 4, 51, 0]
+
+[231] Window Minimize Button Disabled  — in 1/11 themes
+  Ashen                  5x5    caps=[0, 0, 0, 0]  pos=[0, 6, 0, 0]
 
 [233] Window Maximize Button Normal  — in 9/11 themes
   Ashen                 11x11   caps=[0, 0, 0, 0]  pos=[0, 6, 20, 0]
@@ -220,6 +874,11 @@ themes: 11  unique slots used: 136
   Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 4, 25, 0]
   WinXP                 21x21   caps=[0, 0, 0, 0]  pos=[0, 4, 28, 0]
 
+[236] Window Maximize Button Disabled  — in 3/11 themes
+  Ashen                  5x5    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           40x26   caps=[0, 0, 0, 0]  pos=[0, 0, 31, 0]
+  WinXP                 21x21   caps=[0, 0, 0, 0]  pos=[0, 4, 28, 0]
+
 [238] Window Menu Button Normal  — in 9/11 themes
   Ashen                 21x11   caps=[0, 0, 0, 0]  pos=[3, 6, 0, 0]
   BeOS                  32x14   caps=[0, 0, 0, 0]  pos=[32, 4, 0, 0]
@@ -241,6 +900,11 @@ themes: 11  unique slots used: 136
   Mjolnir               26x14   caps=[0, 0, 0, 0]  pos=[23, 5, 0, 0]
   Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[25, 4, 0, 0]
   WinXP                 21x21   caps=[0, 0, 0, 0]  pos=[5, 4, 0, 0]
+
+[240] Window Menu Button Hilited  — in 0/11 themes
+
+[241] Window Menu Button Disabled  — in 1/11 themes
+  Boilerplate           58x26   caps=[0, 0, 0, 0]  pos=[33, 0, 0, 0]
 
 [243] Window Resize Button Normal  — in 9/11 themes
   Ashen                 16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
@@ -264,7 +928,180 @@ themes: 11  unique slots used: 136
   Terminal-TRON         21x21   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
   WinXP                 15x15   caps=[0, 0, 0, 0]  pos=[0, 0, 4, 4]
 
+[248] Popup Window Frame Normal  — in 9/11 themes
+  Ashen                  9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  BeOS                   5x5    caps=[2, 2, 2, 2]  pos=[2, 2, 2, 2]
+  Boilerplate            1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  MacOS Classic          9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  Milk Redux             3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Mjolnir                9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  Terminal-TRON         13x13   caps=[6, 6, 6, 6]  pos=[6, 6, 6, 6]
+  WinXP                  5x5    caps=[2, 2, 2, 2]  pos=[2, 2, 2, 2]
+
+[249] Popup Window Frame Focus  — in 9/11 themes
+  Ashen                  9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  BeOS                   5x5    caps=[2, 2, 2, 2]  pos=[2, 2, 2, 2]
+  Boilerplate            1x1    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0           9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  MacOS Classic          9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  Milk Redux             3x3    caps=[1, 1, 1, 1]  pos=[0, 0, 0, 0]
+  Mjolnir                9x9    caps=[4, 4, 4, 4]  pos=[4, 4, 4, 4]
+  Terminal-TRON         13x13   caps=[6, 6, 6, 6]  pos=[6, 6, 6, 6]
+  WinXP                  5x5    caps=[2, 2, 2, 2]  pos=[2, 2, 2, 2]
+
+[251] WonderLight Off  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[252] WonderLight Pause  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[253] WonderLight Ready  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[254] WonderLight Go  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[255] WonderLight Finished  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[256] WonderLight Flash Off  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[257] WonderLight Flash On 1  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[258] WonderLight Flash On 2  — in 4/11 themes
+  Ashen                 12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         16x16   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[263] Medium Plus Button Normal  — in 7/11 themes
+  Ashen                 10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             6x8    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
+[267] Medium Minus Button Normal  — in 7/11 themes
+  Ashen                 10x10   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  BeOS                   7x7    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Boilerplate           12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Function 2.0          12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Milk Redux             8x6    caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Mjolnir               12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+  Terminal-TRON         12x12   caps=[0, 0, 0, 0]  pos=[0, 0, 0, 0]
+
 === High-occupancy unknown slots (candidates to map) ===
-slot   27  n= 9  sizes=[((9, 9), 2), ((13, 23), 1), ((39, 21), 1)]  eg caps=[6, 11, 6, 11] pos=[0, 0, 0, 0]
-slot   37  n= 9  sizes=[((14, 23), 1), ((17, 17), 1), ((45, 27), 1)]  eg caps=[7, 11, 6, 11] pos=[0, 0, 0, 0]
-slot   38  n= 9  sizes=[((15, 15), 2), ((13, 23), 1), ((17, 17), 1)]  eg caps=[6, 11, 6, 11] pos=[0, 0, 0, 0]
+slot  126  n= 9  sizes=[((5, 5), 2), ((5, 7), 2), ((8, 4), 1)]  eg caps=[4, 0, 3, 0] pos=[0, 0, 0, 0]
+slot  127  n= 9  sizes=[((5, 5), 2), ((5, 7), 2), ((8, 4), 1)]  eg caps=[4, 0, 3, 0] pos=[0, 0, 0, 0]
+slot  128  n= 9  sizes=[((5, 5), 2), ((8, 4), 1), ((23, 16), 1)]  eg caps=[4, 0, 3, 0] pos=[0, 0, 0, 0]
+slot  130  n= 9  sizes=[((13, 16), 2), ((11, 22), 2), ((11, 20), 1)]  eg caps=[0, 0, 0, 0] pos=[0, 8, 0, 0]
+slot  131  n= 9  sizes=[((13, 16), 2), ((11, 22), 2), ((11, 20), 1)]  eg caps=[0, 0, 0, 0] pos=[0, 8, 0, 0]
+slot  132  n= 9  sizes=[((13, 16), 2), ((5, 5), 1), ((15, 12), 1)]  eg caps=[0, 0, 0, 0] pos=[0, 5, 0, 0]
+slot  138  n= 9  sizes=[((5, 5), 2), ((7, 5), 2), ((4, 8), 1)]  eg caps=[0, 4, 0, 3] pos=[0, 0, 0, 0]
+slot  139  n= 9  sizes=[((5, 5), 2), ((7, 5), 2), ((4, 8), 1)]  eg caps=[0, 4, 0, 3] pos=[0, 0, 0, 0]
+slot  140  n= 9  sizes=[((5, 5), 2), ((4, 8), 1), ((16, 23), 1)]  eg caps=[0, 4, 0, 3] pos=[0, 0, 0, 0]
+slot  142  n= 9  sizes=[((16, 13), 2), ((22, 11), 2), ((20, 11), 1)]  eg caps=[0, 0, 0, 0] pos=[8, 0, 0, 0]
+slot  143  n= 9  sizes=[((16, 13), 2), ((22, 11), 2), ((20, 11), 1)]  eg caps=[0, 0, 0, 0] pos=[8, 0, 0, 0]
+slot  144  n= 9  sizes=[((16, 13), 2), ((5, 5), 1), ((12, 15), 1)]  eg caps=[0, 0, 0, 0] pos=[5, 0, 0, 0]
+slot  167  n= 9  sizes=[((5, 15), 2), ((22, 16), 1), ((27, 16), 1)]  eg caps=[3, 0, 1, 0] pos=[0, 0, 0, 0]
+slot  172  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((14, 16), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  173  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((14, 16), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  174  n= 9  sizes=[((16, 16), 4), ((14, 16), 2), ((14, 15), 1)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 14, 0]
+slot  175  n= 9  sizes=[((16, 16), 4), ((14, 16), 2), ((14, 15), 1)]  eg caps=[0, 0, 0, 0] pos=[14, 0, 0, 0]
+slot  176  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((14, 16), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  177  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((14, 16), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  186  n= 9  sizes=[((15, 5), 2), ((16, 22), 1), ((16, 27), 1)]  eg caps=[0, 2, 0, 2] pos=[0, 0, 0, 0]
+slot  191  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((16, 14), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  192  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((16, 14), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  193  n= 9  sizes=[((16, 16), 4), ((16, 14), 2), ((15, 14), 1)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 14]
+slot  194  n= 9  sizes=[((16, 16), 4), ((16, 14), 2), ((15, 14), 1)]  eg caps=[0, 0, 0, 0] pos=[0, 14, 0, 0]
+slot  195  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((16, 14), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+slot  196  n= 9  sizes=[((16, 16), 4), ((15, 15), 2), ((16, 14), 2)]  eg caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+
+=== Neighborhood dumps (for index assignment) ===
+
+-- button --
+    25 Button Normal                            n=9 15x23 caps=[7, 11, 7, 11] pos=[0, 0, 0, 0]
+    26 Button Hilited                           n=9 13x23 caps=[6, 11, 6, 11] pos=[0, 0, 0, 0]
+    27 Button Disabled                          n=9 13x23 caps=[6, 11, 6, 11] pos=[0, 0, 0, 0]
+
+-- column --
+   150 Column Header Normal                     n=6 8x20 caps=[4, 9, 3, 10] pos=[0, 0, 0, 0]
+   151 Column Header Hilited                    n=6 7x20 caps=[3, 10, 3, 9] pos=[0, 0, 0, 0]
+   152 Column Header Disabled                   n=4 3x3 caps=[1, 1, 1, 1] pos=[0, 0, 0, 0]
+
+-- hscroll --
+   162 H Scroll Bar Double Arrows               n=9 64x15 caps=[32, 0, 31, 0] pos=[28, 0, 28, 0]
+   163 H Scroll Bar Single Arrows               n=9 38x15 caps=[19, 0, 18, 0] pos=[15, 0, 15, 0]
+   164 H Scroll Bar Disabled                    n=9 38x15 caps=[19, 0, 18, 0] pos=[0, 0, 0, 0]
+   165 H Scroll Bar Too Small                   n=9 4x15 caps=[2, 0, 1, 0] pos=[0, 0, 0, 0]
+   166 H Scroll Bar Indicator Normal            n=9 5x15 caps=[3, 0, 1, 0] pos=[0, 0, 0, 0]
+   167 ?                                        n=9 5x15 caps=[3, 0, 1, 0] pos=[0, 0, 0, 0]
+   169 H Scroll Bar Indicator Grips Normal      n=7 6x15 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   170 H Scroll Bar Indicator Grips Hilited     n=7 6x15 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   172 ?                                        n=9 15x15 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   173 ?                                        n=9 15x15 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   174 ?                                        n=9 14x15 caps=[0, 0, 0, 0] pos=[0, 0, 14, 0]
+
+-- vscroll --
+   181 V Scroll Bar Double Arrows               n=9 15x64 caps=[0, 32, 0, 31] pos=[0, 28, 0, 28]
+   182 V Scroll Bar Single Arrows               n=9 15x38 caps=[0, 19, 0, 18] pos=[0, 15, 0, 15]
+   183 V Scroll Bar Disabled                    n=9 15x38 caps=[0, 19, 0, 18] pos=[0, 0, 0, 0]
+   184 V Scroll Bar Too Small                   n=9 15x4 caps=[0, 2, 0, 1] pos=[0, 0, 0, 0]
+   185 V Scroll Bar Indicator Normal            n=9 15x5 caps=[0, 2, 0, 2] pos=[0, 0, 0, 0]
+   186 ?                                        n=9 15x5 caps=[0, 2, 0, 2] pos=[0, 0, 0, 0]
+   188 V Scroll Bar Indicator Grips Normal      n=7 15x6 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   189 V Scroll Bar Indicator Grips Hilited     n=7 15x6 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   191 ?                                        n=9 15x15 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   192 ?                                        n=9 15x15 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   193 ?                                        n=9 15x14 caps=[0, 0, 0, 0] pos=[0, 0, 0, 14]
+   194 ?                                        n=9 15x14 caps=[0, 0, 0, 0] pos=[0, 14, 0, 0]
+
+-- window --
+   220 Window Frame Normal                      n=9 84x31 caps=[31, 25, 52, 5] pos=[4, 24, 4, 4]
+   221 Window Frame Focus                       n=9 84x31 caps=[31, 25, 52, 5] pos=[4, 24, 4, 4]
+   223 Window Close Button Normal               n=9 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 7, 0]
+   224 Window Close Button Focus                n=9 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 7, 0]
+   225 Window Close Button Hilited              n=9 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 7, 0]
+   226 Window Close Button Disabled             n=2 5x5 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   228 Window Minimize Button Normal            n=8 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 33, 0]
+   229 Window Minimize Button Focus             n=8 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 33, 0]
+   230 Window Minimize Button Hilited           n=8 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 33, 0]
+   231 Window Minimize Button Disabled          n=1 5x5 caps=[0, 0, 0, 0] pos=[0, 6, 0, 0]
+   233 Window Maximize Button Normal            n=9 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 20, 0]
+   234 Window Maximize Button Focus             n=9 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 20, 0]
+   235 Window Maximize Button Hilited           n=9 11x11 caps=[0, 0, 0, 0] pos=[0, 6, 20, 0]
+   236 Window Maximize Button Disabled          n=3 5x5 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   238 Window Menu Button Normal                n=9 21x11 caps=[0, 0, 0, 0] pos=[3, 6, 0, 0]
+   239 Window Menu Button Focus                 n=9 21x11 caps=[0, 0, 0, 0] pos=[3, 6, 0, 0]
+   241 Window Menu Button Disabled              n=1 58x26 caps=[0, 0, 0, 0] pos=[33, 0, 0, 0]
+   243 Window Resize Button Normal              n=9 16x16 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   244 Window Resize Button Focus               n=9 16x16 caps=[0, 0, 0, 0] pos=[0, 0, 0, 0]
+   248 Popup Window Frame Normal                n=9 9x9 caps=[4, 4, 4, 4] pos=[4, 4, 4, 4]
+   249 Popup Window Frame Focus                 n=9 9x9 caps=[4, 4, 4, 4] pos=[4, 4, 4, 4]

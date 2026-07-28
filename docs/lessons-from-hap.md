@@ -46,6 +46,13 @@ icons. The authoritative plug-in map (AppearanceEdit docs + probes) lives in
   mandatory.
 - **Hilited** means pressed/active in Haxial, not modern hover.
 
+Authoring rules from AppearanceEdit 1.200 (Groups, Import Colors, Transparent
+Color, 256 indexed, Preview colours-only, tick ≤18, sep ≤4, even frame
+thickness, title Disabled→hide, WonderLight 16×16, `Appearances/` host folder)
+and the full Images inventory (Primary Background tile, Focus Box, Medium
+disclosure, popup frame, window Disabled, menu item patterns) are recorded in
+the surface map — start there before inventing paint behaviour.
+
 ## Editor practice
 
 AppearanceEdit let authors edit colours (and art) against a live preview of
