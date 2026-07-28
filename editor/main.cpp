@@ -408,7 +408,7 @@ void mouse_down(int mx, int my) {
     // Role-list scrollbar
     if (g.role_sbar.contains(mx, my)) {
         ScrollLayout sl =
-            scroll_layout(g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
+            scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
         if (sl.up.contains(mx, my)) {
             g.drag = DragScrollArrowRoles;
             g.arrow_dir = -1;
@@ -547,7 +547,7 @@ void mouse_down(int mx, int my) {
     // Preview scrollbar
     if (g.preview_lay.sbar.contains(mx, my)) {
         int max_s = g.preview_max_scroll();
-        ScrollLayout sl = scroll_layout(g.preview_lay.sbar, g.preview_scroll, max_s,
+        ScrollLayout sl = scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, max_s,
                                         g.preview_lay.page_rows);
         if (sl.up.contains(mx, my)) {
             g.drag = DragScrollArrowPreview;
@@ -595,12 +595,12 @@ void mouse_down(int mx, int my) {
 void mouse_move(int mx, int my) {
     if (g.drag == DragThumbRoles) {
         ScrollLayout sl =
-            scroll_layout(g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
+            scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
         g.scroll = scroll_from_thumb_y(sl, my, g.roles_max_scroll());
         redraw();
     } else if (g.drag == DragThumbPreview) {
         ScrollLayout sl =
-            scroll_layout(g.preview_lay.sbar, g.preview_scroll, g.preview_max_scroll(),
+            scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, g.preview_max_scroll(),
                           g.preview_lay.page_rows);
         g.preview_scroll = scroll_from_thumb_y(sl, my, g.preview_max_scroll());
         redraw();

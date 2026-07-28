@@ -49,12 +49,12 @@ int main(int argc, char **argv) {
     }
 
     Canvas cv;
-    cv.resize(640, 480);
-    paint_kit_preview(cv, ap, {0, 0, 640, 480}, true, 1, 2);
+    cv.resize(640, 780);
+    paint_kit_preview(cv, ap, {0, 0, 640, 780}, true, 1, 2);
 
     // Non-zero pixels prove we painted
     size_t lit = 0;
-    for (int i = 0; i < 640 * 480; ++i)
+    for (int i = 0; i < 640 * 780; ++i)
         if (cv.data()[i]) ++lit;
     std::printf("painted %zu non-black pixels\n", lit);
 

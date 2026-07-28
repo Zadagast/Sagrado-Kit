@@ -5,7 +5,7 @@ version = 1
 [meta]
 name = "Milk Redux"
 creator = "extracted from Hap"
-description = "Art seed: buttons, popup, gel, tick/mutex, progress, WonderLight, icons"
+description = "Art seed: buttons, popup, gel, tick/mutex, progress, scroll/header, WonderLight, icons"
 version = "1.0"
 
 [colors.button]
@@ -35,11 +35,40 @@ label = "#ffffff"
 light1 = "#aa0000"
 light2 = "#cc0000"
 
+[colors.column_header]
+dark = "#111111"
+face = "#333333"
+frame = "#000000"
+hilite = "#333333"
+hilite_dark = "#111111"
+hilite_label = "#ffffff"
+hilite_light = "#666666"
+label = "#ffffff"
+light = "#666666"
+
 [colors.default_button]
 dark = "#660000"
 face = "#880000"
 frame = "#000000"
 light = "#cc0000"
+
+[colors.file_label]
+0 = "#ffffff"
+1 = "#ff0000"
+10 = "#007f00"
+11 = "#007f7f"
+12 = "#002266"
+13 = "#ff00ff"
+14 = "#7f007f"
+15 = "#666666"
+2 = "#ff7f00"
+3 = "#00ff00"
+4 = "#00ffff"
+5 = "#0000ff"
+6 = "#8800ff"
+7 = "#880000"
+8 = "#552200"
+9 = "#ffff00"
 
 [colors.focus]
 box = "#000000"
@@ -93,6 +122,33 @@ transition = [
   "#660000",
   "#440000"
 ]
+
+[colors.scrollbar]
+dark = "#111111"
+disable = "#333333"
+disable_dark = "#2a2a2a"
+disable_frame = "#222222"
+disable_label = "#888888"
+disable_light = "#444444"
+face = "#333333"
+frame = "#000000"
+hilite = "#880000"
+hilite_dark = "#440000"
+hilite_label = "#ffffff"
+hilite_light = "#cc0000"
+indicator = "#333333"
+indicator_dark = "#111111"
+indicator_hilite = "#880000"
+indicator_hilite_dark = "#440000"
+indicator_hilite_light = "#cc0000"
+indicator_light = "#666666"
+label = "#ffffff"
+light = "#666666"
+track = "#444444"
+track_dark1 = "#333333"
+track_dark2 = "#222222"
+track_light1 = "#555555"
+track_light2 = "#666666"
 
 [colors.text]
 background = "#f5f5f5"
@@ -347,6 +403,46 @@ positions = [0, 0, 0, 0]
 [art."progress.fill"]
 file = "progress_fill.skimg"
 caps = [2, 0, 1, 0]
+positions = [0, 0, 0, 0]
+
+[art."column_header.normal"]
+file = "column_header_normal.skimg"
+caps = [2, 10, 2, 9]
+positions = [0, 0, 0, 0]
+
+[art."column_header.hilited"]
+file = "column_header_hilited.skimg"
+caps = [2, 10, 2, 9]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.double_arrows"]
+file = "scrollbar_h_double_arrows.skimg"
+caps = [30, 0, 31, 0]
+positions = [30, 0, 30, 0]
+
+[art."scrollbar.h.indicator.normal"]
+file = "scrollbar_h_indicator_normal.skimg"
+caps = [23, 0, 23, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.indicator.hilited"]
+file = "scrollbar_h_indicator_hilited.skimg"
+caps = [23, 0, 23, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.double_arrows"]
+file = "scrollbar_v_double_arrows.skimg"
+caps = [0, 30, 0, 31]
+positions = [0, 30, 0, 30]
+
+[art."scrollbar.v.indicator.normal"]
+file = "scrollbar_v_indicator_normal.skimg"
+caps = [0, 23, 0, 23]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.indicator.hilited"]
+file = "scrollbar_v_indicator_hilited.skimg"
+caps = [0, 23, 0, 23]
 positions = [0, 0, 0, 0]
 
 [art."window.frame.normal"]

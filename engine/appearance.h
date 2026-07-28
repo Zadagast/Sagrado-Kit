@@ -551,26 +551,31 @@ inline void paint_default_ring_color(Canvas &cv, const Appearance &ap, Rect r) {
 
 // Art-first button; colour path = Sagrado draw_button.
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
-                         const char *label, bool pressed, bool is_default) {
+                         const char *label, bool pressed, bool is_default,
+                         bool disabled = false) {
+    if (disabled) pressed = false;
     if (is_default) {
-        const char *dslot = pressed ? "default_button.hilited" : "default_button.normal";
+        const char *dslot = disabled ? "default_button.disabled"
+                                     : (pressed ? "default_button.hilited"
+                                                : "default_button.normal");
         const SkinImage *dimg = ap.art(dslot);
-        if (!dimg) dimg = ap.art("default_button.normal");
+        if (!dimg && !disabled) dimg = ap.art("default_button.normal");
         if (dimg) {
             cv.nine_slice(*dimg, r);
         } else {
             paint_default_ring_color(cv, ap, r);
             r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
                  r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
-            paint_button_face(cv, ap, r, pressed, false);
+            paint_button_face(cv, ap, r, pressed, disabled);
         }
     } else {
-        paint_button_face(cv, ap, r, pressed, false);
+        paint_button_face(cv, ap, r, pressed, disabled);
     }
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
+    Color ink = disabled ? ap.c("button_disable.label") : ap.c("button.label");
     cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
-            label, ap.c("button.label"));
+            label, ink);
 }
 
 inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
@@ -662,11 +667,7 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
 
 inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
                                 const char *label, bool hilite) {
-    Color face = hilite ? ap.c("column_header.hilite") : ap.c("column_header.face");
-    Color light = hilite ? ap.c("column_header.hilite_light") : ap.c("column_header.light");
-    Color dark = hilite ? ap.c("column_header.hilite_dark") : ap.c("column_header.dark");
     Color ink = hilite ? ap.c("column_header.hilite_label") : ap.title_label(true);
-    // Prefer primary.label when header label is stock white
     if (!hilite) {
         Color hl = ap.c("column_header.label");
         bool white = hl.r == 255 && hl.g == 255 && hl.b == 255;
@@ -675,6 +676,19 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
         else
             ink = hl;
     }
+
+    const char *slot = hilite ? "column_header.hilited" : "column_header.normal";
+    const SkinImage *img = ap.art(slot);
+    if (!img && hilite) img = ap.art("column_header.normal");
+    if (img) {
+        cv.nine_slice(*img, r);
+        cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
+        return;
+    }
+
+    Color face = hilite ? ap.c("column_header.hilite") : ap.c("column_header.face");
+    Color light = hilite ? ap.c("column_header.hilite_light") : ap.c("column_header.light");
+    Color dark = hilite ? ap.c("column_header.hilite_dark") : ap.c("column_header.dark");
     cv.fill(r, face);
     cv.frame(r, ap.c("column_header.frame"));
     cv.hline(r.x + 1, r.right() - 1, r.y + 1, light);
@@ -682,6 +696,12 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, dark);
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, dark);
     cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
+}
+
+inline Color file_label_color(const Appearance &ap, int index) {
+    char key[24];
+    std::snprintf(key, sizeof(key), "file_label.%d", std::clamp(index, 0, 15));
+    return ap.c(key);
 }
 
 inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
@@ -715,11 +735,49 @@ struct ScrollLayout {
     Rect bar, up, down, track, thumb;
 };
 
-inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page) {
+// Resolve V travel insets: art Positions (T/B), else caps, else square arrow plates.
+inline void scrollbar_v_insets(const Appearance &ap, int bar_w, int &top,
+                               int &bot) {
+    const SkinImage *arrows = ap.art("scrollbar.v.double_arrows");
+    if (arrows) {
+        top = arrows->positions[1];
+        bot = arrows->positions[3];
+        if (top <= 0) top = arrows->caps[1];
+        if (bot <= 0) bot = arrows->caps[3];
+    } else {
+        top = bot = 0;
+    }
+    if (top <= 0) top = bar_w;
+    if (bot <= 0) bot = bar_w;
+}
+
+inline void scrollbar_h_insets(const Appearance &ap, int bar_h, int &left,
+                               int &right) {
+    const SkinImage *arrows = ap.art("scrollbar.h.double_arrows");
+    if (arrows) {
+        left = arrows->positions[0];
+        right = arrows->positions[2];
+        if (left <= 0) left = arrows->caps[0];
+        if (right <= 0) right = arrows->caps[2];
+    } else {
+        left = right = 0;
+    }
+    if (left <= 0) left = bar_h;
+    if (right <= 0) right = bar_h;
+}
+
+inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page,
+                                  int inset_top = -1, int inset_bot = -1) {
     ScrollLayout s;
     s.bar = bar;
-    s.up = {bar.x, bar.y, bar.w, bar.w};
-    s.down = {bar.x, bar.bottom() - bar.w, bar.w, bar.w};
+    int top = inset_top >= 0 ? inset_top : bar.w;
+    int bot = inset_bot >= 0 ? inset_bot : bar.w;
+    if (top + bot > bar.h) {
+        top = bar.h / 2;
+        bot = bar.h - top;
+    }
+    s.up = {bar.x, bar.y, bar.w, top};
+    s.down = {bar.x, bar.bottom() - bot, bar.w, bot};
     int track_h = s.down.y - s.up.bottom();
     if (track_h < 0) track_h = 0;
     s.track = {bar.x, s.up.bottom(), bar.w, track_h};
@@ -737,6 +795,49 @@ inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page) 
     return s;
 }
 
+inline ScrollLayout scroll_layout(const Appearance &ap, Rect bar, int value,
+                                  int max_value, int page) {
+    int top = 0, bot = 0;
+    scrollbar_v_insets(ap, bar.w, top, bot);
+    return scroll_layout(bar, value, max_value, page, top, bot);
+}
+
+inline ScrollLayout scroll_layout_h(Rect bar, int value, int max_value, int page,
+                                    int inset_left = -1, int inset_right = -1) {
+    ScrollLayout s;
+    s.bar = bar;
+    int left = inset_left >= 0 ? inset_left : bar.h;
+    int right = inset_right >= 0 ? inset_right : bar.h;
+    if (left + right > bar.w) {
+        left = bar.w / 2;
+        right = bar.w - left;
+    }
+    s.up = {bar.x, bar.y, left, bar.h}; // left arrow
+    s.down = {bar.right() - right, bar.y, right, bar.h}; // right arrow
+    int track_w = s.down.x - s.up.right();
+    if (track_w < 0) track_w = 0;
+    s.track = {s.up.right(), bar.y, track_w, bar.h};
+    if (page < 1) page = 1;
+    if (max_value < 0) max_value = 0;
+    int thumb_w = max_value == 0
+                      ? s.track.w
+                      : std::max(bar.h, s.track.w * page / (max_value + page));
+    if (thumb_w > s.track.w) thumb_w = s.track.w;
+    int travel = s.track.w - thumb_w;
+    int tx = s.track.x;
+    if (max_value > 0 && travel > 0)
+        tx += travel * std::clamp(value, 0, max_value) / max_value;
+    s.thumb = {tx, bar.y, thumb_w, bar.h};
+    return s;
+}
+
+inline ScrollLayout scroll_layout_h(const Appearance &ap, Rect bar, int value,
+                                    int max_value, int page) {
+    int left = 0, right = 0;
+    scrollbar_h_insets(ap, bar.h, left, right);
+    return scroll_layout_h(bar, value, max_value, page, left, right);
+}
+
 inline void paint_arrow(Canvas &cv, Rect r, bool up, Color ink) {
     // 7×4 triangle centred in the plate
     int cx = r.x + r.w / 2;
@@ -752,10 +853,29 @@ inline void paint_arrow(Canvas &cv, Rect r, bool up, Color ink) {
     }
 }
 
-inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
-                            int value, int max_value, int page, bool hilite_thumb) {
-    ScrollLayout s = scroll_layout(bar, value, max_value, page);
-    // Track
+inline void paint_arrow_h(Canvas &cv, Rect r, bool left, Color ink) {
+    int cx = r.x + r.w / 2;
+    int cy = r.y + r.h / 2;
+    if (left) {
+        int L = cx - 2;
+        for (int i = 0; i < 4; ++i)
+            cv.vline(L + i, cy - i, cy + i + 1, ink);
+    } else {
+        int R = cx + 2;
+        for (int i = 0; i < 4; ++i)
+            cv.vline(R - i, cy - i, cy + i + 1, ink);
+    }
+}
+
+inline void paint_scrollbar_grips(Canvas &cv, const SkinImage *grips, Rect thumb) {
+    if (!grips || grips->empty()) return;
+    int gx = thumb.x + (thumb.w - grips->w) / 2;
+    int gy = thumb.y + (thumb.h - grips->h) / 2;
+    cv.blit_image(*grips, gx, gy);
+}
+
+inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
+                                    const ScrollLayout &s, bool hilite_thumb) {
     cv.fill(s.track, ap.c("scrollbar.track"));
     cv.hline(s.track.x, s.track.right(), s.track.y, ap.c("scrollbar.track_light2"));
     cv.vline(s.track.x, s.track.y, s.track.bottom(), ap.c("scrollbar.track_light1"));
@@ -775,15 +895,106 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     paint_arrow(cv, s.up, true, ap.c("scrollbar.label"));
     paint_arrow(cv, s.down, false, ap.c("scrollbar.label"));
 
-    Color il = hilite_thumb ? ap.c("scrollbar.hilite_light") : ap.c("scrollbar.indicator_light");
-    Color ind = hilite_thumb ? ap.c("scrollbar.hilite") : ap.c("scrollbar.indicator");
-    Color id = hilite_thumb ? ap.c("scrollbar.hilite_dark") : ap.c("scrollbar.indicator_dark");
+    Color il = hilite_thumb ? ap.c("scrollbar.indicator_hilite_light")
+                            : ap.c("scrollbar.indicator_light");
+    Color ind = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
+                             : ap.c("scrollbar.indicator");
+    Color id = hilite_thumb ? ap.c("scrollbar.indicator_hilite_dark")
+                            : ap.c("scrollbar.indicator_dark");
     cv.fill(s.thumb, ind);
     cv.frame(s.thumb, ap.c("scrollbar.frame"));
     cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.y + 1, il);
     cv.vline(s.thumb.x + 1, s.thumb.y + 1, s.thumb.bottom() - 1, il);
     cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.bottom() - 2, id);
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
+}
+
+inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
+                                    const ScrollLayout &s, bool hilite_thumb) {
+    cv.fill(s.track, ap.c("scrollbar.track"));
+    cv.vline(s.track.x, s.track.y, s.track.bottom(), ap.c("scrollbar.track_light2"));
+    cv.hline(s.track.x, s.track.right(), s.track.y, ap.c("scrollbar.track_light1"));
+    cv.vline(s.track.right() - 1, s.track.y, s.track.bottom(), ap.c("scrollbar.track_dark2"));
+    cv.hline(s.track.x, s.track.right(), s.track.bottom() - 1, ap.c("scrollbar.track_dark1"));
+
+    auto paint_btn = [&](Rect r) {
+        cv.fill(r, ap.c("scrollbar.face"));
+        cv.frame(r, ap.c("scrollbar.frame"));
+        cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("scrollbar.light"));
+        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("scrollbar.light"));
+        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("scrollbar.dark"));
+        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("scrollbar.dark"));
+    };
+    paint_btn(s.up);
+    paint_btn(s.down);
+    paint_arrow_h(cv, s.up, true, ap.c("scrollbar.label"));
+    paint_arrow_h(cv, s.down, false, ap.c("scrollbar.label"));
+
+    Color il = hilite_thumb ? ap.c("scrollbar.indicator_hilite_light")
+                            : ap.c("scrollbar.indicator_light");
+    Color ind = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
+                             : ap.c("scrollbar.indicator");
+    Color id = hilite_thumb ? ap.c("scrollbar.indicator_hilite_dark")
+                            : ap.c("scrollbar.indicator_dark");
+    cv.fill(s.thumb, ind);
+    cv.frame(s.thumb, ap.c("scrollbar.frame"));
+    cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.y + 1, il);
+    cv.vline(s.thumb.x + 1, s.thumb.y + 1, s.thumb.bottom() - 1, il);
+    cv.hline(s.thumb.x + 1, s.thumb.right() - 1, s.thumb.bottom() - 2, id);
+    cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
+}
+
+// Art-first vertical scrollbar (double arrows + indicator + optional grips).
+inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
+                            int value, int max_value, int page, bool hilite_thumb) {
+    ScrollLayout s = scroll_layout(ap, bar, value, max_value, page);
+
+    const SkinImage *arrows = ap.art("scrollbar.v.double_arrows");
+    if (arrows) {
+        cv.nine_slice(*arrows, bar);
+        const char *islot = hilite_thumb ? "scrollbar.v.indicator.hilited"
+                                         : "scrollbar.v.indicator.normal";
+        const SkinImage *ind = ap.art(islot);
+        if (!ind) ind = ap.art("scrollbar.v.indicator.normal");
+        if (ind && s.thumb.h > 0)
+            cv.nine_slice(*ind, s.thumb);
+        else if (s.thumb.h > 0) {
+            Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
+                                      : ap.c("scrollbar.indicator");
+            cv.fill(s.thumb, face);
+        }
+        paint_scrollbar_grips(cv, ap.art("scrollbar.v.grips.normal"), s.thumb);
+        return;
+    }
+
+    paint_scrollbar_color_v(cv, ap, s, hilite_thumb);
+}
+
+// Art-first horizontal scrollbar.
+inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
+                              int value, int max_value, int page,
+                              bool hilite_thumb) {
+    ScrollLayout s = scroll_layout_h(ap, bar, value, max_value, page);
+
+    const SkinImage *arrows = ap.art("scrollbar.h.double_arrows");
+    if (arrows) {
+        cv.nine_slice(*arrows, bar);
+        const char *islot = hilite_thumb ? "scrollbar.h.indicator.hilited"
+                                         : "scrollbar.h.indicator.normal";
+        const SkinImage *ind = ap.art(islot);
+        if (!ind) ind = ap.art("scrollbar.h.indicator.normal");
+        if (ind && s.thumb.w > 0)
+            cv.nine_slice(*ind, s.thumb);
+        else if (s.thumb.w > 0) {
+            Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
+                                      : ap.c("scrollbar.indicator");
+            cv.fill(s.thumb, face);
+        }
+        paint_scrollbar_grips(cv, ap.art("scrollbar.h.grips.normal"), s.thumb);
+        return;
+    }
+
+    paint_scrollbar_color_h(cv, ap, s, hilite_thumb);
 }
 
 constexpr int kMenuItemH = 18;
@@ -1764,9 +1975,12 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     lay.btn_ok = default_button_rect(x, y, kBtnW);
     lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kButtonH};
     lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kButtonH};
+    Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kButtonH};
     paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
     paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
     paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
+    if (btn_dis.right() <= client.right() - pad)
+        paint_button(cv, ap, btn_dis, "Disabled", false, false, true);
     y += kDefaultButtonH + 8;
 
     // Tick (checkbox) + Mutex (radio) + disclosure
@@ -1824,11 +2038,20 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
     y += 28;
 
-    // List + header + scrollbar
+    // Compact V + H scrollbar samples (always visible above the list)
+    cv.text(x, y + 2, "Scroll", ap.c("primary.label"));
+    Rect vdemo{x + 56, y, kScrollbarW, 72};
+    paint_scrollbar(cv, ap, vdemo, 3, 10, 4, false);
+    Rect hdemo{vdemo.right() + 10, y + (72 - kScrollbarW) / 2,
+               std::min(w - 90, 200), kScrollbarW};
+    paint_scrollbar_h(cv, ap, hdemo, 2, 8, 4, true);
+    y += 80;
+
+    // List + header + scrollbar (file_label tints on unselected rows)
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
     lay.row_count = 8;
-    int list_h = client.bottom() - y - pad;
+    int list_h = client.bottom() - y - pad - (kScrollbarW + 8);
     if (list_h < 72) list_h = 72;
     lay.list = {x, y, std::min(w, 320), list_h};
     lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
@@ -1851,7 +2074,8 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         else if (i % 2)
             cv.fill(row, ap.c("list.sort_column_background"));
         if (idx >= 0 && idx < lay.row_count) {
-            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            Color ink = sel ? ap.c("list.hilite_foreground")
+                            : file_label_color(ap, idx % 16);
             cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
         }
         cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
@@ -1859,6 +2083,11 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
                 lay.list.h - kHeaderH};
     paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows, st.thumb_hot);
+
+    // Horizontal scrollbar sample under the list
+    Rect hsbar{lay.list.x, lay.list.bottom() + 4, lay.list.w, kScrollbarW};
+    if (hsbar.bottom() <= client.bottom() - 2)
+        paint_scrollbar_h(cv, ap, hsbar, 2, 8, 4, false);
 
     // Open dropdown menu painted last so it stacks above the list
     if (st.dropdown_open) {

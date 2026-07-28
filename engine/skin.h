@@ -182,11 +182,19 @@ inline ColorMap stock_colors() {
     set_role(m, "scrollbar.indicator_light", rgb(102, 102, 102));
     set_role(m, "scrollbar.indicator", rgb(51, 51, 51));
     set_role(m, "scrollbar.indicator_dark", rgb(17, 17, 17));
+    set_role(m, "scrollbar.indicator_hilite_light", rgb(170, 68, 68));
+    set_role(m, "scrollbar.indicator_hilite", rgb(136, 0, 0));
+    set_role(m, "scrollbar.indicator_hilite_dark", rgb(68, 0, 0));
     set_role(m, "scrollbar.track_light2", rgb(68, 68, 68));
     set_role(m, "scrollbar.track_light1", rgb(51, 51, 51));
     set_role(m, "scrollbar.track", rgb(34, 34, 34));
     set_role(m, "scrollbar.track_dark1", rgb(17, 17, 17));
     set_role(m, "scrollbar.track_dark2", rgb(0, 0, 0));
+    set_role(m, "scrollbar.disable_light", rgb(85, 85, 85));
+    set_role(m, "scrollbar.disable", rgb(58, 58, 58));
+    set_role(m, "scrollbar.disable_dark", rgb(34, 34, 34));
+    set_role(m, "scrollbar.disable_frame", rgb(0, 0, 0));
+    set_role(m, "scrollbar.disable_label", rgb(136, 136, 136));
     // Column header
     set_role(m, "column_header.frame", rgb(0, 0, 0));
     set_role(m, "column_header.light", rgb(102, 102, 102));
@@ -197,6 +205,20 @@ inline ColorMap stock_colors() {
     set_role(m, "column_header.hilite", rgb(136, 0, 0));
     set_role(m, "column_header.hilite_dark", rgb(68, 0, 0));
     set_role(m, "column_header.hilite_label", rgb(255, 255, 255));
+    // File Label 0–15 (list-item label tints; Hap 183–198)
+    static const Color kFileLabels[16] = {
+        rgb(255, 255, 255), rgb(255, 0, 0),     rgb(255, 127, 0),
+        rgb(0, 255, 0),     rgb(0, 255, 255),   rgb(0, 0, 255),
+        rgb(136, 0, 255),   rgb(136, 0, 0),     rgb(85, 34, 0),
+        rgb(255, 255, 0),   rgb(0, 127, 0),     rgb(0, 127, 127),
+        rgb(0, 34, 102),    rgb(255, 0, 255),   rgb(127, 0, 127),
+        rgb(102, 102, 102),
+    };
+    for (int i = 0; i < 16; ++i) {
+        char key[24];
+        std::snprintf(key, sizeof(key), "file_label.%d", i);
+        set_role(m, key, kFileLabels[i]);
+    }
     // Progress (Haxial Progress Bar / Fill)
     set_role(m, "progress.bkgnd_light", rgb(68, 68, 68));
     set_role(m, "progress.bkgnd", rgb(34, 34, 34));
@@ -286,6 +308,13 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"button_hilite.dark2", "Button Hilite Dark 2"},
         {"button_hilite.frame", "Button Hilite Frame"},
         {"button_hilite.label", "Button Hilite Label"},
+        {"button_disable.light2", "Button Disable Light 2"},
+        {"button_disable.light1", "Button Disable Light 1"},
+        {"button_disable.face", "Button Disable Face"},
+        {"button_disable.dark1", "Button Disable Dark 1"},
+        {"button_disable.dark2", "Button Disable Dark 2"},
+        {"button_disable.frame", "Button Disable Frame"},
+        {"button_disable.label", "Button Disable Label"},
         {"default_button.light", "Default Button Light"},
         {"default_button.face", "Default Button Face"},
         {"default_button.dark", "Default Button Dark"},
@@ -330,14 +359,26 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"scrollbar.face", "ScrollBar Face"},
         {"scrollbar.dark", "ScrollBar Dark"},
         {"scrollbar.label", "ScrollBar Label"},
+        {"scrollbar.hilite_light", "ScrollBar Hilite Light"},
+        {"scrollbar.hilite", "ScrollBar Hilite"},
+        {"scrollbar.hilite_dark", "ScrollBar Hilite Dark"},
+        {"scrollbar.hilite_label", "ScrollBar Hilite Label"},
         {"scrollbar.indicator_light", "ScrollBar Indicator Light"},
         {"scrollbar.indicator", "ScrollBar Indicator"},
         {"scrollbar.indicator_dark", "ScrollBar Indicator Dark"},
+        {"scrollbar.indicator_hilite_light", "ScrollBar Indicator Hilite Light"},
+        {"scrollbar.indicator_hilite", "ScrollBar Indicator Hilite"},
+        {"scrollbar.indicator_hilite_dark", "ScrollBar Indicator Hilite Dark"},
         {"scrollbar.track_light2", "ScrollBar Track Light 2"},
         {"scrollbar.track_light1", "ScrollBar Track Light 1"},
         {"scrollbar.track", "ScrollBar Track"},
         {"scrollbar.track_dark1", "ScrollBar Track Dark 1"},
         {"scrollbar.track_dark2", "ScrollBar Track Dark 2"},
+        {"scrollbar.disable_light", "ScrollBar Disable Light"},
+        {"scrollbar.disable", "ScrollBar Disable"},
+        {"scrollbar.disable_dark", "ScrollBar Disable Dark"},
+        {"scrollbar.disable_frame", "ScrollBar Disable Frame"},
+        {"scrollbar.disable_label", "ScrollBar Disable Label"},
         {"column_header.frame", "Column Header Frame"},
         {"column_header.light", "Column Header Light"},
         {"column_header.face", "Column Header Face"},
@@ -347,6 +388,22 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"column_header.hilite", "Column Header Hilite"},
         {"column_header.hilite_dark", "Column Header Hilite Dark"},
         {"column_header.hilite_label", "Column Header Hilite Label"},
+        {"file_label.0", "File Label 0"},
+        {"file_label.1", "File Label 1"},
+        {"file_label.2", "File Label 2"},
+        {"file_label.3", "File Label 3"},
+        {"file_label.4", "File Label 4"},
+        {"file_label.5", "File Label 5"},
+        {"file_label.6", "File Label 6"},
+        {"file_label.7", "File Label 7"},
+        {"file_label.8", "File Label 8"},
+        {"file_label.9", "File Label 9"},
+        {"file_label.10", "File Label 10"},
+        {"file_label.11", "File Label 11"},
+        {"file_label.12", "File Label 12"},
+        {"file_label.13", "File Label 13"},
+        {"file_label.14", "File Label 14"},
+        {"file_label.15", "File Label 15"},
         {"progress.bkgnd_light", "Progress Background Light"},
         {"progress.bkgnd", "Progress Background"},
         {"progress.bkgnd_dark", "Progress Background Dark"},

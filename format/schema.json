@@ -47,6 +47,8 @@
         "slider": { "$ref": "#/$defs/sliderGroup" },
         "scrollbar": { "$ref": "#/$defs/scrollbarGroup" },
         "column_header": { "$ref": "#/$defs/columnHeaderGroup" },
+        "file_label": { "$ref": "#/$defs/fileLabelGroup" },
+        "progress": { "$ref": "#/$defs/progressGroup" },
         "workspace": { "$ref": "#/$defs/workspaceGroup" }
       }
     },
@@ -215,11 +217,19 @@
         "indicator_light": { "$ref": "#/$defs/color" },
         "indicator": { "$ref": "#/$defs/color" },
         "indicator_dark": { "$ref": "#/$defs/color" },
+        "indicator_hilite_light": { "$ref": "#/$defs/color" },
+        "indicator_hilite": { "$ref": "#/$defs/color" },
+        "indicator_hilite_dark": { "$ref": "#/$defs/color" },
         "track_light2": { "$ref": "#/$defs/color" },
         "track_light1": { "$ref": "#/$defs/color" },
         "track": { "$ref": "#/$defs/color" },
         "track_dark1": { "$ref": "#/$defs/color" },
-        "track_dark2": { "$ref": "#/$defs/color" }
+        "track_dark2": { "$ref": "#/$defs/color" },
+        "disable_light": { "$ref": "#/$defs/color" },
+        "disable": { "$ref": "#/$defs/color" },
+        "disable_dark": { "$ref": "#/$defs/color" },
+        "disable_frame": { "$ref": "#/$defs/color" },
+        "disable_label": { "$ref": "#/$defs/color" }
       }
     },
     "columnHeaderGroup": {
@@ -235,6 +245,45 @@
         "hilite": { "$ref": "#/$defs/color" },
         "hilite_dark": { "$ref": "#/$defs/color" },
         "hilite_label": { "$ref": "#/$defs/color" }
+      }
+    },
+    "fileLabelGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "File Label 0–15 list-item label tints (Hap colours 183–198).",
+      "properties": {
+        "0": { "$ref": "#/$defs/color" },
+        "1": { "$ref": "#/$defs/color" },
+        "2": { "$ref": "#/$defs/color" },
+        "3": { "$ref": "#/$defs/color" },
+        "4": { "$ref": "#/$defs/color" },
+        "5": { "$ref": "#/$defs/color" },
+        "6": { "$ref": "#/$defs/color" },
+        "7": { "$ref": "#/$defs/color" },
+        "8": { "$ref": "#/$defs/color" },
+        "9": { "$ref": "#/$defs/color" },
+        "10": { "$ref": "#/$defs/color" },
+        "11": { "$ref": "#/$defs/color" },
+        "12": { "$ref": "#/$defs/color" },
+        "13": { "$ref": "#/$defs/color" },
+        "14": { "$ref": "#/$defs/color" },
+        "15": { "$ref": "#/$defs/color" }
+      }
+    },
+    "progressGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bkgnd_light": { "$ref": "#/$defs/color" },
+        "bkgnd": { "$ref": "#/$defs/color" },
+        "bkgnd_dark": { "$ref": "#/$defs/color" },
+        "frame": { "$ref": "#/$defs/color" },
+        "label": { "$ref": "#/$defs/color" },
+        "transition": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/color" },
+          "maxItems": 10
+        }
       }
     },
     "workspaceGroup": {
