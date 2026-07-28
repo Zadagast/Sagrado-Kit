@@ -103,6 +103,36 @@ struct Canvas {
         return w;
     }
 
+    // Tight ink bounds of a string (relative to the text origin). Returns false
+    // if the string has no set pixels.
+    bool text_ink(const char *s, int &x0, int &y0, int &x1, int &y1) const {
+        bool any = false;
+        int pen = 0;
+        for (; *s; ++s) {
+            if (*s < 32 || *s >= 127) continue;
+            const Glyph &g = kFont[*s - 32];
+            for (int row = 0; row < kFontHeight; ++row) {
+                uint16_t bits = g.rows[row];
+                for (int col = 0; bits; ++col, bits >>= 1) {
+                    if (!(bits & 1)) continue;
+                    int px = pen + col, py = row;
+                    if (!any) {
+                        x0 = x1 = px;
+                        y0 = y1 = py;
+                        any = true;
+                    } else {
+                        if (px < x0) x0 = px;
+                        if (px > x1) x1 = px;
+                        if (py < y0) y0 = py;
+                        if (py > y1) y1 = py;
+                    }
+                }
+            }
+            pen += g.advance;
+        }
+        return any;
+    }
+
     int text(int x, int y, const char *s, Color c) {
         uint32_t p = pack(c);
         for (; *s; ++s) {
@@ -116,6 +146,17 @@ struct Canvas {
             x += g.advance;
         }
         return x;
+    }
+
+    // Draw label centred on the ink bounds inside r (not the advance box).
+    void text_centered(Rect r, const char *s, Color c, int press_off = 0) {
+        int x0, y0, x1, y1;
+        if (!text_ink(s, x0, y0, x1, y1)) return;
+        int iw = x1 - x0 + 1;
+        int ih = y1 - y0 + 1;
+        int tx = r.x + (r.w - iw) / 2 - x0 + press_off;
+        int ty = r.y + (r.h - ih) / 2 - y0 + press_off;
+        text(tx, ty, s, c);
     }
 
   private:

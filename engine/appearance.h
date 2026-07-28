@@ -120,12 +120,13 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     cv.hline(lay.client.x, lay.client.right(), lay.client.bottom() - 1, ap.c("primary.light"));
     cv.vline(lay.client.right() - 1, lay.client.y, lay.client.bottom(), ap.c("primary.light"));
 
-    // Title text — prefer primary.label
+    // Title text — prefer primary.label; vertically centre on ink in the bar
     Color ink = ap.title_label(focused);
-    cv.text(lay.title.x, lay.title.y, title, ink);
+    cv.text_centered(lay.title, title, ink, 0);
 
-    // Traffic-light boxes
-    auto paint_box = [&](Rect b, int id, char glyph) {
+    // Traffic-light boxes — drawn icons centred in the plate (not font glyphs;
+    // the 16px face is taller than the 14px box and sits optically low).
+    auto paint_box = [&](Rect b, int id, int kind) {
         bool pressed = pressed_box == id;
         Color bf = pressed ? dark1 : light1;
         Color bd = pressed ? light1 : dark1;
@@ -135,13 +136,30 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, bf);
         cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, bd);
         cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, bd);
-        char s[2] = {glyph, 0};
-        int tw = cv.text_width(s);
-        cv.text(b.x + (b.w - tw) / 2, b.y + (b.h - kFontHeight) / 2 + 1, s, ink);
+        int cx = b.x + b.w / 2 + (pressed ? 1 : 0);
+        int cy = b.y + b.h / 2 + (pressed ? 1 : 0);
+        uint32_t p = pack(ink);
+        if (kind == 0) { // minimize —
+            for (int dx = -3; dx <= 3; ++dx) cv.put(cx + dx, cy, p);
+        } else if (kind == 1) { // maximize □
+            for (int dx = -3; dx <= 3; ++dx) {
+                cv.put(cx + dx, cy - 3, p);
+                cv.put(cx + dx, cy + 3, p);
+            }
+            for (int dy = -2; dy <= 2; ++dy) {
+                cv.put(cx - 3, cy + dy, p);
+                cv.put(cx + 3, cy + dy, p);
+            }
+        } else { // close ×
+            for (int d = -3; d <= 3; ++d) {
+                cv.put(cx + d, cy + d, p);
+                cv.put(cx + d, cy - d, p);
+            }
+        }
     };
-    paint_box(lay.min_box, 4, '-');
-    paint_box(lay.max_box, 3, '+');
-    paint_box(lay.close_box, 1, 'x');
+    paint_box(lay.min_box, 4, 0);
+    paint_box(lay.max_box, 3, 1);
+    paint_box(lay.close_box, 1, 2);
 }
 
 // --- Controls ------------------------------------------------------------
@@ -181,10 +199,9 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
     cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
     cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
-    int tw = cv.text_width(label);
-    int off = pressed ? 1 : 0;
-    cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
-            label, ap.c("button.label"));
+    // Inner face for label (keep clear of the 2px bevel)
+    Rect label_r{r.x + 3, r.y + 3, r.w - 6, r.h - 6};
+    cv.text_centered(label_r, label, ap.c("button.label"), pressed ? 1 : 0);
 }
 
 inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
@@ -281,14 +298,17 @@ inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page) 
 }
 
 inline void paint_arrow(Canvas &cv, Rect r, bool up, Color ink) {
+    // 7×4 triangle centred in the plate
     int cx = r.x + r.w / 2;
     int cy = r.y + r.h / 2;
     if (up) {
+        int top = cy - 2;
         for (int i = 0; i < 4; ++i)
-            cv.hline(cx - i, cx + i + 1, cy - 2 + i, ink);
+            cv.hline(cx - i, cx + i + 1, top + i, ink);
     } else {
+        int bot = cy + 2;
         for (int i = 0; i < 4; ++i)
-            cv.hline(cx - i, cx + i + 1, cy + 2 - i, ink);
+            cv.hline(cx - i, cx + i + 1, bot - i, ink);
     }
 }
 

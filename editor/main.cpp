@@ -214,13 +214,17 @@ void layout() {
     g.gel = gel_layout(0, 0, W, H);
     Rect client = g.gel.client;
 
-    int ty = client.y + 8;
-    g.btn_load = {client.x + 10, ty, 80, 24};
-    g.btn_save = {client.x + 100, ty, 80, 24};
-    g.btn_stock = {client.x + 190, ty, 80, 24};
+    // Toolbar buttons — sized for the 16px face + bevel + default-ring.
+    constexpr int kToolBtnW = 104;
+    constexpr int kToolBtnH = 32;
+    constexpr int kToolGap = 10;
+    int ty = client.y + 10;
+    g.btn_load = {client.x + 12, ty, kToolBtnW, kToolBtnH};
+    g.btn_save = {g.btn_load.right() + kToolGap, ty, kToolBtnW, kToolBtnH};
+    g.btn_stock = {g.btn_save.right() + kToolGap, ty, kToolBtnW, kToolBtnH};
 
     int split = client.x + 420;
-    int content_top = ty + 34;
+    int content_top = ty + kToolBtnH + 12;
     int content_h = client.bottom() - content_top - 8;
 
     g.role_list = {client.x + 10, content_top, 400, content_h - 90};
@@ -263,7 +267,8 @@ void paint() {
     paint_button(cv, ap, g.btn_save, "Save", save_p, true);
     paint_button(cv, ap, g.btn_stock, "Stock", stock_p, false);
 
-    cv.text(client.x + 290, g.btn_load.y + 4, g.status.c_str(),
+    cv.text(g.btn_stock.right() + 16,
+            g.btn_load.y + (g.btn_load.h - kFontHeight) / 2, g.status.c_str(),
             ap.c("primary.disable_label"));
 
     // Role list
