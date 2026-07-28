@@ -80,12 +80,18 @@ struct Appearance {
             dst[key] = std::move(img);
         };
         for (const auto &kv : skin.art) load_into(kv.second, art_cache, kv.first);
-        // Icons: SlotMap path → load as SkinImage (no caps required).
+        // Icons: SlotMap path → load as SkinImage (no caps; never invent mid caps).
         for (const auto &kv : skin.icons) {
             if (kv.second.empty()) continue;
             ArtRef ref;
             ref.path = kv.second;
-            load_into(ref, icon_cache, kv.first);
+            if (ref.path.empty()) continue;
+            SkinImage img;
+            std::string full = join_path(skin_dir, ref.path);
+            if (!load_skin_image(full, img)) continue;
+            std::memset(img.caps, 0, 4);
+            std::memset(img.positions, 0, 4);
+            icon_cache[kv.first] = std::move(img);
         }
     }
 

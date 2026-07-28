@@ -311,7 +311,7 @@ def rd32(d: bytes, o: int) -> int:
     return (d[o] << 24) | (d[o + 1] << 16) | (d[o + 2] << 8) | d[o + 3]
 
 
-def parse_image(d: bytes, o: int):
+def parse_image(d: bytes, o: int, is_icon: bool = False):
     w, h = rd16(d, o), rd16(d, o + 2)
     if w <= 0 or h <= 0 or w > 2048 or h > 2048:
         return None
@@ -322,10 +322,20 @@ def parse_image(d: bytes, o: int):
         return None
     palette_len = d[o + 6] + 1
     transparent_index = d[o + 7]
-    caps = list(d[o + 12 : o + 16])
-    pos = list(d[o + 16 : o + 20])
-    palette = [rd32(d, o + 20 + 4 * i) & 0x00FFFFFF for i in range(palette_len)]
-    pixels_off = o + 20 + 4 * palette_len
+    # Images: +8..+11 aux colour, +12 caps, +16 positions, +20 palette.
+    # Icons: no caps/positions — palette starts at +8.
+    if is_icon:
+        caps = [0, 0, 0, 0]
+        pos = [0, 0, 0, 0]
+        pal_off = o + 8
+    else:
+        caps = list(d[o + 12 : o + 16])
+        pos = list(d[o + 16 : o + 20])
+        pal_off = o + 20
+    if pal_off + 4 * palette_len > len(d):
+        return None
+    palette = [rd32(d, pal_off + 4 * i) & 0x00FFFFFF for i in range(palette_len)]
+    pixels_off = pal_off + 4 * palette_len
     stride = (w * bpp + 31) // 32 * 4
     if pixels_off + stride * h > len(d):
         return None
@@ -414,7 +424,7 @@ def load_hap(path: Path):
                 continue
             if ico_off + rel + 20 > len(d):
                 continue
-            img = parse_image(d, ico_off + rel)
+            img = parse_image(d, ico_off + rel, is_icon=True)
             if img:
                 icons[slot] = img
     return name, colors, images, icons
