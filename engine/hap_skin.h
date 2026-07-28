@@ -363,12 +363,32 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
     std::string dir = parent_dir(pack_path);
     int filled = 0;
 
+    // If the Hap already authored a menu pattern or item/background plates,
+    // do not invent foreign menu.background / menu.item.* — dark Boilerplate
+    // plates clash on light patterned themes (Aluminum Alloy). A lone junk
+    // separator (Milk 28×36) does not count as menu chrome.
+    bool has_menu_chrome = false;
+    for (const auto &kv : ap.art_cache) {
+        if (kv.second.empty()) continue;
+        if (kv.first == "menu.background_pattern" || kv.first == "menu.background" ||
+            kv.first.rfind("menu.item.", 0) == 0) {
+            has_menu_chrome = true;
+            break;
+        }
+    }
+
     for (const auto &kv : pack.art) {
         if (kv.first == "primary.background") continue;
         // Never invent scroll grips — themes that omit them (Aluminum Alloy,
         // Milk) either bake marks into the indicator or want a clean thumb.
         // Foreign grips read as a fake button on authored indicators.
         if (kv.first.find(".grips.") != std::string::npos) continue;
+        if (has_menu_chrome) {
+            if (kv.first == "menu.background" ||
+                kv.first.rfind("menu.item.", 0) == 0 ||
+                kv.first.rfind("menu.item.pattern.", 0) == 0)
+                continue;
+        }
         if (ap.art_cache.count(kv.first) && !ap.art_cache[kv.first].empty())
             continue;
         SkinImage img;

@@ -50,6 +50,7 @@ smoke: engine/smoke_test.cpp engine/*.h | $(BUILD)
 	# Hap → .sap art/colour round-trip (parity); soft-complete fills empty slots
 	$(BUILD)/smoke_test "research/haps/Milk Redux.hap"
 	$(BUILD)/smoke_test "research/haps/Ashen.hap"
+	$(BUILD)/smoke_test "research/haps/Aluminum Alloy - Toxic.hap"
 
 clean:
 	rm -rf $(BUILD)

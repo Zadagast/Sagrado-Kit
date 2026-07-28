@@ -191,11 +191,10 @@ struct Appearance {
 
     Color title_label(bool focused) const {
         // Standard colour path uses Window / Window Focus Label. Bitmap themes
-        // leave those white — KDX then paints Primary Label / Disable Label.
+        // leave those near-white — KDX then paints Primary Label / Disable Label.
         const char *role = focused ? "window_focus.label" : "window.label";
         Color wl = c(role);
-        bool white = wl.r == 255 && wl.g == 255 && wl.b == 255;
-        if (white)
+        if (wl.r > 200 && wl.g > 200 && wl.b > 200)
             return focused ? c("primary.label") : c("primary.disable_label");
         return wl;
     }
@@ -459,8 +458,12 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
     }
 }
 
-// Prefer Hap plate Text Color when set; else Button Label with white-on-art
-// fallback to Primary Label (KDX title-label practice).
+// Prefer Hap plate Text Color when set; else colour-table label with
+// Haxial/KDX stock-white → Primary Label practice.
+inline bool label_near_white(Color c) {
+    return c.r > 200 && c.g > 200 && c.b > 200;
+}
+
 inline Color plate_text_color(const SkinImage *plate) {
     if (!plate || !plate->has_text_color) return {0, 0, 0};
     return {uint8_t((plate->text_color >> 16) & 0xff),
@@ -468,13 +471,21 @@ inline Color plate_text_color(const SkinImage *plate) {
             uint8_t(plate->text_color & 0xff)};
 }
 
+// When candidate is stock near-white (unauthored), use Primary Label so ink
+// stays readable on light bitmap chrome (Aluminum Alloy, etc.).
+inline Color readable_label(const Appearance &ap, Color candidate,
+                            bool disabled = false) {
+    if (disabled) return ap.c("primary.disable_label");
+    if (label_near_white(candidate)) return ap.c("primary.label");
+    return candidate;
+}
+
 inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
                               const SkinImage *plate = nullptr) {
     if (disabled) return ap.c("button_disable.label");
     if (plate && plate->has_text_color) return plate_text_color(plate);
     Color ink = ap.c("button.label");
-    if (has_art && ink.r > 200 && ink.g > 200 && ink.b > 200)
-        return ap.c("primary.label");
+    if (has_art && label_near_white(ink)) return ap.c("primary.label");
     return ink;
 }
 
@@ -588,8 +599,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     Color deep = role("dark1");
     Color frame_c = role("frame");
     Color label = role("label");
-    bool label_white = label.r == 255 && label.g == 255 && label.b == 255;
-    if (label_white) label = ap.title_label(focused);
+    if (label_near_white(label)) label = ap.title_label(focused);
 
     Color grad[18];
     for (int i = 0; i < 18; ++i) {
@@ -872,18 +882,17 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     if (!img && disabled) img = ap.art("column_header.normal");
     if (!img && hilite) img = ap.art("column_header.normal");
 
-    Color ink = hilite ? ap.c("column_header.hilite_label") : ap.title_label(true);
+    Color ink;
     if (disabled) {
         ink = ap.c("primary.disable_label");
     } else if (img && img->has_text_color) {
         ink = plate_text_color(img);
-    } else if (!hilite) {
-        Color hl = ap.c("column_header.label");
-        bool white = hl.r == 255 && hl.g == 255 && hl.b == 255;
-        if (!(ap.skin.colors.count("column_header.label") && !white))
-            ink = ap.c("primary.label");
-        else
-            ink = hl;
+    } else if (hilite) {
+        // Hilite Label is often stock-white on light header art — same KDX
+        // Primary Label remap as the normal header path.
+        ink = readable_label(ap, ap.c("column_header.hilite_label"));
+    } else {
+        ink = readable_label(ap, ap.c("column_header.label"));
     }
 
     if (img) {
@@ -912,7 +921,11 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
 inline Color file_label_color(const Appearance &ap, int index) {
     char key[24];
     std::snprintf(key, sizeof(key), "file_label.%d", std::clamp(index, 0, 15));
-    return ap.c(key);
+    Color ink = ap.c(key);
+    // Stock-white file labels vanish on white list backgrounds (Aluminum).
+    if (label_near_white(ink) && label_near_white(ap.c("list.background")))
+        return readable_label(ap, ink);
+    return ink;
 }
 
 inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
@@ -1701,7 +1714,10 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
 
         Color ink = dis ? ap.c("menu.disable_label")
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
-        if (!dis && item && item->has_text_color) ink = plate_text_color(item);
+        if (!dis && item && item->has_text_color)
+            ink = plate_text_color(item);
+        else if (!dis)
+            ink = readable_label(ap, ink);
         cv.text(row.x + 8, row.y + (kMenuItemH - kFontHeight) / 2, items[i], ink);
     }
     return lay;
@@ -1771,6 +1787,8 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
         if (!dis && title_art && title_art->has_text_color)
             ink = plate_text_color(title_art);
+        else if (!dis)
+            ink = readable_label(ap, ink);
         cv.text(item.x + 8, item.y + (item.h - kFontHeight) / 2, t, ink);
         x += iw;
     }
