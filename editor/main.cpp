@@ -96,8 +96,11 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    // Prefer live Hap, then extracted Milk .sap, then stock.
+    // Prefer a chrome-rich Hap (Gamespot), then Milk, then extracted .sap / stock.
     const char *cands[] = {
+        "\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\research\\haps\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
