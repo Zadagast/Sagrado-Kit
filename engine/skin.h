@@ -43,6 +43,7 @@ inline std::string color_to_hex(Color c) {
 // Flat role path: "primary.background", "button.label", "window.transition.3"
 using ColorMap = std::map<std::string, Color>;
 using SlotMap = std::map<std::string, std::string>;
+using ArtMap = std::map<std::string, ArtRef>;
 
 struct SkinMeta {
     std::string name = "Untitled";
@@ -55,7 +56,7 @@ struct Skin {
     int format_version = 1;
     SkinMeta meta;
     ColorMap colors; // only roles authored in this skin
-    SlotMap art;     // reserved — relative paths
+    ArtMap art;      // slot → file + caps/positions
     SlotMap icons;   // reserved — relative paths
 };
 
@@ -99,8 +100,8 @@ inline ColorMap stock_colors() {
         set_role(m, (std::string(g) + ".frame").c_str(), frame);
         set_role(m, (std::string(g) + ".label").c_str(), label);
     };
-    button("button", rgb(102, 102, 102), rgb(68, 68, 68), rgb(51, 51, 51),
-           rgb(34, 34, 34), rgb(17, 17, 17), rgb(0, 0, 0), rgb(255, 255, 255));
+    button("button", rgb(170, 170, 170), rgb(119, 119, 119), rgb(85, 85, 85),
+           rgb(34, 34, 34), rgb(0, 0, 0), rgb(0, 0, 0), rgb(255, 255, 255));
     button("button_hilite", rgb(136, 136, 136), rgb(102, 102, 102),
            rgb(68, 68, 68), rgb(34, 34, 34), rgb(17, 17, 17), rgb(0, 0, 0),
            rgb(255, 255, 255));
@@ -110,10 +111,17 @@ inline ColorMap stock_colors() {
     set_role(m, "default_button.face", rgb(136, 0, 0));
     set_role(m, "default_button.dark", rgb(68, 0, 0));
     set_role(m, "default_button.frame", rgb(0, 0, 0));
-    // Window / window_focus
+    // Window / window_focus — Standard: unfocused is greyscale, focused red.
+    // Gradients measured off real Haxial TextEdit (rows 2..19).
+    static const uint8_t kGradRed[18] = {50,  61,  72,  82,  93,  104, 114, 125,
+                                         136, 139, 146, 153, 160, 167, 174, 181,
+                                         188, 195};
+    static const uint8_t kGradGrey[18] = {12, 15, 18, 20, 23,  26, 28,  31,
+                                          34, 39, 52, 65, 78,  91, 104, 117,
+                                          130, 143};
     auto window = [&](const char *g, Color l2, Color l1, Color face, Color d1,
-                      Color d2, Color frame, Color label,
-                      const uint8_t *grad) {
+                      Color d2, Color frame, Color label, const uint8_t *grad,
+                      bool grey_grad) {
         set_role(m, (std::string(g) + ".light2").c_str(), l2);
         set_role(m, (std::string(g) + ".light1").c_str(), l1);
         set_role(m, (std::string(g) + ".face").c_str(), face);
@@ -124,18 +132,16 @@ inline ColorMap stock_colors() {
         for (int i = 0; i < 18; ++i) {
             char key[48];
             std::snprintf(key, sizeof(key), "%s.transition.%d", g, i);
-            set_role(m, key, rgb(grad[i], 0, 0));
+            uint8_t v = grad[i];
+            set_role(m, key, grey_grad ? rgb(v, v, v) : rgb(v, 0, 0));
         }
     };
-    static const uint8_t kGrad[18] = {50,  61,  72,  82,  93,  104, 114, 125,
-                                      136, 139, 146, 153, 160, 167, 174, 181,
-                                      188, 195};
-    window("window", rgb(85, 0, 0), rgb(170, 0, 0), rgb(136, 0, 0),
-           rgb(68, 0, 0), rgb(34, 0, 0), rgb(0, 0, 0), rgb(255, 255, 255),
-           kGrad);
+    window("window", rgb(85, 85, 85), rgb(85, 85, 85), rgb(34, 34, 34),
+           rgb(17, 17, 17), rgb(17, 17, 17), rgb(0, 0, 0), rgb(136, 136, 136),
+           kGradGrey, true);
     window("window_focus", rgb(85, 0, 0), rgb(204, 0, 0), rgb(136, 0, 0),
            rgb(68, 0, 0), rgb(34, 0, 0), rgb(0, 0, 0), rgb(255, 255, 255),
-           kGrad);
+           kGradRed, false);
     // Menu
     set_role(m, "menu.light", rgb(102, 102, 102));
     set_role(m, "menu.background", rgb(51, 51, 51));
@@ -176,11 +182,19 @@ inline ColorMap stock_colors() {
     set_role(m, "scrollbar.indicator_light", rgb(102, 102, 102));
     set_role(m, "scrollbar.indicator", rgb(51, 51, 51));
     set_role(m, "scrollbar.indicator_dark", rgb(17, 17, 17));
+    set_role(m, "scrollbar.indicator_hilite_light", rgb(170, 68, 68));
+    set_role(m, "scrollbar.indicator_hilite", rgb(136, 0, 0));
+    set_role(m, "scrollbar.indicator_hilite_dark", rgb(68, 0, 0));
     set_role(m, "scrollbar.track_light2", rgb(68, 68, 68));
     set_role(m, "scrollbar.track_light1", rgb(51, 51, 51));
     set_role(m, "scrollbar.track", rgb(34, 34, 34));
     set_role(m, "scrollbar.track_dark1", rgb(17, 17, 17));
     set_role(m, "scrollbar.track_dark2", rgb(0, 0, 0));
+    set_role(m, "scrollbar.disable_light", rgb(85, 85, 85));
+    set_role(m, "scrollbar.disable", rgb(58, 58, 58));
+    set_role(m, "scrollbar.disable_dark", rgb(34, 34, 34));
+    set_role(m, "scrollbar.disable_frame", rgb(0, 0, 0));
+    set_role(m, "scrollbar.disable_label", rgb(136, 136, 136));
     // Column header
     set_role(m, "column_header.frame", rgb(0, 0, 0));
     set_role(m, "column_header.light", rgb(102, 102, 102));
@@ -191,6 +205,32 @@ inline ColorMap stock_colors() {
     set_role(m, "column_header.hilite", rgb(136, 0, 0));
     set_role(m, "column_header.hilite_dark", rgb(68, 0, 0));
     set_role(m, "column_header.hilite_label", rgb(255, 255, 255));
+    // File Label 0–15 (list-item label tints; Hap 183–198)
+    static const Color kFileLabels[16] = {
+        rgb(255, 255, 255), rgb(255, 0, 0),     rgb(255, 127, 0),
+        rgb(0, 255, 0),     rgb(0, 255, 255),   rgb(0, 0, 255),
+        rgb(136, 0, 255),   rgb(136, 0, 0),     rgb(85, 34, 0),
+        rgb(255, 255, 0),   rgb(0, 127, 0),     rgb(0, 127, 127),
+        rgb(0, 34, 102),    rgb(255, 0, 255),   rgb(127, 0, 127),
+        rgb(102, 102, 102),
+    };
+    for (int i = 0; i < 16; ++i) {
+        char key[24];
+        std::snprintf(key, sizeof(key), "file_label.%d", i);
+        set_role(m, key, kFileLabels[i]);
+    }
+    // Progress (Haxial Progress Bar / Fill)
+    set_role(m, "progress.bkgnd_light", rgb(68, 68, 68));
+    set_role(m, "progress.bkgnd", rgb(34, 34, 34));
+    set_role(m, "progress.bkgnd_dark", rgb(17, 17, 17));
+    set_role(m, "progress.frame", rgb(0, 0, 0));
+    set_role(m, "progress.label", rgb(255, 255, 255));
+    for (int i = 0; i < 10; ++i) {
+        char key[40];
+        std::snprintf(key, sizeof(key), "progress.transition.%d", i);
+        uint8_t v = uint8_t(80 + i * 16);
+        set_role(m, key, rgb(v, 0, 0));
+    }
     // Workspace
     set_role(m, "workspace.background1", rgb(51, 51, 51));
     set_role(m, "workspace.background2", rgb(42, 42, 42));
@@ -219,10 +259,10 @@ inline Color resolve_color(const Skin &skin, const ColorMap &stock,
     return rgb(255, 0, 255); // missing role marker (should not happen)
 }
 
-// Art slot reserved for later slices; colour path used when absent.
+// Art slot present when a non-empty path is authored.
 inline bool has_art(const Skin &skin, const char *slot) {
     auto it = skin.art.find(slot);
-    return it != skin.art.end() && !it->second.empty();
+    return it != skin.art.end() && !it->second.path.empty();
 }
 
 // --- Ordered role list for the editor ------------------------------------
@@ -268,6 +308,13 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"button_hilite.dark2", "Button Hilite Dark 2"},
         {"button_hilite.frame", "Button Hilite Frame"},
         {"button_hilite.label", "Button Hilite Label"},
+        {"button_disable.light2", "Button Disable Light 2"},
+        {"button_disable.light1", "Button Disable Light 1"},
+        {"button_disable.face", "Button Disable Face"},
+        {"button_disable.dark1", "Button Disable Dark 1"},
+        {"button_disable.dark2", "Button Disable Dark 2"},
+        {"button_disable.frame", "Button Disable Frame"},
+        {"button_disable.label", "Button Disable Label"},
         {"default_button.light", "Default Button Light"},
         {"default_button.face", "Default Button Face"},
         {"default_button.dark", "Default Button Dark"},
@@ -312,14 +359,26 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"scrollbar.face", "ScrollBar Face"},
         {"scrollbar.dark", "ScrollBar Dark"},
         {"scrollbar.label", "ScrollBar Label"},
+        {"scrollbar.hilite_light", "ScrollBar Hilite Light"},
+        {"scrollbar.hilite", "ScrollBar Hilite"},
+        {"scrollbar.hilite_dark", "ScrollBar Hilite Dark"},
+        {"scrollbar.hilite_label", "ScrollBar Hilite Label"},
         {"scrollbar.indicator_light", "ScrollBar Indicator Light"},
         {"scrollbar.indicator", "ScrollBar Indicator"},
         {"scrollbar.indicator_dark", "ScrollBar Indicator Dark"},
+        {"scrollbar.indicator_hilite_light", "ScrollBar Indicator Hilite Light"},
+        {"scrollbar.indicator_hilite", "ScrollBar Indicator Hilite"},
+        {"scrollbar.indicator_hilite_dark", "ScrollBar Indicator Hilite Dark"},
         {"scrollbar.track_light2", "ScrollBar Track Light 2"},
         {"scrollbar.track_light1", "ScrollBar Track Light 1"},
         {"scrollbar.track", "ScrollBar Track"},
         {"scrollbar.track_dark1", "ScrollBar Track Dark 1"},
         {"scrollbar.track_dark2", "ScrollBar Track Dark 2"},
+        {"scrollbar.disable_light", "ScrollBar Disable Light"},
+        {"scrollbar.disable", "ScrollBar Disable"},
+        {"scrollbar.disable_dark", "ScrollBar Disable Dark"},
+        {"scrollbar.disable_frame", "ScrollBar Disable Frame"},
+        {"scrollbar.disable_label", "ScrollBar Disable Label"},
         {"column_header.frame", "Column Header Frame"},
         {"column_header.light", "Column Header Light"},
         {"column_header.face", "Column Header Face"},
@@ -329,6 +388,27 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"column_header.hilite", "Column Header Hilite"},
         {"column_header.hilite_dark", "Column Header Hilite Dark"},
         {"column_header.hilite_label", "Column Header Hilite Label"},
+        {"file_label.0", "File Label 0"},
+        {"file_label.1", "File Label 1"},
+        {"file_label.2", "File Label 2"},
+        {"file_label.3", "File Label 3"},
+        {"file_label.4", "File Label 4"},
+        {"file_label.5", "File Label 5"},
+        {"file_label.6", "File Label 6"},
+        {"file_label.7", "File Label 7"},
+        {"file_label.8", "File Label 8"},
+        {"file_label.9", "File Label 9"},
+        {"file_label.10", "File Label 10"},
+        {"file_label.11", "File Label 11"},
+        {"file_label.12", "File Label 12"},
+        {"file_label.13", "File Label 13"},
+        {"file_label.14", "File Label 14"},
+        {"file_label.15", "File Label 15"},
+        {"progress.bkgnd_light", "Progress Background Light"},
+        {"progress.bkgnd", "Progress Background"},
+        {"progress.bkgnd_dark", "Progress Background Dark"},
+        {"progress.frame", "Progress Frame"},
+        {"progress.label", "Progress Label"},
         {"workspace.background1", "Workspace Background 1"},
         {"workspace.background2", "Workspace Background 2"},
         {"workspace.background3", "Workspace Background 3"},
@@ -370,12 +450,26 @@ inline bool load(const std::string &path, Skin &skin) {
     std::string line;
     bool in_array = false;
     std::string array_key;
+    std::string array_section;
     std::vector<std::string> array_vals;
+
+    auto parse_section_slot = [](const std::string &sec, const char *prefix,
+                                 std::string &slot_out) -> bool {
+        // art."button.normal"  or  art.button.normal
+        size_t plen = std::strlen(prefix);
+        if (sec.rfind(prefix, 0) != 0) return false;
+        if (sec.size() <= plen) return false;
+        std::string rest = sec.substr(plen);
+        if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
+            rest = rest.substr(1, rest.size() - 2);
+        if (rest.empty()) return false;
+        slot_out = rest;
+        return true;
+    };
 
     auto flush_array = [&]() {
         if (!in_array) return;
         if (array_key.find(".transition") != std::string::npos) {
-            // window.transition → window.transition.0..
             std::string base = array_key;
             for (size_t i = 0; i < array_vals.size() && i < 18; ++i) {
                 Color c;
@@ -385,9 +479,26 @@ inline bool load(const std::string &path, Skin &skin) {
                     skin.colors[key] = c;
                 }
             }
+        } else {
+            std::string slot;
+            if (parse_section_slot(array_section, "art.", slot) ||
+                parse_section_slot(array_section, "art_meta.", slot)) {
+                ArtRef &ref = skin.art[slot];
+                uint8_t vals[4] = {0, 0, 0, 0};
+                for (size_t i = 0; i < array_vals.size() && i < 4; ++i)
+                    vals[i] = uint8_t(std::atoi(array_vals[i].c_str()));
+                if (array_key == "caps") {
+                    for (int i = 0; i < 4; ++i) ref.caps[i] = vals[i];
+                    ref.has_caps = true;
+                } else if (array_key == "positions") {
+                    for (int i = 0; i < 4; ++i) ref.positions[i] = vals[i];
+                    ref.has_positions = true;
+                }
+            }
         }
         in_array = false;
         array_key.clear();
+        array_section.clear();
         array_vals.clear();
     };
 
@@ -410,8 +521,12 @@ inline bool load(const std::string &path, Skin &skin) {
                 continue;
             }
             if (line.back() == ',') line.pop_back();
+            line = trim(line);
             std::string v;
-            if (parse_string(line, v)) array_vals.push_back(v);
+            if (parse_string(line, v))
+                array_vals.push_back(v);
+            else
+                array_vals.push_back(line); // bare ints for caps/positions
             continue;
         }
 
@@ -426,14 +541,39 @@ inline bool load(const std::string &path, Skin &skin) {
         std::string key = trim(line.substr(0, eq));
         std::string val = trim(line.substr(eq + 1));
 
-        if (val == "[") {
+        // Unquote dotted keys: "button.normal"
+        if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
+            key = key.substr(1, key.size() - 2);
+
+        if (val == "[" || (val.size() >= 2 && val.front() == '[' && val.back() == ']')) {
             in_array = true;
+            array_section = section;
             if (section == "colors.window" || section.rfind("colors.", 0) == 0) {
-                // colors.window + transition → window.transition
-                std::string group = section.substr(7); // after "colors."
+                std::string group = section.substr(7);
                 array_key = group + "." + key;
             } else {
-                array_key = section.empty() ? key : section + "." + key;
+                array_key = key;
+            }
+            // Inline array: key = [a, b, c]
+            if (val.size() >= 2 && val.front() == '[' && val.back() == ']') {
+                std::string inner = trim(val.substr(1, val.size() - 2));
+                size_t start = 0;
+                while (start < inner.size()) {
+                    size_t comma = inner.find(',', start);
+                    std::string item = trim(inner.substr(
+                        start, comma == std::string::npos ? std::string::npos
+                                                          : comma - start));
+                    if (!item.empty()) {
+                        std::string v;
+                        if (parse_string(item, v))
+                            array_vals.push_back(v);
+                        else
+                            array_vals.push_back(item);
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                }
+                flush_array();
             }
             continue;
         }
@@ -455,7 +595,14 @@ inline bool load(const std::string &path, Skin &skin) {
             continue;
         }
         if (section == "art" && is_str) {
-            skin.art[key] = str;
+            skin.art[key].path = str;
+            continue;
+        }
+        std::string art_slot;
+        if (parse_section_slot(section, "art.", art_slot) ||
+            parse_section_slot(section, "art_meta.", art_slot)) {
+            ArtRef &ref = skin.art[art_slot];
+            if ((key == "file" || key == "path") && is_str) ref.path = str;
             continue;
         }
         if (section == "icons" && is_str) {
@@ -542,10 +689,25 @@ inline bool save(const std::string &path, const Skin &skin) {
         f << "]\n\n";
     }
 
-    f << "[art]\n";
-    for (const auto &kv : skin.art)
-        f << "\"" << kv.first << "\" = \"" << kv.second << "\"\n";
-    f << "\n[icons]\n";
+    // Art: one table per slot so caps/positions travel with the path.
+    for (const auto &kv : skin.art) {
+        const ArtRef &ref = kv.second;
+        if (ref.path.empty() && !ref.has_caps && !ref.has_positions) continue;
+        f << "[art.\"" << kv.first << "\"]\n";
+        if (!ref.path.empty()) f << "file = \"" << ref.path << "\"\n";
+        if (ref.has_caps || ref.path.size()) {
+            // Always persist caps when known; zeros are valid AppearanceEdit values.
+            f << "caps = [" << int(ref.caps[0]) << ", " << int(ref.caps[1])
+              << ", " << int(ref.caps[2]) << ", " << int(ref.caps[3]) << "]\n";
+        }
+        if (ref.has_positions) {
+            f << "positions = [" << int(ref.positions[0]) << ", "
+              << int(ref.positions[1]) << ", " << int(ref.positions[2]) << ", "
+              << int(ref.positions[3]) << "]\n";
+        }
+        f << "\n";
+    }
+    f << "[icons]\n";
     for (const auto &kv : skin.icons)
         f << "\"" << kv.first << "\" = \"" << kv.second << "\"\n";
     return true;

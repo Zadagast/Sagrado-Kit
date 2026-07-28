@@ -46,8 +46,11 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 # Debian/Ubuntu
 sudo apt install g++-mingw-w64-i686 wine
 
+# Draft PR waves live on feature branches (main is behind):
+#   git fetch origin && git checkout cursor/haxial-p2-polish-9daa
+
 make          # → build/SagradoKitEditor.exe + copied example skins
-make run      # launch under Wine
+make run      # launch under Wine (defaults to Milk Redux when present)
 ```
 
 ### Windows
@@ -63,15 +66,17 @@ i686-w64-mingw32-g++ -std=c++17 -O2 -Iengine editor/main.cpp \
 ```
 
 Run `build/SagradoKitEditor.exe`. Example skins are in
-`build/format/skins/` (and `format/skins/` in the repo).
+`build/format/skins/` (and `format/skins/` in the repo). The editor prefers
+`milk-redux/milk-redux.skin.toml` when that folder was copied by `make skins`.
 
 ## Editor
 
 - **Load / Save** — `.skin.toml` files (same format apps load)
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
-- **Kit Preview** — live gel window, button, field, dropdown menu, slider,
-  list+header, scrollbar — painted by the Appearance Engine
+- **Kit Preview** — live gel + controls; look for the **`P2  icon / menu / scroll`**
+  band at the top (icon buttons, menu bar, scroll samples) when on the P2 branch
+  with Milk Redux loaded
 
 Shortcuts: `Ctrl+O` load, `Ctrl+S` save, `Esc` quit. Drag the title bar to
 move; the close box quits.

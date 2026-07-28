@@ -112,7 +112,7 @@ Docs: usually **20 px tall**; caps allow other sizes. Label drawn **on top** of
 the 9-sliced image. Kit layout constant: `kButtonH = 20`. Default outer =
 face + 3 px on each side (`kDefaultButtonPad`).
 
-| Default Button Normal/Hilited/Disabled | index TBD (follows Button block in panel) | 9-slice | unused | Default is authored **3 px larger on all sides** than a regular button so a border can fit; or 3 px transparent if no border |
+| Default Button Normal/Hilited/Disabled | **37** / **38** / **39** | 9-slice | unused | Default is authored **3 px larger on all sides** than a regular button so a border can fit; or 3 px transparent if no border |
 
 **SagradoKit names:** `button.normal`, `button.hilited`, `button.disabled`,
 `default_button.normal`, `default_button.hilited`, `default_button.disabled`.
@@ -121,22 +121,47 @@ face + 3 px on each side (`kDefaultButtonPad`).
 
 | AppearanceEdit name | Hap slot | Caps / Positions | Paint |
 |---|---|---|---|
-| Popup Button Normal/Hilited/Disabled | index TBD | Usually ~20 px tall; 9-slice | Closed dropdown field+arrow chrome; title inside |
-| Popup Button No Title Normal/Hilited/Disabled | index TBD | Often ~20×20 | Well next to a text field |
-| Popup Button Symbol Normal/Hilited/Disabled | index TBD | **Positions** place the arrow on a titled popup; ignored (centred) on No Title | Down-arrow overlay |
+| Popup Button Normal/Hilited/Disabled | **89** / **90** / **91** | Usually ~20 px tall; 9-slice | Closed dropdown field+arrow chrome; title inside |
+| Popup Button No Title Normal/Hilited/Disabled | **93** / **94** / **95** | Often ~20×20 | Well next to a text field |
+| Popup Button Symbol Normal/Hilited/Disabled | **97** / **98** / **99** | **Positions** place the arrow on a titled popup; ignored (centred) on No Title | Down-arrow overlay |
 
 **SagradoKit names:** `popup.normal`, `popup.hilited`, `popup.disabled`,
 `popup.no_title.*`, `popup.symbol.*`.
+
+### Tick / Mutex (checkbox / radio)
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Tick Button Blank Normal/Hilited/Disabled | **57** / **58** / **59** | Height ≤ 18; title outside |
+| Tick Button Ticked Normal/Hilited/Disabled | **61** / **62** / **63** | |
+| Tick Button Tristated Normal/Hilited/Disabled | **65** / **66** / **67** | |
+| Mutex Button Blank Normal/Hilited/Disabled | **69** / **70** / **71** | Mutually exclusive group |
+| Mutex Button Ticked Normal/Hilited/Disabled | **73** / **74** / **75** | |
+| Mutex Button Tristated Normal/Hilited/Disabled | **77** / **78** / **79** | |
+
+**SagradoKit names:** `tick.blank.*`, `tick.ticked.*`, `tick.tristate.*`,
+`mutex.blank.*`, `mutex.ticked.*`, `mutex.tristate.*`.
+
+### Disclosure / separators / box / progress
+
+| AppearanceEdit name | Hap slot | SagradoKit |
+|---|---|---|
+| Small Plus / Minus | **81** / **85** | `disclosure.plus.small`, `disclosure.minus.small` |
+| Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
+| Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
+| Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
+| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — 16×16 status lamp |
+| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp |
 
 ### Menu (open list)
 
 | AppearanceEdit name | Hap slot | Paint |
 |---|---|---|
-| Menu Background Pattern | index TBD | Optional tiled pattern (else Menu Background colour) |
-| Menu Background | index TBD | 9-slice over whole menu; may use transparency over pattern |
-| Menu Item Pattern/Normal/Hilited/Disabled | index TBD | Per-row chrome above background |
-| Menu Separator | index TBD | Horizontal rule; L/R caps; vertically centred |
-| Popup Window Frame Normal/Focus | index TBD | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
+| Menu Background Pattern | **200** | Optional tiled pattern (else Menu Background colour) |
+| Menu Background | **201** | 9-slice over item area; may use transparency over pattern |
+| Menu Item Pattern/Normal/Hilited/Disabled | **206** / **207** / TBD | Per-row chrome above background |
+| Menu Separator | **208** | Horizontal rule; L/R caps; vertically centred |
+| Popup Window Frame Normal/Focus | rarely authored | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
 
 Colours always apply for label / hilite / disable ink even when art is present.
 
@@ -148,42 +173,53 @@ Colours always apply for label / hilite / disable ink even when art is present.
 
 | AppearanceEdit name | Hap slot | Caps / Positions | Paint |
 |---|---|---|---|
-| H Slider Bar Normal/Hilited/Disabled | index TBD | Bar vertically centred; height+indicator ≤ 30 | Track; **L/R Positions = travel limits** |
-| H Slider Indicator Normal/Hilited/Disabled | index TBD | **Top Position** = px above bar top | Thumb |
-| H Slider Pointed Indicator * | index TBD | Points down (scale below) | Optional pointed thumb |
-| V Slider Bar * | index TBD | Horizontally centred; width+indicator ≤ 30 | **T/B Positions = travel** |
-| V Slider Indicator * | index TBD | **Left Position** = px left of bar | Thumb |
+| H Slider Bar Normal/Hilited/Disabled | **126** / **127** / **128** | Bar vertically centred; height+indicator ≤ 30 | Track; **L/R Positions = travel limits** |
+| H Slider Indicator Normal/Hilited/Disabled | **130** / **131** / **132** | **Top Position** = px above bar top | Thumb (blit or 9-slice) |
+| H Slider Pointed Indicator * | **134** / **135** / **136** | Points down (scale below) | Optional; `slider.h.indicator_pointed.*` |
+| V Slider Bar * | **138** / **139** / **140** | Horizontally centred; width+indicator ≤ 30 | **T/B Positions = travel** |
+| V Slider Indicator * | **142** / **143** / **144** | **Left Position** = px left of bar | Thumb |
+| V Slider Pointed Indicator * | **146** / **147** / **148** | Points right (scale beside) | Optional; `slider.v.indicator_pointed.*` |
 
 **SagradoKit names:** `slider.h.bar.normal` …, `slider.h.indicator.normal` …,
-`slider.v.*` (pointed variants optional).
+`slider.h.indicator_pointed.*`, `slider.v.*`.
 
 ### Scrollbar
 
 | AppearanceEdit name | Hap slot | Caps / Positions | Paint |
 |---|---|---|---|
 | V Scroll Bar Double Arrows | **181** | Width **exactly 16**; T/B caps | 9-slice whole bar; **T/B Positions = thumb travel** (fallback: caps) |
-| V Scroll Bar Single Arrows | index TBD | same idea | Single arrow ends |
-| V Scroll Bar Disabled / Too Small | index TBD | | Disabled / undersized bar |
-| V Scroll Bar Indicator Normal/Hilited | **185** / +1 | | Thumb 9-slice into thumb rect |
-| V Scroll Bar Indicator Grips Normal/Hilited | **188** / +1 | often caps 0 | Optional, **centred on thumb** |
-| V Scroll Bar * Arrow Hilited | index TBD | Position = stamp offset | Pressed arrow overlays |
+| V Scroll Bar Single Arrows | **182** | same idea | Single arrow ends |
+| V Scroll Bar Disabled / Too Small | **183** / **184** | | Disabled / undersized bar |
+| V Scroll Bar Indicator Normal/Hilited | **185** / **186** | | Thumb 9-slice into thumb rect |
+| V Scroll Bar Indicator Grips Normal/Hilited | **188** / **189** | often caps 0 | Optional, **centred on thumb** |
+| V Scroll Bar * Arrow Hilited | **191–196** | Position = stamp offset | Pressed arrow overlays |
 | H Scroll Bar Double Arrows | **162** | Height **exactly 16**; L/R caps | Same as V, horizontal |
-| H Scroll Bar Indicator Normal | **166** | | Thumb |
-| H Scroll Bar Indicator Grips Normal | **169** | | Optional grips |
+| H Scroll Bar Single / Disabled / Too Small | **163** / **164** / **165** | | |
+| H Scroll Bar Indicator Normal/Hilited | **166** / **167** | | Thumb |
+| H Scroll Bar Indicator Grips Normal/Hilited | **169** / **170** | | Optional grips |
+| H Scroll Bar * Arrow Hilited | **172–177** | Position = stamp offset | Pressed arrow overlays |
 
 Probe note: Double Arrows images are long strips (~16×64); `pos` travel insets
 are ~28–36 px — matching the docs (“indicator can be dragged no further than
 this many pixels from the end”).
 
-**SagradoKit names:** `scrollbar.v.double_arrows`, `scrollbar.v.indicator.normal`,
-`scrollbar.v.grips.normal`, `scrollbar.h.*`, plus single/disabled/arrow-hilite
-when mapped.
+**SagradoKit names:** `scrollbar.v.double_arrows`, `scrollbar.v.single_arrows`,
+`scrollbar.v.disabled`, `scrollbar.v.too_small`, `scrollbar.v.indicator.*`,
+`scrollbar.v.grips.*`, `scrollbar.v.arrow_hilite.*`, and `scrollbar.h.*`.
+
+### Icon Button / Menu Bar / Column header
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Icon Button Normal/Hilited/Disabled | **49** / **50** / **51** | `icon_button.*`; icon + optional title |
+| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers; disabled often donor-filled |
+| Menu Bar Pattern / Menu Bar / Titles | rarely authored | Colour path `paint_menu_bar`; optional `menu_bar.*` art (no Hap occupancy in probed themes) |
 
 ### Column header / gel (related)
 
 | AppearanceEdit name | Hap slot | Notes |
 |---|---|---|
-| Column Header Normal/Hilited/Disabled | **150** / **151** / TBD | List headers + often tabs |
+| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers + often tabs |
 | Window Frame Normal/Focus | **220** / **221** | Positions = frame thickness; centre transparent |
 | Window Close/Min/Max/Menu … | **223+** | Positions place buttons; Disabled optional (else hide) |
 | Window Resize Normal/Focus | **243** / **244** | Bottom-right; no transparent colour |
@@ -223,12 +259,12 @@ Before painting art for a control in `engine/`:
 | Push button | 25 / 26 / (27) | `button.*` |
 | V/H scrollbar body + thumb + grips | 181/185/188, 162/166/169 | `scrollbar.*` |
 | Column header | 150 / 151 | `column_header.*` + Primary Label |
-| Window gel frame + traffic lights | 220+ | `window*` + Primary Label |
+| Window gel frame + title boxes (close / **Window Menu** / min / max) | 220+ | `window.frame.*`, `window.close.*`, `window.menu.*`, `window.minimize.*`, `window.maximize.*` + Primary Label |
 
 **Needs index probe before art paint:**
 
-Popup button + symbol, menu backgrounds/items, popup window frame, sliders,
-default button, scroll arrow hilite overlays.
+Menu bar Hap indices (empty across probed themes), popup window frame (rare),
+full Hap icon catalog beyond file/folder/user.
 
 ---
 

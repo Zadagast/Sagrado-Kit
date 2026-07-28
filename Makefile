@@ -22,7 +22,14 @@ $(EDITOR): editor/main.cpp engine/*.h | $(BUILD)
 # Copy example skins next to the binary for Load dialog convenience.
 skins: | $(BUILD)
 	mkdir -p $(BUILD)/format/skins
-	cp -f format/skins/*.skin.toml $(BUILD)/format/skins/
+	cp -f format/skins/*.skin.toml $(BUILD)/format/skins/ 2>/dev/null || true
+	# Art skins live in subfolders (images + .skin.toml)
+	for d in format/skins/*/; do \
+	  [ -d "$$d" ] || continue; \
+	  name=$$(basename "$$d"); \
+	  mkdir -p "$(BUILD)/format/skins/$$name"; \
+	  cp -f "$$d"* "$(BUILD)/format/skins/$$name/"; \
+	done
 
 run: $(EDITOR) skins
 	wine $(EDITOR)
@@ -31,6 +38,7 @@ run: $(EDITOR) skins
 smoke: engine/smoke_test.cpp engine/*.h | $(BUILD)
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/smoke_test.cpp -o $(BUILD)/smoke_test
 	$(BUILD)/smoke_test format/skins/stock.skin.toml format/skins/slate.skin.toml
+	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.skin.toml
 
 clean:
 	rm -rf $(BUILD)

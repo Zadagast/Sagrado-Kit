@@ -14,6 +14,23 @@ int main(int argc, char **argv) {
         ap.set_skin(stock_skin());
     } else {
         std::printf("loaded: %s (%s)\n", path.c_str(), ap.skin.meta.name.c_str());
+        std::printf("art slots authored: %zu  loaded: %zu\n", ap.skin.art.size(),
+                    ap.art_cache.size());
+        std::printf("icon slots authored: %zu  loaded: %zu\n", ap.skin.icons.size(),
+                    ap.icon_cache.size());
+        if (ap.art("button.normal"))
+            std::printf("button.normal art %dx%d caps=[%d,%d,%d,%d]\n",
+                        ap.art("button.normal")->w, ap.art("button.normal")->h,
+                        ap.art("button.normal")->caps[0],
+                        ap.art("button.normal")->caps[1],
+                        ap.art("button.normal")->caps[2],
+                        ap.art("button.normal")->caps[3]);
+        if (ap.art("wonderlight.go"))
+            std::printf("wonderlight.go art %dx%d\n", ap.art("wonderlight.go")->w,
+                        ap.art("wonderlight.go")->h);
+        if (ap.icon("file.generic.16"))
+            std::printf("file.generic.16 icon %dx%d\n", ap.icon("file.generic.16")->w,
+                        ap.icon("file.generic.16")->h);
     }
 
     Color bg = ap.c("primary.background");
@@ -32,12 +49,12 @@ int main(int argc, char **argv) {
     }
 
     Canvas cv;
-    cv.resize(640, 480);
-    paint_kit_preview(cv, ap, {0, 0, 640, 480}, true, 1, 2);
+    cv.resize(640, 960);
+    paint_kit_preview(cv, ap, {0, 0, 640, 960}, true, 1, 2);
 
     // Non-zero pixels prove we painted
     size_t lit = 0;
-    for (int i = 0; i < 640 * 480; ++i)
+    for (int i = 0; i < 640 * 960; ++i)
         if (cv.data()[i]) ++lit;
     std::printf("painted %zu non-black pixels\n", lit);
 
@@ -58,8 +75,33 @@ int main(int argc, char **argv) {
     }
     std::printf("roundtrip ok → %s\n", out.c_str());
 
+    // Clip regression: tall kit content must not paint outside a short panel.
+    {
+        Canvas panel;
+        panel.resize(400, 280);
+        panel.clear(rgb(0, 0, 0));
+        Rect box{8, 8, 384, 264};
+        panel.fill(box, ap.c("workspace.background3"));
+        {
+            CanvasClip clip(panel, box);
+            paint_kit_preview(panel, ap, box, true, 1, 0);
+        }
+        size_t spill = 0;
+        for (int y = 0; y < panel.height(); ++y)
+            for (int x = 0; x < panel.width(); ++x) {
+                if (box.contains(x, y)) continue;
+                if (panel.data()[size_t(y) * panel.width() + x]) ++spill;
+            }
+        std::printf("clip spill outside preview panel: %zu pixels\n", spill);
+        if (spill != 0) {
+            std::fprintf(stderr, "kit preview spilled past clip\n");
+            return 1;
+        }
+    }
+
     // Write a PPM preview (easy to convert / view) for build verification.
-    const char *ppm = "build/kit-preview.ppm";
+    const char *ppm = ap.art("button.normal") ? "build/kit-preview-art.ppm"
+                                              : "build/kit-preview.ppm";
     FILE *f = std::fopen(ppm, "wb");
     if (f) {
         std::fprintf(f, "P6\n%d %d\n255\n", cv.width(), cv.height());

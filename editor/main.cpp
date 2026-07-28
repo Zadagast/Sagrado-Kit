@@ -32,6 +32,8 @@ enum Drag : int {
     DragBtnStock,
     DragPreviewBtn,
     DragCloseBox,
+    DragMaxBox,
+    DragMinBox,
     DragScrollArrowRoles,
     DragScrollArrowPreview,
     DragSliderKit,
@@ -93,10 +95,16 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    const char *cands[] = {"\\format\\skins\\stock.skin.toml",
-                           "\\..\\format\\skins\\stock.skin.toml",
-                           "\\..\\..\\format\\skins\\stock.skin.toml",
-                           "\\skins\\stock.skin.toml"};
+    // Prefer Milk Redux (Hap art) when present so Kit Preview shows icon buttons,
+    // scroll extras, etc. Fall back to stock colour skin.
+    const char *cands[] = {
+        "\\format\\skins\\milk-redux\\milk-redux.skin.toml",
+        "\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
+        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
+        "\\format\\skins\\stock.skin.toml",
+        "\\..\\format\\skins\\stock.skin.toml",
+        "\\..\\..\\format\\skins\\stock.skin.toml",
+        "\\skins\\stock.skin.toml"};
     for (const char *c : cands) {
         std::string p = dir + c;
         DWORD a = GetFileAttributesA(p.c_str());
@@ -211,20 +219,19 @@ void layout() {
         W = kWinW;
         H = kWinH;
     }
-    g.gel = gel_layout(0, 0, W, H);
+    g.gel = gel_layout(0, 0, W, H, GelStyle::Main, &g.ap, true);
     Rect client = g.gel.client;
 
-    // Toolbar — Haxial proportions: 20px face; default Save is +3px outer.
+    // Toolbar — Find metrics: regular 24px; default Save 26px outer, same top.
     constexpr int kToolBtnW = 72;
     constexpr int kToolGap = 8;
-    int face_y = client.y + 10 + kDefaultButtonPad; // room for default ring above
-    g.btn_load = {client.x + 12, face_y, kToolBtnW, kButtonH};
-    Rect save_face{g.btn_load.right() + kToolGap, face_y, kToolBtnW, kButtonH};
-    g.btn_save = default_button_outer(save_face);
-    g.btn_stock = {g.btn_save.right() + kToolGap, face_y, kToolBtnW, kButtonH};
+    int by = client.y + 10;
+    g.btn_load = {client.x + 12, by, kToolBtnW, kButtonH};
+    g.btn_save = default_button_rect(g.btn_load.right() + kToolGap, by, kToolBtnW);
+    g.btn_stock = {g.btn_save.right() + kToolGap, by, kToolBtnW, kButtonH};
 
     int split = client.x + 420;
-    int content_top = face_y + kButtonH + kDefaultButtonPad + 10;
+    int content_top = by + kDefaultButtonH + 10;
     int content_h = client.bottom() - content_top - 8;
 
     g.role_list = {client.x + 10, content_top, 400, content_h - 90};
@@ -242,7 +249,7 @@ void layout() {
     // Approximate preview layout metrics for hit-testing before paint.
     // paint() overwrites preview_lay with exact rects.
     g.preview_lay.bounds = g.preview;
-    g.preview_lay.page_rows = std::max(1, (g.preview.h - 220) / kRowH);
+    g.preview_lay.page_rows = std::max(1, (g.preview.h - (kFindDlgH + 200)) / kRowH);
     g.preview_lay.row_count = 8;
     clamp_scroll();
 }
@@ -305,7 +312,7 @@ void paint() {
     paint_slider(cv, g.slider_b, "B", cur.b, rgb(40, 80, 200));
     paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
 
-    // Live kit preview
+    // Live kit preview — clip so tall samples cannot paint through the gel frame.
     cv.fill(g.preview, ap.c("workspace.background3"));
     cv.frame(g.preview, ap.c("focus.box"));
     g.preview_st.pressed_btn = (g.drag == DragPreviewBtn || g.drag == DragDropdown)
@@ -313,8 +320,14 @@ void paint() {
                                    : 0;
     g.preview_st.thumb_hot = g.drag == DragThumbPreview;
     g.preview_st.slider_hot = g.drag == DragSliderKit;
-    g.preview_lay = paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
-                                      g.preview_scroll, g.preview_st);
+    {
+        CanvasClip preview_clip(cv, g.preview);
+        g.preview_lay = paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
+                                          g.preview_scroll, g.preview_st);
+    }
+
+    // Grow box last — same order as Sagrado (paint_grip after content).
+    paint_gel_grip(cv, ap, g.gel.grip, g.focused);
 }
 
 void blit(HWND hwnd) {
@@ -371,6 +384,18 @@ void mouse_down(int mx, int my) {
         redraw();
         return;
     }
+    if (g.gel.max_box.contains(mx, my)) {
+        g.drag = DragMaxBox;
+        g.pressed_box = 3;
+        redraw();
+        return;
+    }
+    if (g.gel.min_box.contains(mx, my)) {
+        g.drag = DragMinBox;
+        g.pressed_box = 4;
+        redraw();
+        return;
+    }
 
     // Toolbar — press now, act on release if still over the button
     if (g.btn_load.contains(mx, my)) {
@@ -392,7 +417,7 @@ void mouse_down(int mx, int my) {
     // Role-list scrollbar
     if (g.role_sbar.contains(mx, my)) {
         ScrollLayout sl =
-            scroll_layout(g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
+            scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
         if (sl.up.contains(mx, my)) {
             g.drag = DragScrollArrowRoles;
             g.arrow_dir = -1;
@@ -531,7 +556,7 @@ void mouse_down(int mx, int my) {
     // Preview scrollbar
     if (g.preview_lay.sbar.contains(mx, my)) {
         int max_s = g.preview_max_scroll();
-        ScrollLayout sl = scroll_layout(g.preview_lay.sbar, g.preview_scroll, max_s,
+        ScrollLayout sl = scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, max_s,
                                         g.preview_lay.page_rows);
         if (sl.up.contains(mx, my)) {
             g.drag = DragScrollArrowPreview;
@@ -579,12 +604,12 @@ void mouse_down(int mx, int my) {
 void mouse_move(int mx, int my) {
     if (g.drag == DragThumbRoles) {
         ScrollLayout sl =
-            scroll_layout(g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
+            scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
         g.scroll = scroll_from_thumb_y(sl, my, g.roles_max_scroll());
         redraw();
     } else if (g.drag == DragThumbPreview) {
         ScrollLayout sl =
-            scroll_layout(g.preview_lay.sbar, g.preview_scroll, g.preview_max_scroll(),
+            scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, g.preview_max_scroll(),
                           g.preview_lay.page_rows);
         g.preview_scroll = scroll_from_thumb_y(sl, my, g.preview_max_scroll());
         redraw();
@@ -605,13 +630,20 @@ void mouse_move(int mx, int my) {
         redraw();
     } else if (g.drag == DragSliderKit) {
         g.preview_st.slider_value =
-            slider_value_at_x(slider_layout(g.preview_lay.slider,
-                                            g.preview_st.slider_value, 100),
+            slider_value_at_x(slider_layout(g.ap, g.preview_lay.slider,
+                                            g.preview_st.slider_value, 100,
+                                            g.preview_st.slider_hot),
                               mx);
         set_status("Slider: " + std::to_string(g.preview_st.slider_value));
         redraw();
     } else if (g.drag == DragCloseBox) {
         g.pressed_box = g.gel.close_box.contains(mx, my) ? 1 : 0;
+        redraw();
+    } else if (g.drag == DragMaxBox) {
+        g.pressed_box = g.gel.max_box.contains(mx, my) ? 3 : 0;
+        redraw();
+    } else if (g.drag == DragMinBox) {
+        g.pressed_box = g.gel.min_box.contains(mx, my) ? 4 : 0;
         redraw();
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
                g.drag == DragBtnStock || g.drag == DragPreviewBtn ||
@@ -647,6 +679,18 @@ void mouse_up(int mx, int my) {
 
     if (was == DragCloseBox && g.gel.close_box.contains(mx, my)) {
         PostQuitMessage(0);
+        return;
+    }
+    if (was == DragMaxBox && g.gel.max_box.contains(mx, my)) {
+        WINDOWPLACEMENT wp{};
+        wp.length = sizeof(wp);
+        GetWindowPlacement(g_hwnd, &wp);
+        ShowWindow(g_hwnd, wp.showCmd == SW_SHOWMAXIMIZED ? SW_RESTORE
+                                                          : SW_SHOWMAXIMIZED);
+        return;
+    }
+    if (was == DragMinBox && g.gel.min_box.contains(mx, my)) {
+        ShowWindow(g_hwnd, SW_MINIMIZE);
         return;
     }
     if (was == DragBtnLoad && g.btn_load.contains(mx, my)) do_load();
@@ -792,6 +836,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 !g.gel.max_box.contains(pt.x, pt.y) &&
                 !g.gel.min_box.contains(pt.x, pt.y))
                 return HTCAPTION;
+            // TextEdit-style grow box in the corner
+            if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
             // Resize grips on edges
             const int grip = 4;
             int W = g.canvas.width(), H = g.canvas.height();

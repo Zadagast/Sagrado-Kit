@@ -10,3 +10,4 @@
 *.hap
 *.exe
 *.zip
+research/__pycache__/
