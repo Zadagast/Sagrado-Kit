@@ -3,6 +3,7 @@
 #pragma once
 #include <algorithm>
 #include <cstring>
+#include <map>
 #include <string>
 
 #include "skin.h"
@@ -39,15 +40,44 @@ inline Rect default_button_rect(int x, int y, int face_w) {
 struct Appearance {
     Skin skin;
     ColorMap stock;
+    std::string skin_dir;
+    mutable std::map<std::string, SkinImage> art_cache;
 
     Appearance() : skin(stock_skin()), stock(stock_colors()) {}
 
-    void set_skin(Skin s) { skin = std::move(s); }
+    void load_art_cache() {
+        art_cache.clear();
+        for (const auto &kv : skin.art) {
+            if (kv.second.path.empty()) continue;
+            SkinImage img;
+            std::string full = join_path(skin_dir, kv.second.path);
+            if (!load_skin_image(full, img)) continue;
+            if (kv.second.has_caps) std::memcpy(img.caps, kv.second.caps, 4);
+            if (kv.second.has_positions)
+                std::memcpy(img.positions, kv.second.positions, 4);
+            if (!kv.second.has_caps && img.caps[0] == 0 && img.caps[1] == 0 &&
+                img.caps[2] == 0 && img.caps[3] == 0 && img.w > 1 && img.h > 1) {
+                img.caps[0] = uint8_t(img.w / 2);
+                img.caps[1] = uint8_t(img.h / 2);
+                img.caps[2] = uint8_t(img.w - 1 - img.caps[0]);
+                img.caps[3] = uint8_t(img.h - 1 - img.caps[1]);
+            }
+            art_cache[kv.first] = std::move(img);
+        }
+    }
+
+    void set_skin(Skin s) {
+        skin = std::move(s);
+        skin_dir.clear();
+        load_art_cache();
+    }
 
     bool load(const std::string &path) {
         Skin s;
         if (!skin_toml::load(path, s)) return false;
         skin = std::move(s);
+        skin_dir = parent_dir(path);
+        load_art_cache();
         return true;
     }
 
@@ -56,6 +86,13 @@ struct Appearance {
     Color c(const char *role) const { return resolve_color(skin, stock, role); }
 
     void set_color(const char *role, Color col) { skin.colors[role] = col; }
+
+    // Art present → image; else null (caller uses colour → stock).
+    const SkinImage *art(const char *slot) const {
+        auto it = art_cache.find(slot);
+        if (it == art_cache.end() || it->second.empty()) return nullptr;
+        return &it->second;
+    }
 
     Color title_label(bool focused) const {
         // Standard colour path uses Window / Window Focus Label. Bitmap themes
@@ -86,23 +123,77 @@ enum class GelStyle {
     Dialog, // Find dialog: close + min only (no hatch/max/grip)
 };
 
-// Same placement as Sagrado chrome_layout Standard path (no art).
+// Title-button place from art Positions (Sagrado chrome_layout).
+inline Rect gel_place_title_btn(const SkinImage *img, int win_x, int win_y,
+                                int win_w) {
+    if (!img) return {0, 0, 0, 0};
+    int bx = img->positions[0] > 0 ? img->positions[0]
+                                   : win_w - img->positions[2] - img->w;
+    int by = img->positions[1] > 1 ? img->positions[1] : 2;
+    return {win_x + bx, win_y + by, img->w, img->h};
+}
+
+// Placement: art frame Positions when present, else Standard metrics.
 inline GelLayout gel_layout(int x, int y, int w, int h,
-                            GelStyle style = GelStyle::Main) {
+                            GelStyle style = GelStyle::Main,
+                            const Appearance *ap = nullptr,
+                            bool focused = true) {
     GelLayout lay;
     lay.window = {x, y, w, h};
-    lay.title_h = kTitleH;
-    lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder,
-                  h - kTitleH - kBorder};
-    int by = y + kBtnTop;
-    lay.close_box = {x + 5, by, kBtnBox, kBtnBox};
-    lay.hatch_box = {lay.close_box.right() + 8, by, kHatchW, kBtnBox};
-    lay.min_box = {x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
-    lay.max_box = {lay.min_box.x - 4 - kBtnBox, by, kBtnBox, kBtnBox};
-    lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
     lay.title = {x, y, w, kTitleH};
+
+    const SkinImage *frame = nullptr;
+    if (ap) {
+        frame = focused ? ap->art("window.frame.focus") : ap->art("window.frame.normal");
+        if (!frame) frame = ap->art("window.frame.normal");
+    }
+
+    if (frame) {
+        int bl = frame->positions[0], bt = frame->positions[1];
+        int br = frame->positions[2], bb = frame->positions[3];
+        if (bt <= 0) bt = kTitleH;
+        if (bl <= 0) bl = kBorder;
+        if (br <= 0) br = kBorder;
+        if (bb <= 0) bb = kBorder;
+        lay.title_h = bt;
+        lay.client = {x + bl, y + bt, w - bl - br, h - bt - bb};
+        const char *close_n = focused ? "window.close.focus" : "window.close.normal";
+        const char *min_n = focused ? "window.minimize.focus" : "window.minimize.normal";
+        const char *max_n = focused ? "window.maximize.focus" : "window.maximize.normal";
+        const SkinImage *close_img = ap->art(close_n);
+        if (!close_img) close_img = ap->art("window.close.normal");
+        const SkinImage *min_img = ap->art(min_n);
+        if (!min_img) min_img = ap->art("window.minimize.normal");
+        const SkinImage *max_img = ap->art(max_n);
+        if (!max_img) max_img = ap->art("window.maximize.normal");
+        lay.close_box = gel_place_title_btn(close_img, x, y, w);
+        lay.min_box = gel_place_title_btn(min_img, x, y, w);
+        lay.max_box = gel_place_title_btn(max_img, x, y, w);
+        lay.hatch_box = {0, 0, 0, 0};
+        const SkinImage *resize = focused ? ap->art("window.resize.focus")
+                                          : ap->art("window.resize.normal");
+        if (!resize) resize = ap->art("window.resize.normal");
+        if (resize) {
+            int px = resize->positions[2] > 0 ? resize->positions[2] : 1;
+            int py = resize->positions[3] > 0 ? resize->positions[3] : 1;
+            lay.grip = {x + w - px - resize->w, y + h - py - resize->h, resize->w,
+                        resize->h};
+        } else {
+            lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
+        }
+    } else {
+        lay.title_h = kTitleH;
+        lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder,
+                      h - kTitleH - kBorder};
+        int by = y + kBtnTop;
+        lay.close_box = {x + 5, by, kBtnBox, kBtnBox};
+        lay.hatch_box = {lay.close_box.right() + 8, by, kHatchW, kBtnBox};
+        lay.min_box = {x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
+        lay.max_box = {lay.min_box.x - 4 - kBtnBox, by, kBtnBox, kBtnBox};
+        lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
+    }
+
     if (style == GelStyle::Dialog) {
-        // Match Sagrado paint_find_dialog chrome.
         lay.hatch_box = {0, 0, 0, 0};
         lay.max_box = {0, 0, 0, 0};
         lay.grip = {0, 0, 0, 0};
@@ -150,9 +241,16 @@ inline void gel_diagonal_hatch(Canvas &cv, Rect r, Color c) {
             }
 }
 
-// Grow box — Sagrado paint_grip. Call after chrome (and usually after content).
+// Grow box — art resize slot, else Sagrado paint_grip colour path.
 inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focused) {
     if (g.w <= 0 || g.h <= 0) return;
+    const SkinImage *img =
+        focused ? ap.art("window.resize.focus") : ap.art("window.resize.normal");
+    if (!img) img = ap.art("window.resize.normal");
+    if (img) {
+        cv.nine_slice(*img, g);
+        return;
+    }
     const char *grp = focused ? "window_focus" : "window";
     auto role = [&](const char *suffix) {
         char buf[64];
@@ -176,11 +274,40 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
     }
 }
 
-// Standard gel — Sagrado paint_chrome colour path (no art).
-// solid slab, title gradient into side borders, client hole, flat title boxes.
+// Gel: art frame + title boxes when present; else Standard colour chrome.
 inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                       const char *title, bool focused, int pressed_box = 0,
                       GelStyle style = GelStyle::Main) {
+    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style, &ap, focused);
+
+    const SkinImage *frame =
+        focused ? ap.art("window.frame.focus") : ap.art("window.frame.normal");
+    if (!frame) frame = ap.art("window.frame.normal");
+    if (frame) {
+        cv.nine_slice(*frame, win);
+        Color tc = ap.title_label(focused);
+        int tw = cv.text_width(title);
+        cv.text(win.x + (win.w - tw) / 2,
+                win.y + (lay.title_h - kFontHeight) / 2, title, tc);
+        auto paint_btn = [&](Rect r, const char *normal, const char *focus,
+                             const char *hilited, bool pressed) {
+            if (r.w <= 0) return;
+            const SkinImage *img = nullptr;
+            if (pressed) img = ap.art(hilited);
+            if (!img) img = focused ? ap.art(focus) : ap.art(normal);
+            if (!img) img = ap.art(normal);
+            if (img) cv.nine_slice(*img, r);
+        };
+        paint_btn(lay.close_box, "window.close.normal", "window.close.focus",
+                  "window.close.hilited", pressed_box == 1);
+        paint_btn(lay.max_box, "window.maximize.normal", "window.maximize.focus",
+                  "window.maximize.hilited", pressed_box == 3);
+        paint_btn(lay.min_box, "window.minimize.normal", "window.minimize.focus",
+                  "window.minimize.hilited", pressed_box == 4);
+        cv.fill(lay.client, ap.c("primary.background"));
+        return;
+    }
+
     const char *g = focused ? "window_focus" : "window";
     auto role = [&](const char *suffix) {
         char buf[64];
@@ -188,12 +315,10 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         return ap.c(buf);
     };
 
-    // ChromeColors: bright=Light1, body=Face/Window, deep=Dark1
     Color bright = role("light1");
     Color body = role("face");
     Color deep = role("dark1");
-    Color frame = role("frame");
-    // Title + glyphs use Window Label on the Standard colour path (Sagrado).
+    Color frame_c = role("frame");
     Color label = role("label");
     bool label_white = label.r == 255 && label.g == 255 && label.b == 255;
     if (label_white) label = ap.title_label(focused);
@@ -205,7 +330,6 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         grad[i] = ap.c(buf);
     }
 
-    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style);
     Rect client = lay.client;
     Rect slab{win.x + 1, win.y + 1, win.w - 2, win.h - 2};
 
@@ -224,8 +348,8 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     cv.vline(slab.right() - 1, client.y - 2, slab.bottom(), deep);
     cv.hline(slab.x + 1, slab.right(), slab.bottom() - 1, deep);
 
-    cv.frame({client.x - 1, client.y - 1, client.w + 2, client.h + 2}, frame);
-    cv.frame(win, frame);
+    cv.frame({client.x - 1, client.y - 1, client.w + 2, client.h + 2}, frame_c);
+    cv.frame(win, frame_c);
     cv.fill(client, ap.c("primary.background"));
 
     int tw = cv.text_width(title);
@@ -233,30 +357,30 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
             label);
 
     if (lay.close_box.w > 0) {
-        gel_bevel_box(cv, lay.close_box, pressed_box == 1, bright, body, deep, frame);
+        gel_bevel_box(cv, lay.close_box, pressed_box == 1, bright, body, deep, frame_c);
         gel_close_glyph(cv, lay.close_box, label);
     }
     if (lay.hatch_box.w > 0) {
-        gel_bevel_box(cv, lay.hatch_box, false, bright, body, deep, frame);
+        gel_bevel_box(cv, lay.hatch_box, false, bright, body, deep, frame_c);
         gel_diagonal_hatch(cv,
                            {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
                             lay.hatch_box.w - 4, lay.hatch_box.h - 4},
                            label);
     }
     if (lay.max_box.w > 0) {
-        gel_bevel_box(cv, lay.max_box, pressed_box == 3, bright, body, deep, frame);
+        gel_bevel_box(cv, lay.max_box, pressed_box == 3, bright, body, deep, frame_c);
         cv.fill({lay.max_box.x + 1, lay.max_box.y + 6, 10, 2}, label);
         cv.fill({lay.max_box.x + 5, lay.max_box.y + 2, 2, 10}, label);
     }
     if (lay.min_box.w > 0) {
-        gel_bevel_box(cv, lay.min_box, pressed_box == 4, bright, body, deep, frame);
+        gel_bevel_box(cv, lay.min_box, pressed_box == 4, bright, body, deep, frame_c);
         cv.fill({lay.min_box.x + 1, lay.min_box.y + 6, 10, 2}, label);
     }
 }
 
 // --- Controls ------------------------------------------------------------
 
-// Simple chamfer frame for small plates (checkbox, slider thumb).
+// Simple chamfer frame for plates (button, checkbox, slider thumb).
 inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
     if (r.w < 6 || r.h < 6) {
         cv.frame(r, frame);
@@ -278,150 +402,79 @@ inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
     punch(r.right() - 1, r.bottom() - 2);
 }
 
-inline Color lerp_color(Color a, Color b, int num, int den) {
-    if (den <= 0) return a;
-    return {uint8_t(a.r + (int(b.r) - a.r) * num / den),
-            uint8_t(a.g + (int(b.g) - a.g) * num / den),
-            uint8_t(a.b + (int(b.b) - a.b) * num / den)};
-}
-
-// Soft radius like Milk Redux / KDX Settings (~⅓ height → almost-pill).
-inline int soft_button_rad(Rect r) {
-    int rad = std::min(r.w, r.h) / 3;
-    if (rad < 5) rad = std::min(5, std::min(r.w, r.h) / 2);
-    if (rad > 10) rad = 10;
-    return std::max(1, rad);
-}
-
-inline bool in_round_rect(int px, int py, Rect r, int rad) {
-    if (px < r.x || py < r.y || px >= r.right() || py >= r.bottom()) return false;
-    int lx = px - r.x, ly = py - r.y;
-    int rx = r.w - 1 - lx, ry = r.h - 1 - ly;
-    auto corner_ok = [&](int cx, int cy) {
-        int dx = cx - rad, dy = cy - rad;
-        return dx * dx + dy * dy <= rad * rad;
+// Sagrado Standard colour-path button face (Find-faithful bevel plate).
+inline void paint_button_face_color(Canvas &cv, const Appearance &ap, Rect r,
+                                    bool pressed, bool disabled = false) {
+    Color workspace = ap.c("primary.background");
+    const char *grp = disabled ? "button_disable"
+                               : (pressed ? "button_hilite" : "button");
+    // Pressed uses hilite group when available; bevel still inverts lights.
+    auto bc = [&](const char *s) {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "%s.%s",
+                      disabled ? "button_disable" : "button", s);
+        return ap.c(buf);
     };
-    if (lx < rad && ly < rad) return corner_ok(lx, ly);
-    if (rx < rad && ly < rad) return corner_ok(rx, ly);
-    if (lx < rad && ry < rad) return corner_ok(lx, ry);
-    if (rx < rad && ry < rad) return corner_ok(rx, ry);
-    return true;
-}
-
-// KDX Settings soft plate: bright top → dark bottom, big round corners.
-inline void paint_soft_plate(Canvas &cv, Rect r, Color workspace, Color face,
-                             Color light, Color dark, Color frame, bool pressed) {
-    int rad = soft_button_rad(r);
-    Color mid = face;
-    Color hi = pressed ? dark
-                       : Color{uint8_t(std::min(255, int(light.r) + 50)),
-                               uint8_t(std::min(255, int(light.g) + 50)),
-                               uint8_t(std::min(255, int(light.b) + 50))};
-    Color lo = pressed ? light : dark;
-
-    for (int y = 0; y < r.h; ++y) {
-        Color row;
-        if (!pressed) {
-            // Convex: bright headband, mid body, dark foot
-            if (y * 4 < r.h)
-                row = lerp_color(hi, mid, y * 4, std::max(1, r.h));
-            else if (y * 4 < r.h * 3)
-                row = mid;
-            else
-                row = lerp_color(mid, lo, y * 4 - r.h * 3, std::max(1, r.h));
-        } else {
-            row = lerp_color(lo, mid, y, std::max(1, r.h - 1));
-        }
-
-        for (int x = 0; x < r.w; ++x) {
-            int px = r.x + x, py = r.y + y;
-            if (!in_round_rect(px, py, r, rad)) {
-                cv.put(px, py, pack(workspace));
-                continue;
-            }
-            // Black outline following the round
-            Rect inset{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
-            int ir = std::max(1, rad - 1);
-            if (!in_round_rect(px, py, inset, ir)) {
-                cv.put(px, py, pack(frame));
-                continue;
-            }
-            // Bright top rim / dark bottom rim just inside the frame
-            Rect inner{r.x + 2, r.y + 2, r.w - 4, r.h - 4};
-            int jr = std::max(1, rad - 2);
-            bool on_rim = (inner.w > 2 && inner.h > 2)
-                              ? !in_round_rect(px, py, inner, jr)
-                              : false;
-            if (on_rim) {
-                if (y <= 1 + r.h / 5)
-                    cv.put(px, py, pack(pressed ? lo : hi));
-                else if (y >= r.h - 2 - r.h / 5)
-                    cv.put(px, py, pack(pressed ? hi : lo));
-                else if (x <= 1 + r.w / 8)
-                    cv.put(px, py, pack(pressed ? lo : light));
-                else if (x >= r.w - 2 - r.w / 8)
-                    cv.put(px, py, pack(pressed ? light : lo));
-                else
-                    cv.put(px, py, pack(row));
-                continue;
-            }
-            cv.put(px, py, pack(row));
-        }
+    (void)grp;
+    Color face = bc("face");
+    Color l2 = bc("light2"), l1 = bc("light1");
+    Color d1 = bc("dark1"), d2 = bc("dark2");
+    Color frame = bc("frame");
+    if (pressed) {
+        std::swap(l2, d2);
+        std::swap(l1, d1);
     }
-}
-
-inline void paint_round_ring(Canvas &cv, Rect r, Color ring, int thickness = 1) {
-    int rad = soft_button_rad(r);
-    for (int y = 0; y < r.h; ++y) {
-        for (int x = 0; x < r.w; ++x) {
-            int px = r.x + x, py = r.y + y;
-            if (!in_round_rect(px, py, r, rad)) continue;
-            Rect hole{r.x + thickness, r.y + thickness, r.w - 2 * thickness,
-                      r.h - 2 * thickness};
-            int hr = std::max(1, rad - thickness);
-            if (hole.w <= 0 || hole.h <= 0 || !in_round_rect(px, py, hole, hr))
-                cv.put(px, py, pack(ring));
-        }
-    }
+    cv.fill(r, face);
+    rounded_frame(cv, r, frame, workspace);
+    cv.hline(r.x + 1, r.right() - 1, r.y + 1, l2);
+    cv.hline(r.x + 2, r.right() - 2, r.y + 2, l1);
+    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, l2);
+    cv.vline(r.x + 2, r.y + 2, r.bottom() - 2, l1);
+    cv.hline(r.x + 2, r.right() - 2, r.bottom() - 3, d1);
+    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
+    cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
+    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
 }
 
 inline void paint_button_face(Canvas &cv, const Appearance &ap, Rect r,
                               bool pressed, bool disabled = false) {
-    Color workspace = ap.c("primary.background");
-    const char *grp = disabled ? "button_disable" : "button";
-    auto bc = [&](const char *s) {
-        char buf[48];
-        std::snprintf(buf, sizeof(buf), "%s.%s", grp, s);
-        return ap.c(buf);
-    };
-    paint_soft_plate(cv, r, workspace, bc("face"), bc("light2"), bc("dark2"),
-                     bc("frame"), pressed);
+    const char *slot = disabled ? "button.disabled"
+                                : (pressed ? "button.hilited" : "button.normal");
+    const SkinImage *img = ap.art(slot);
+    if (!img && pressed) img = ap.art("button.normal");
+    if (img) {
+        cv.nine_slice(*img, r);
+        return;
+    }
+    paint_button_face_color(cv, ap, r, pressed, disabled);
 }
 
-// Default = soft red ring following the round contour, 1px gap, then face.
+// Default ring (colour) — Focus Box preferred when Default art absent.
+inline void paint_default_ring_color(Canvas &cv, const Appearance &ap, Rect r) {
+    Color workspace = ap.c("primary.background");
+    rounded_frame(cv, r, ap.c("default_button.frame"), workspace);
+    cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("default_button.light"));
+    cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ap.c("default_button.face"));
+}
+
+// Art-first button; colour path = Sagrado draw_button.
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default) {
-    Color workspace = ap.c("primary.background");
     if (is_default) {
-        paint_round_ring(cv, r, ap.c("default_button.frame"), 1);
-        Rect red{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
-        paint_round_ring(cv, red, ap.c("default_button.light"), 1);
-        // Face inset with a 1px workspace gap (reads as separation)
-        Rect face{r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
-                  r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
-        Rect gap{face.x - 1, face.y - 1, face.w + 2, face.h + 2};
-        int grad = soft_button_rad(gap);
-        int frad = soft_button_rad(face);
-        for (int y = 0; y < gap.h; ++y)
-            for (int x = 0; x < gap.w; ++x) {
-                int px = gap.x + x, py = gap.y + y;
-                if (in_round_rect(px, py, gap, grad) &&
-                    !in_round_rect(px, py, face, frad))
-                    cv.put(px, py, pack(workspace));
-            }
-        r = face;
+        const char *dslot = pressed ? "default_button.hilited" : "default_button.normal";
+        const SkinImage *dimg = ap.art(dslot);
+        if (!dimg) dimg = ap.art("default_button.normal");
+        if (dimg) {
+            cv.nine_slice(*dimg, r);
+        } else {
+            paint_default_ring_color(cv, ap, r);
+            r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
+                 r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
+            paint_button_face(cv, ap, r, pressed, false);
+        }
+    } else {
+        paint_button_face(cv, ap, r, pressed, false);
     }
-    paint_button_face(cv, ap, r, pressed, false);
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
     cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
@@ -452,7 +505,7 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     int w = std::min(max_w, kFindDlgW);
     int h = kFindDlgH;
     Rect win{x, y, w, h};
-    GelLayout lay = gel_layout(x, y, w, h, GelStyle::Dialog);
+    GelLayout lay = gel_layout(x, y, w, h, GelStyle::Dialog, &ap, true);
     paint_gel(cv, ap, win, "Find and Replace", true, 0, GelStyle::Dialog);
 
     Rect cl = lay.client;
@@ -692,12 +745,58 @@ inline int menu_hit_row(const MenuLayout &lay, int mx, int my) {
     return row;
 }
 
-// Haxial Popup Button — same raised plate as a push button, bevelled all the
-// way through. Divider + arrow sit on that face (not an inset/inverted well).
+// Haxial Popup Button — art plate + symbol place; else raised colour plate.
 inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
                            const char *label, bool open, bool pressed,
                            bool disabled = false) {
     bool down = pressed || open;
+    const char *pslot = disabled ? "popup.disabled"
+                                 : (down ? "popup.hilited" : "popup.normal");
+    const SkinImage *plate = ap.art(pslot);
+    if (!plate && down) plate = ap.art("popup.normal");
+    const char *sslot = disabled ? "popup.symbol.disabled"
+                                 : (down ? "popup.symbol.hilited" : "popup.symbol.normal");
+    const SkinImage *sym = ap.art(sslot);
+    if (!sym) sym = ap.art("popup.symbol.normal");
+
+    if (plate) {
+        cv.nine_slice(*plate, r);
+        if (sym) {
+            int sx, sy;
+            if (sym->positions[0] > 0)
+                sx = r.x + sym->positions[0];
+            else if (sym->positions[2] > 0)
+                sx = r.right() - sym->positions[2] - sym->w;
+            else
+                sx = r.right() - sym->w - 4;
+            if (sym->positions[1] > 0)
+                sy = r.y + sym->positions[1];
+            else if (sym->positions[3] > 0)
+                sy = r.bottom() - sym->positions[3] - sym->h;
+            else
+                sy = r.y + (r.h - sym->h) / 2;
+            cv.place(*sym, sx, sy);
+        }
+        Color ink = disabled ? ap.c("button_disable.label") : ap.c("button.label");
+        int tx = r.x + 8 + (down ? 1 : 0);
+        int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
+        int max_w = (sym ? (sym->positions[2] > 0 ? r.w - sym->positions[2] - sym->w
+                                                  : r.w - sym->w - 8)
+                         : r.w - 20) -
+                    8;
+        if (max_w < 8) max_w = 8;
+        if (cv.text_width(label) <= max_w)
+            cv.text(tx, ty, label, ink);
+        else {
+            std::string s(label);
+            while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w)
+                s.pop_back();
+            s += "..";
+            cv.text(tx, ty, s.c_str(), ink);
+        }
+        return;
+    }
+
     paint_button_face(cv, ap, r, down, disabled);
 
     const char *grp = disabled ? "button_disable" : "button";
@@ -713,7 +812,6 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
     int aw = std::min(kDropArrowW, r.w / 3);
     if (aw < 14) aw = std::min(14, r.w);
     int div_x = r.right() - aw;
-    // Seam only — bevel already runs across the whole plate
     cv.vline(div_x, r.y + 4, r.bottom() - 4, seam_d);
     cv.vline(div_x + 1, r.y + 4, r.bottom() - 4, seam_l);
 

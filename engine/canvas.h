@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "font.h"
+#include "skin_image.h"
 
 struct Color {
     uint8_t r = 0, g = 0, b = 0;
@@ -157,6 +158,60 @@ struct Canvas {
         int tx = r.x + (r.w - iw) / 2 - x0 + press_off;
         int ty = r.y + (r.h - ih) / 2 - y0 + press_off;
         text(tx, ty, s, c);
+    }
+
+    // Blit art 1:1, honouring per-pixel alpha (A=0 skips).
+    void blit_image(const SkinImage &img, int dx, int dy) {
+        if (img.empty()) return;
+        for (int y = 0; y < img.h; ++y)
+            for (int x = 0; x < img.w; ++x) {
+                uint32_t p = img.at(x, y);
+                if (p >> 24) put(dx + x, dy + y, p & 0x00ffffffu);
+            }
+    }
+
+    // Place a symbol (popup arrow, etc.) — same as blit_image.
+    void place(const SkinImage &img, int dx, int dy) { blit_image(img, dx, dy); }
+
+    // 9-slice using AppearanceEdit caps: corners 1:1, edges/centre stretched.
+    void nine_slice(const SkinImage &img, Rect r) {
+        if (img.empty() || r.w <= 0 || r.h <= 0) return;
+        int cl = img.caps[0], ct = img.caps[1];
+        int cr = img.caps[2], cb = img.caps[3];
+        if (cl + cr >= img.w) {
+            cl = img.w / 2;
+            cr = img.w - 1 - cl;
+        }
+        if (ct + cb >= img.h) {
+            ct = img.h / 2;
+            cb = img.h - 1 - ct;
+        }
+        if (cl + cr >= r.w) {
+            cl = r.w / 2;
+            cr = r.w - cl;
+        }
+        if (ct + cb >= r.h) {
+            ct = r.h / 2;
+            cb = r.h - ct;
+        }
+        int mid_sw = img.w - cl - cr, mid_sh = img.h - ct - cb;
+        int mid_dw = r.w - cl - cr, mid_dh = r.h - ct - cb;
+        for (int y = 0; y < r.h; ++y) {
+            int sy = y < ct            ? y
+                     : y >= r.h - cb   ? img.h - (r.h - y)
+                     : mid_sh <= 0     ? ct
+                                       : ct + (y - ct) * mid_sh / mid_dh;
+            if (sy < 0 || sy >= img.h) continue;
+            for (int x = 0; x < r.w; ++x) {
+                int sx = x < cl          ? x
+                         : x >= r.w - cr ? img.w - (r.w - x)
+                         : mid_sw <= 0   ? cl
+                                         : cl + (x - cl) * mid_sw / mid_dw;
+                if (sx < 0 || sx >= img.w) continue;
+                uint32_t p = img.at(sx, sy);
+                if (p >> 24) put(r.x + x, r.y + y, p & 0x00ffffffu);
+            }
+        }
     }
 
   private:

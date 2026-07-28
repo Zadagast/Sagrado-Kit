@@ -14,6 +14,15 @@ int main(int argc, char **argv) {
         ap.set_skin(stock_skin());
     } else {
         std::printf("loaded: %s (%s)\n", path.c_str(), ap.skin.meta.name.c_str());
+        std::printf("art slots authored: %zu  loaded: %zu\n", ap.skin.art.size(),
+                    ap.art_cache.size());
+        if (ap.art("button.normal"))
+            std::printf("button.normal art %dx%d caps=[%d,%d,%d,%d]\n",
+                        ap.art("button.normal")->w, ap.art("button.normal")->h,
+                        ap.art("button.normal")->caps[0],
+                        ap.art("button.normal")->caps[1],
+                        ap.art("button.normal")->caps[2],
+                        ap.art("button.normal")->caps[3]);
     }
 
     Color bg = ap.c("primary.background");
@@ -59,7 +68,8 @@ int main(int argc, char **argv) {
     std::printf("roundtrip ok → %s\n", out.c_str());
 
     // Write a PPM preview (easy to convert / view) for build verification.
-    const char *ppm = "build/kit-preview.ppm";
+    const char *ppm = ap.art("button.normal") ? "build/kit-preview-art.ppm"
+                                              : "build/kit-preview.ppm";
     FILE *f = std::fopen(ppm, "wb");
     if (f) {
         std::fprintf(f, "P6\n%d %d\n255\n", cv.width(), cv.height());

@@ -112,7 +112,7 @@ Docs: usually **20 px tall**; caps allow other sizes. Label drawn **on top** of
 the 9-sliced image. Kit layout constant: `kButtonH = 20`. Default outer =
 face + 3 px on each side (`kDefaultButtonPad`).
 
-| Default Button Normal/Hilited/Disabled | index TBD (follows Button block in panel) | 9-slice | unused | Default is authored **3 px larger on all sides** than a regular button so a border can fit; or 3 px transparent if no border |
+| Default Button Normal/Hilited/Disabled | **37** / **38** / **39** | 9-slice | unused | Default is authored **3 px larger on all sides** than a regular button so a border can fit; or 3 px transparent if no border |
 
 **SagradoKit names:** `button.normal`, `button.hilited`, `button.disabled`,
 `default_button.normal`, `default_button.hilited`, `default_button.disabled`.
@@ -121,9 +121,9 @@ face + 3 px on each side (`kDefaultButtonPad`).
 
 | AppearanceEdit name | Hap slot | Caps / Positions | Paint |
 |---|---|---|---|
-| Popup Button Normal/Hilited/Disabled | index TBD | Usually ~20 px tall; 9-slice | Closed dropdown field+arrow chrome; title inside |
-| Popup Button No Title Normal/Hilited/Disabled | index TBD | Often ~20×20 | Well next to a text field |
-| Popup Button Symbol Normal/Hilited/Disabled | index TBD | **Positions** place the arrow on a titled popup; ignored (centred) on No Title | Down-arrow overlay |
+| Popup Button Normal/Hilited/Disabled | **89** / **90** / **91** | Usually ~20 px tall; 9-slice | Closed dropdown field+arrow chrome; title inside |
+| Popup Button No Title Normal/Hilited/Disabled | **93** / **94** / **95** | Often ~20×20 | Well next to a text field |
+| Popup Button Symbol Normal/Hilited/Disabled | **97** / **98** / **99** | **Positions** place the arrow on a titled popup; ignored (centred) on No Title | Down-arrow overlay |
 
 **SagradoKit names:** `popup.normal`, `popup.hilited`, `popup.disabled`,
 `popup.no_title.*`, `popup.symbol.*`.

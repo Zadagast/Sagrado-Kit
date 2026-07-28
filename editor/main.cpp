@@ -213,7 +213,7 @@ void layout() {
         W = kWinW;
         H = kWinH;
     }
-    g.gel = gel_layout(0, 0, W, H);
+    g.gel = gel_layout(0, 0, W, H, GelStyle::Main, &g.ap, true);
     Rect client = g.gel.client;
 
     // Toolbar — Find metrics: regular 24px; default Save 26px outer, same top.

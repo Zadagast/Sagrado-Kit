@@ -43,6 +43,7 @@ inline std::string color_to_hex(Color c) {
 // Flat role path: "primary.background", "button.label", "window.transition.3"
 using ColorMap = std::map<std::string, Color>;
 using SlotMap = std::map<std::string, std::string>;
+using ArtMap = std::map<std::string, ArtRef>;
 
 struct SkinMeta {
     std::string name = "Untitled";
@@ -55,7 +56,7 @@ struct Skin {
     int format_version = 1;
     SkinMeta meta;
     ColorMap colors; // only roles authored in this skin
-    SlotMap art;     // reserved — relative paths
+    ArtMap art;      // slot → file + caps/positions
     SlotMap icons;   // reserved — relative paths
 };
 
@@ -224,10 +225,10 @@ inline Color resolve_color(const Skin &skin, const ColorMap &stock,
     return rgb(255, 0, 255); // missing role marker (should not happen)
 }
 
-// Art slot reserved for later slices; colour path used when absent.
+// Art slot present when a non-empty path is authored.
 inline bool has_art(const Skin &skin, const char *slot) {
     auto it = skin.art.find(slot);
-    return it != skin.art.end() && !it->second.empty();
+    return it != skin.art.end() && !it->second.path.empty();
 }
 
 // --- Ordered role list for the editor ------------------------------------
@@ -375,12 +376,26 @@ inline bool load(const std::string &path, Skin &skin) {
     std::string line;
     bool in_array = false;
     std::string array_key;
+    std::string array_section;
     std::vector<std::string> array_vals;
+
+    auto parse_section_slot = [](const std::string &sec, const char *prefix,
+                                 std::string &slot_out) -> bool {
+        // art."button.normal"  or  art.button.normal
+        size_t plen = std::strlen(prefix);
+        if (sec.rfind(prefix, 0) != 0) return false;
+        if (sec.size() <= plen) return false;
+        std::string rest = sec.substr(plen);
+        if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
+            rest = rest.substr(1, rest.size() - 2);
+        if (rest.empty()) return false;
+        slot_out = rest;
+        return true;
+    };
 
     auto flush_array = [&]() {
         if (!in_array) return;
         if (array_key.find(".transition") != std::string::npos) {
-            // window.transition → window.transition.0..
             std::string base = array_key;
             for (size_t i = 0; i < array_vals.size() && i < 18; ++i) {
                 Color c;
@@ -390,9 +405,26 @@ inline bool load(const std::string &path, Skin &skin) {
                     skin.colors[key] = c;
                 }
             }
+        } else {
+            std::string slot;
+            if (parse_section_slot(array_section, "art.", slot) ||
+                parse_section_slot(array_section, "art_meta.", slot)) {
+                ArtRef &ref = skin.art[slot];
+                uint8_t vals[4] = {0, 0, 0, 0};
+                for (size_t i = 0; i < array_vals.size() && i < 4; ++i)
+                    vals[i] = uint8_t(std::atoi(array_vals[i].c_str()));
+                if (array_key == "caps") {
+                    for (int i = 0; i < 4; ++i) ref.caps[i] = vals[i];
+                    ref.has_caps = true;
+                } else if (array_key == "positions") {
+                    for (int i = 0; i < 4; ++i) ref.positions[i] = vals[i];
+                    ref.has_positions = true;
+                }
+            }
         }
         in_array = false;
         array_key.clear();
+        array_section.clear();
         array_vals.clear();
     };
 
@@ -415,8 +447,12 @@ inline bool load(const std::string &path, Skin &skin) {
                 continue;
             }
             if (line.back() == ',') line.pop_back();
+            line = trim(line);
             std::string v;
-            if (parse_string(line, v)) array_vals.push_back(v);
+            if (parse_string(line, v))
+                array_vals.push_back(v);
+            else
+                array_vals.push_back(line); // bare ints for caps/positions
             continue;
         }
 
@@ -431,14 +467,39 @@ inline bool load(const std::string &path, Skin &skin) {
         std::string key = trim(line.substr(0, eq));
         std::string val = trim(line.substr(eq + 1));
 
-        if (val == "[") {
+        // Unquote dotted keys: "button.normal"
+        if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
+            key = key.substr(1, key.size() - 2);
+
+        if (val == "[" || (val.size() >= 2 && val.front() == '[' && val.back() == ']')) {
             in_array = true;
+            array_section = section;
             if (section == "colors.window" || section.rfind("colors.", 0) == 0) {
-                // colors.window + transition → window.transition
-                std::string group = section.substr(7); // after "colors."
+                std::string group = section.substr(7);
                 array_key = group + "." + key;
             } else {
-                array_key = section.empty() ? key : section + "." + key;
+                array_key = key;
+            }
+            // Inline array: key = [a, b, c]
+            if (val.size() >= 2 && val.front() == '[' && val.back() == ']') {
+                std::string inner = trim(val.substr(1, val.size() - 2));
+                size_t start = 0;
+                while (start < inner.size()) {
+                    size_t comma = inner.find(',', start);
+                    std::string item = trim(inner.substr(
+                        start, comma == std::string::npos ? std::string::npos
+                                                          : comma - start));
+                    if (!item.empty()) {
+                        std::string v;
+                        if (parse_string(item, v))
+                            array_vals.push_back(v);
+                        else
+                            array_vals.push_back(item);
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                }
+                flush_array();
             }
             continue;
         }
@@ -460,7 +521,14 @@ inline bool load(const std::string &path, Skin &skin) {
             continue;
         }
         if (section == "art" && is_str) {
-            skin.art[key] = str;
+            skin.art[key].path = str;
+            continue;
+        }
+        std::string art_slot;
+        if (parse_section_slot(section, "art.", art_slot) ||
+            parse_section_slot(section, "art_meta.", art_slot)) {
+            ArtRef &ref = skin.art[art_slot];
+            if ((key == "file" || key == "path") && is_str) ref.path = str;
             continue;
         }
         if (section == "icons" && is_str) {
@@ -547,10 +615,25 @@ inline bool save(const std::string &path, const Skin &skin) {
         f << "]\n\n";
     }
 
-    f << "[art]\n";
-    for (const auto &kv : skin.art)
-        f << "\"" << kv.first << "\" = \"" << kv.second << "\"\n";
-    f << "\n[icons]\n";
+    // Art: one table per slot so caps/positions travel with the path.
+    for (const auto &kv : skin.art) {
+        const ArtRef &ref = kv.second;
+        if (ref.path.empty() && !ref.has_caps && !ref.has_positions) continue;
+        f << "[art.\"" << kv.first << "\"]\n";
+        if (!ref.path.empty()) f << "file = \"" << ref.path << "\"\n";
+        if (ref.has_caps || ref.path.size()) {
+            // Always persist caps when known; zeros are valid AppearanceEdit values.
+            f << "caps = [" << int(ref.caps[0]) << ", " << int(ref.caps[1])
+              << ", " << int(ref.caps[2]) << ", " << int(ref.caps[3]) << "]\n";
+        }
+        if (ref.has_positions) {
+            f << "positions = [" << int(ref.positions[0]) << ", "
+              << int(ref.positions[1]) << ", " << int(ref.positions[2]) << ", "
+              << int(ref.positions[3]) << "]\n";
+        }
+        f << "\n";
+    }
+    f << "[icons]\n";
     for (const auto &kv : skin.icons)
         f << "\"" << kv.first << "\" = \"" << kv.second << "\"\n";
     return true;
