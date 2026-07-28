@@ -2529,6 +2529,41 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(x, y, "Kit Preview", ap.c("primary.label"));
     y += kFontHeight + 8;
 
+    // P2 samples first so short editor panels still show them (Find gel is tall).
+    if (fits(kButtonH + kMenuBarH + 16)) {
+        cv.text(x, y, "P2  icon / menu / scroll", ap.c("important.label"));
+        y += kFontHeight + 4;
+        Rect ib0{x, y, 28, kButtonH};
+        Rect ib1{ib0.right() + 6, y, 28, kButtonH};
+        Rect ib2{ib1.right() + 6, y, 72, kButtonH};
+        if (ib0.right() <= right)
+            paint_icon_button(cv, ap, ib0, "folder.16", nullptr, false, false);
+        if (ib1.right() <= right)
+            paint_icon_button(cv, ap, ib1, "file.generic.16", nullptr, true, false);
+        if (ib2.right() <= right)
+            paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
+        Rect ibd{ib2.right() + 6, y, 28, kButtonH};
+        if (ibd.right() <= right)
+            paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
+        // Single + hilite scroll samples on the same row when width allows.
+        Rect v1{ibd.right() + 14, y, kScrollbarW, kButtonH + kMenuBarH + 4};
+        if (v1.bottom() <= client.bottom() - pad && v1.right() + 40 <= right) {
+            paint_scrollbar(cv, ap, v1, 2, 6, 2, true, true, false,
+                            ScrollArrowHot::FirstStart);
+            Rect h1{v1.right() + 8, y + 6, 72, kScrollbarW};
+            paint_scrollbar_h(cv, ap, h1, 2, 6, 2, true, false, false,
+                              ScrollArrowHot::FirstEnd);
+            Rect tiny{h1.right() + 6, h1.y, 10, kScrollbarW};
+            if (tiny.right() <= right)
+                paint_scrollbar_h(cv, ap, tiny, 0, 0, 1, false);
+        }
+        y += kButtonH + 6;
+        static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
+        paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
+                       1, 0);
+        y += kMenuBarH + 10;
+    }
+
     // Find-sized dialog chrome — title bar / icons at real TextEdit proportions
     // (Sagrado Find is 442×176). Not a stubby 72px nested gel.
     if (fits(kFindDlgH)) {
@@ -2552,29 +2587,6 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         if (btn_dis.right() <= right)
             paint_button(cv, ap, btn_dis, "Disabled", false, false, true);
         y += kDefaultButtonH + 8;
-    }
-
-    // Icon buttons + menu bar (P2)
-    if (fits(kButtonH)) {
-        Rect ib0{x, y, 28, kButtonH};
-        Rect ib1{ib0.right() + 6, y, 28, kButtonH};
-        Rect ib2{ib1.right() + 6, y, 72, kButtonH};
-        if (ib0.right() <= right)
-            paint_icon_button(cv, ap, ib0, "folder.16", nullptr, false, false);
-        if (ib1.right() <= right)
-            paint_icon_button(cv, ap, ib1, "file.generic.16", nullptr, true, false);
-        if (ib2.right() <= right)
-            paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
-        Rect ibd{ib2.right() + 6, y, 28, kButtonH};
-        if (ibd.right() <= right)
-            paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
-        y += kButtonH + 8;
-    }
-    if (fits(kMenuBarH)) {
-        static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
-        paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
-                       1, 0);
-        y += kMenuBarH + 8;
     }
 
     // Tick (checkbox) + Mutex (radio) + disclosure — only place what fits width.
