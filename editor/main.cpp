@@ -669,7 +669,8 @@ void mouse_up(int mx, int my) {
         return;
     }
     if (was == DragMaxBox && g.gel.max_box.contains(mx, my)) {
-        WINDOWPLACEMENT wp{sizeof(wp)};
+        WINDOWPLACEMENT wp{};
+        wp.length = sizeof(wp);
         GetWindowPlacement(g_hwnd, &wp);
         ShowWindow(g_hwnd, wp.showCmd == SW_SHOWMAXIMIZED ? SW_RESTORE
                                                           : SW_SHOWMAXIMIZED);
