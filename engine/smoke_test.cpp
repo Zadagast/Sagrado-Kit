@@ -73,6 +73,22 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "roundtrip colour mismatch\n");
         return 1;
     }
+    if (!ap.art_cache.empty()) {
+        if (again.art_cache.size() != ap.art_cache.size()) {
+            std::fprintf(stderr, "roundtrip art count mismatch %zu → %zu\n",
+                         ap.art_cache.size(), again.art_cache.size());
+            return 1;
+        }
+        if (ap.art("button.normal") && again.art("button.normal")) {
+            const SkinImage *a = ap.art("button.normal");
+            const SkinImage *b = again.art("button.normal");
+            if (a->w != b->w || a->h != b->h || a->px != b->px) {
+                std::fprintf(stderr, "roundtrip button.normal pixels mismatch\n");
+                return 1;
+            }
+        }
+        std::printf("art roundtrip ok (%zu slots)\n", again.art_cache.size());
+    }
     std::printf("roundtrip ok → %s\n", out.c_str());
 
     // Clip regression: tall kit content must not paint outside a short panel.

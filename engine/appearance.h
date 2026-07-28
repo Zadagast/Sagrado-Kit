@@ -111,7 +111,51 @@ struct Appearance {
         return true;
     }
 
-    bool save(const std::string &path) const { return skin_toml::save(path, skin); }
+    // Write a .sap next to dumped .skimg art/icons (Hap→Sap parity round-trip).
+    // Paths in the TOML are relative to the .sap directory. Existing skin.art /
+    // skin.icons basenames are preferred when present.
+    bool save(const std::string &path) const {
+        Skin out = skin;
+        std::string dir = parent_dir(path);
+
+        auto basename_of = [](const std::string &p) -> std::string {
+            auto slash = p.find_last_of("/\\");
+            return slash == std::string::npos ? p : p.substr(slash + 1);
+        };
+        auto slot_file = [&](const std::string &key, const std::string &existing)
+            -> std::string {
+            if (!existing.empty()) return basename_of(existing);
+            std::string n = key;
+            for (char &c : n)
+                if (c == '.') c = '_';
+            return n + ".skimg";
+        };
+
+        for (const auto &kv : art_cache) {
+            if (kv.second.empty()) continue;
+            std::string existing;
+            auto it = out.art.find(kv.first);
+            if (it != out.art.end()) existing = it->second.path;
+            std::string fname = slot_file(kv.first, existing);
+            if (!save_skimg(join_path(dir, fname), kv.second)) return false;
+            ArtRef &ref = out.art[kv.first];
+            ref.path = fname;
+            std::memcpy(ref.caps, kv.second.caps, 4);
+            std::memcpy(ref.positions, kv.second.positions, 4);
+            ref.has_caps = true;
+            ref.has_positions = true;
+        }
+        for (const auto &kv : icon_cache) {
+            if (kv.second.empty()) continue;
+            std::string existing;
+            auto it = out.icons.find(kv.first);
+            if (it != out.icons.end()) existing = it->second;
+            std::string fname = slot_file(kv.first, existing);
+            if (!save_skimg(join_path(dir, fname), kv.second)) return false;
+            out.icons[kv.first] = fname;
+        }
+        return skin_toml::save(path, out);
+    }
 
     Color c(const char *role) const { return resolve_color(skin, stock, role); }
 

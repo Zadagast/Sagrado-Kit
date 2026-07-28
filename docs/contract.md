@@ -45,15 +45,32 @@ background = "#c0c0c0"
 label = "#000000"
 # …
 
-[art]
-# reserved: "window.frame.normal" = "relative/path.png"
+[art."button.normal"]
+file = "button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
 
 [icons]
-# reserved: "file.generic.16" = "relative/path.png"
+# reserved: "file.generic.16" = "relative/path.skimg"
 ```
 
 Colours are `#RRGGBB` or `#RRGGBBAA`. Omitted roles fall through to stock.
-Art/icon maps are reserved in this slice (paths accepted, painting later).
+Art slots use Hap names; each may carry `caps` (9-slice) and `positions`
+(travel / thickness). Saving a live-loaded `.hap` writes a `.sap` plus `.skimg`
+files beside it — same art the Hap imported.
+
+### Hap ↔ Sap
+
+| | `.hap` | `.sap` |
+|---|---|---|
+| Role | Haxial Appearance (binary import) | Sagrado Appearance (authored) |
+| Colours | 204-index table → named roles | Named roles (+ transitions) |
+| Images | Indexed slots + caps/positions | `[art."slot"]` + `.skimg` |
+| Icons | Separate icon table | `[icons]` |
+| Editor | Load only | Load / Save |
+
+`.sap` is meant to express everything Hap carries that the kit uses. Load either;
+author and ship `.sap`.
 
 ### Named colour roles (first slice)
 

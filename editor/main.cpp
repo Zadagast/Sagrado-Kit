@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -184,7 +185,21 @@ void do_load() {
 
 void do_save() {
     std::string path = g.path;
-    if (path.empty() && !dialog_save_path(path)) return;
+    auto ends_with_ci = [](const std::string &s, const char *ext) {
+        size_t n = std::strlen(ext);
+        if (s.size() < n) return false;
+        for (size_t i = 0; i < n; ++i) {
+            char a = s[s.size() - n + i];
+            char b = ext[i];
+            if (a >= 'A' && a <= 'Z') a = char(a - 'A' + 'a');
+            if (a != b) return false;
+        }
+        return true;
+    };
+    // .hap is import-only — Save always writes .sap (with art dumped beside it).
+    if (path.empty() || ends_with_ci(path, ".hap")) {
+        if (!dialog_save_path(path)) return;
+    }
     if (path.empty()) return;
     if (g.ap.skin.meta.name.empty() || g.ap.skin.meta.name == "Stock")
         g.ap.skin.meta.name = "Untitled";

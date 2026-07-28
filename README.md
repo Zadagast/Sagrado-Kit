@@ -72,7 +72,8 @@ Run `build/SagradoKitEditor.exe`. Example skins are in
 
 ## Editor
 
-- **Load / Save** — `.sap` files (same format apps load); **Load** also accepts `.hap`
+- **Load / Save** — `.sap` files (same format apps load); **Load** also accepts `.hap`.
+  Save after a Hap load writes a full `.sap` + `.skimg` art (Hap→Sap parity).
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
 - **Kit Preview** — live gel + controls; look for the **`P2  icon / menu / scroll`**
@@ -86,6 +87,7 @@ move; the close box quits.
 
 1. Include `engine/appearance.h` (pulls in canvas + skin).
 2. Hold an `Appearance`, `load("path.sap")` or `load("path.hap")`, or start from `stock_skin()`.
+   Saving always produces `.sap` (with art files when the appearance has image slots).
 3. Paint with `paint_gel`, `paint_button`, `paint_field`, `paint_list`,
    `paint_scrollbar` (or compose from `ap.c("role.path")`).
 4. Blit your `Canvas` with `SetDIBitsToDevice` — same as the editor.

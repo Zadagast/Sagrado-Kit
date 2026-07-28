@@ -39,6 +39,8 @@ smoke: engine/smoke_test.cpp engine/*.h | $(BUILD)
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/smoke_test.cpp -o $(BUILD)/smoke_test
 	$(BUILD)/smoke_test format/skins/stock.sap format/skins/slate.sap
 	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.sap
+	# Hap → .sap art/colour round-trip (parity)
+	$(BUILD)/smoke_test "research/haps/Milk Redux.hap"
 
 clean:
 	rm -rf $(BUILD)

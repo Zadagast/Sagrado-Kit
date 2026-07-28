@@ -159,6 +159,10 @@ static const HapColorMap kHapColorMap[] = {
     {18, "list.hilite_foreground"},
     {19, "list.sort_column_background"},
     {20, "list.separator"},
+    {21, "workspace.background1"},
+    {22, "workspace.background2"},
+    {23, "workspace.background3"},
+    {24, "workspace.background4"},
     {29, "button.light2"},
     {30, "button.light1"},
     {31, "button.face"},
@@ -237,6 +241,22 @@ static const HapColorMap kHapColorMap[] = {
     {155, "scrollbar.disable_dark"},
     {156, "scrollbar.disable_frame"},
     {157, "scrollbar.disable_label"},
+    {158, "slider.indicator_light"},
+    {159, "slider.indicator"},
+    {160, "slider.indicator_dark"},
+    {161, "slider.indicator_frame"},
+    {162, "slider.indicator_hilite_light"},
+    {163, "slider.indicator_hilite"},
+    {164, "slider.indicator_hilite_dark"},
+    {165, "slider.indicator_hilite_frame"},
+    {166, "slider.bar"},
+    {167, "slider.bar_frame"},
+    {168, "slider.bar_hilite"},
+    {169, "slider.bar_hilite_frame"},
+    {170, "slider.disable_light"},
+    {171, "slider.disable"},
+    {172, "slider.disable_dark"},
+    {173, "slider.disable_frame"},
     {174, "column_header.frame"},
     {175, "column_header.light"},
     {176, "column_header.face"},
@@ -263,7 +283,7 @@ static const HapColorMap kHapColorMap[] = {
     {197, "file_label.14"},
     {198, "file_label.15"},
 };
-static constexpr int kHapColorMapN = 123;
+static constexpr int kHapColorMapN = 143;
 
 static const HapArtMap kHapIconMap[] = {
     {4, "file.generic.16"},

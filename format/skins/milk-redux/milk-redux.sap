@@ -150,6 +150,24 @@ track_dark2 = "#222222"
 track_light1 = "#555555"
 track_light2 = "#666666"
 
+[colors.slider]
+bar = "#444444"
+bar_frame = "#000000"
+bar_hilite = "#660000"
+bar_hilite_frame = "#000000"
+disable = "#333333"
+disable_dark = "#2a2a2a"
+disable_frame = "#222222"
+disable_light = "#444444"
+indicator = "#333333"
+indicator_dark = "#111111"
+indicator_frame = "#000000"
+indicator_hilite = "#880000"
+indicator_hilite_dark = "#440000"
+indicator_hilite_frame = "#000000"
+indicator_hilite_light = "#cc0000"
+indicator_light = "#666666"
+
 [colors.text]
 background = "#f5f5f5"
 foreground = "#000000"
@@ -214,6 +232,12 @@ transition = [
   "#bc0000",
   "#c30000"
 ]
+
+[colors.workspace]
+background1 = "#100010"
+background2 = "#300030"
+background3 = "#300000"
+background4 = "#002000"
 
 [art."button.normal"]
 file = "button_normal.skimg"
