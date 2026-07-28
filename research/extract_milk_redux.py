@@ -5,7 +5,7 @@ import struct
 import zlib
 from pathlib import Path
 
-# Verified / probed Hap slot → SagradoKit art key (first wave only).
+# Verified / probed Hap slot → SagradoKit art key.
 SLOT_MAP = {
     25: "button.normal",
     26: "button.hilited",
@@ -13,12 +13,40 @@ SLOT_MAP = {
     37: "default_button.normal",
     38: "default_button.hilited",
     39: "default_button.disabled",
+    # Tick Blank / Ticked / Tristate × Normal/Hilited/Disabled
+    57: "tick.blank.normal",
+    58: "tick.blank.hilited",
+    59: "tick.blank.disabled",
+    61: "tick.ticked.normal",
+    62: "tick.ticked.hilited",
+    63: "tick.ticked.disabled",
+    65: "tick.tristate.normal",
+    66: "tick.tristate.hilited",
+    67: "tick.tristate.disabled",
+    # Mutex Blank / Ticked / Tristate × Normal/Hilited/Disabled
+    69: "mutex.blank.normal",
+    70: "mutex.blank.hilited",
+    71: "mutex.blank.disabled",
+    73: "mutex.ticked.normal",
+    74: "mutex.ticked.hilited",
+    75: "mutex.ticked.disabled",
+    77: "mutex.tristate.normal",
+    78: "mutex.tristate.hilited",
+    79: "mutex.tristate.disabled",
+    81: "disclosure.plus.small",
+    85: "disclosure.minus.small",
     89: "popup.normal",
     90: "popup.hilited",
     91: "popup.disabled",
     97: "popup.symbol.normal",
     98: "popup.symbol.hilited",
     99: "popup.symbol.disabled",
+    105: "separator.h",
+    106: "separator.v",
+    107: "box",
+    108: "framed_raised",
+    111: "progress.bar",
+    112: "progress.fill",
     220: "window.frame.normal",
     221: "window.frame.focus",
     223: "window.close.normal",
@@ -104,6 +132,11 @@ COLOR_MAP = {
     110: "menu.hilite_dark",
     111: "menu.hilite_label",
     112: "menu.disable_label",
+    123: "progress.bkgnd_light",
+    124: "progress.bkgnd",
+    125: "progress.bkgnd_dark",
+    126: "progress.frame",
+    127: "progress.label",
 }
 
 
@@ -270,10 +303,11 @@ def main():
         group, _, leaf = role.partition(".")
         groups.setdefault(group, {})[leaf] = hex_rgb(colors[idx])
 
-    # Window transitions 61..78 and 86..103
-    for base, start in (("window", 61), ("window_focus", 86)):
+    # Window transitions 61..78 and 86..103; progress fill 113..122
+    for base, start, n in (("window", 61, 18), ("window_focus", 86, 18),
+                           ("progress", 113, 10)):
         stops = []
-        for i in range(18):
+        for i in range(n):
             idx = start + i
             if idx < len(colors):
                 stops.append(hex_rgb(colors[idx]))

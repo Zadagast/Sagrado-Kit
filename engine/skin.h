@@ -197,6 +197,18 @@ inline ColorMap stock_colors() {
     set_role(m, "column_header.hilite", rgb(136, 0, 0));
     set_role(m, "column_header.hilite_dark", rgb(68, 0, 0));
     set_role(m, "column_header.hilite_label", rgb(255, 255, 255));
+    // Progress (Haxial Progress Bar / Fill)
+    set_role(m, "progress.bkgnd_light", rgb(68, 68, 68));
+    set_role(m, "progress.bkgnd", rgb(34, 34, 34));
+    set_role(m, "progress.bkgnd_dark", rgb(17, 17, 17));
+    set_role(m, "progress.frame", rgb(0, 0, 0));
+    set_role(m, "progress.label", rgb(255, 255, 255));
+    for (int i = 0; i < 10; ++i) {
+        char key[40];
+        std::snprintf(key, sizeof(key), "progress.transition.%d", i);
+        uint8_t v = uint8_t(80 + i * 16);
+        set_role(m, key, rgb(v, 0, 0));
+    }
     // Workspace
     set_role(m, "workspace.background1", rgb(51, 51, 51));
     set_role(m, "workspace.background2", rgb(42, 42, 42));
@@ -335,6 +347,11 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"column_header.hilite", "Column Header Hilite"},
         {"column_header.hilite_dark", "Column Header Hilite Dark"},
         {"column_header.hilite_label", "Column Header Hilite Label"},
+        {"progress.bkgnd_light", "Progress Background Light"},
+        {"progress.bkgnd", "Progress Background"},
+        {"progress.bkgnd_dark", "Progress Background Dark"},
+        {"progress.frame", "Progress Frame"},
+        {"progress.label", "Progress Label"},
         {"workspace.background1", "Workspace Background 1"},
         {"workspace.background2", "Workspace Background 2"},
         {"workspace.background3", "Workspace Background 3"},

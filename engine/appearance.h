@@ -485,8 +485,14 @@ inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
                         const char *text, bool focused, bool caret_on) {
     cv.fill(r, ap.c("text.background"));
     if (focused) {
-        cv.frame(r, ap.c("focus.box"));
-        cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("focus.box"));
+        const SkinImage *fb = ap.art("focus_box.hilited");
+        if (!fb) fb = ap.art("focus_box.normal");
+        if (fb) {
+            cv.nine_slice(*fb, r);
+        } else {
+            cv.frame(r, ap.c("focus.box"));
+            cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("focus.box"));
+        }
     } else {
         cv.frame(r, ap.c("primary.frame"));
     }
@@ -891,6 +897,305 @@ inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
     return s;
 }
 
+// --- Tick (checkbox) / Mutex (radio) ------------------------------------
+// AppearanceEdit: Tick/Mutex Blank|Ticked|Tristate × Normal/Hilited/Disabled.
+// Title is drawn outside the box. Height ≤ 18.
+
+constexpr int kTickBox = 14;
+
+enum class TickMark { Blank, Ticked, Tristate };
+
+inline const char *tick_art_slot(TickMark mark, bool pressed, bool disabled) {
+    const char *m = mark == TickMark::Ticked     ? "ticked"
+                    : mark == TickMark::Tristate ? "tristate"
+                                                 : "blank";
+    const char *st = disabled ? "disabled" : (pressed ? "hilited" : "normal");
+    static char buf[48];
+    std::snprintf(buf, sizeof(buf), "tick.%s.%s", m, st);
+    return buf;
+}
+
+inline const char *mutex_art_slot(TickMark mark, bool pressed, bool disabled) {
+    const char *m = mark == TickMark::Ticked     ? "ticked"
+                    : mark == TickMark::Tristate ? "tristate"
+                                                 : "blank";
+    const char *st = disabled ? "disabled" : (pressed ? "hilited" : "normal");
+    static char buf[48];
+    std::snprintf(buf, sizeof(buf), "mutex.%s.%s", m, st);
+    return buf;
+}
+
+inline void paint_tick_glyph(Canvas &cv, Rect b, Color ink) {
+    for (int i = 0; i < 4; ++i) {
+        cv.put(b.x + 3, b.y + 6 + i, pack(ink));
+        cv.put(b.x + 4, b.y + 7 + i, pack(ink));
+    }
+    for (int i = 0; i < 6; ++i) {
+        cv.put(b.x + 5 + i, b.y + 9 - i, pack(ink));
+        cv.put(b.x + 5 + i, b.y + 10 - i, pack(ink));
+    }
+}
+
+inline void paint_tristate_glyph(Canvas &cv, Rect b, Color ink) {
+    cv.fill({b.x + 3, b.y + 3, b.w - 6, b.h - 6}, ink);
+}
+
+inline void paint_mutex_dot(Canvas &cv, Rect b, Color ink) {
+    int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    for (int dy = -2; dy <= 2; ++dy)
+        for (int dx = -2; dx <= 2; ++dx)
+            if (dx * dx + dy * dy <= 5) cv.put(cx + dx, cy + dy, pack(ink));
+}
+
+// Checkbox. Returns the hit box (glyph only).
+inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
+                       TickMark mark, const char *label, bool pressed = false,
+                       bool disabled = false) {
+    Rect b{x, y, kTickBox, kTickBox};
+    const SkinImage *img = ap.art(tick_art_slot(mark, pressed, disabled));
+    if (!img && pressed) img = ap.art(tick_art_slot(mark, false, disabled));
+    if (!img && mark != TickMark::Blank)
+        img = ap.art(tick_art_slot(TickMark::Blank, pressed, disabled));
+    if (img) {
+        // Art is placed 1:1 (or nine-sliced into the box if larger/smaller).
+        if (img->w == b.w && img->h == b.h)
+            cv.blit_image(*img, b.x, b.y);
+        else
+            cv.nine_slice(*img, b);
+    } else {
+        const char *grp = disabled ? "button_disable" : "button";
+        auto bc = [&](const char *s) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%s.%s", grp, s);
+            return ap.c(buf);
+        };
+        cv.fill(b, pressed ? bc("dark1") : bc("face"));
+        rounded_frame(cv, b, bc("frame"), ap.c("primary.background"));
+        cv.hline(b.x + 1, b.right() - 1, b.y + 1, pressed ? bc("dark2") : bc("light2"));
+        cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, pressed ? bc("dark2") : bc("light2"));
+        cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, pressed ? bc("light2") : bc("dark2"));
+        cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, pressed ? bc("light2") : bc("dark2"));
+        Color ink = bc("label");
+        if (mark == TickMark::Ticked) paint_tick_glyph(cv, b, ink);
+        else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
+    }
+    if (label && *label) {
+        Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
+        cv.text(b.right() + 6, b.y + (b.h - kFontHeight) / 2, label, ink);
+    }
+    return b;
+}
+
+// Radio (mutex). Same layout as Tick; glyph is a filled disc when ticked.
+inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
+                        TickMark mark, const char *label, bool pressed = false,
+                        bool disabled = false) {
+    Rect b{x, y, kTickBox, kTickBox};
+    const SkinImage *img = ap.art(mutex_art_slot(mark, pressed, disabled));
+    if (!img && pressed) img = ap.art(mutex_art_slot(mark, false, disabled));
+    if (!img && mark != TickMark::Blank)
+        img = ap.art(mutex_art_slot(TickMark::Blank, pressed, disabled));
+    if (img) {
+        if (img->w == b.w && img->h == b.h)
+            cv.blit_image(*img, b.x, b.y);
+        else
+            cv.nine_slice(*img, b);
+    } else {
+        const char *grp = disabled ? "button_disable" : "button";
+        auto bc = [&](const char *s) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%s.%s", grp, s);
+            return ap.c(buf);
+        };
+        // Circular-ish colour plate: chamfered square reads as radio well.
+        cv.fill(b, pressed ? bc("dark1") : bc("face"));
+        rounded_frame(cv, b, bc("frame"), ap.c("primary.background"));
+        cv.hline(b.x + 1, b.right() - 1, b.y + 1, pressed ? bc("dark2") : bc("light2"));
+        cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, pressed ? bc("dark2") : bc("light2"));
+        cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, pressed ? bc("light2") : bc("dark2"));
+        cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, pressed ? bc("light2") : bc("dark2"));
+        Color ink = bc("label");
+        if (mark == TickMark::Ticked) paint_mutex_dot(cv, b, ink);
+        else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
+    }
+    if (label && *label) {
+        Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
+        cv.text(b.right() + 6, b.y + (b.h - kFontHeight) / 2, label, ink);
+    }
+    return b;
+}
+
+// --- Progress / separators / box / disclosure / focus art ---------------
+
+constexpr int kProgressH = 12; // AppearanceEdit: ≤ 16
+
+inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
+                           int max_value = 100) {
+    if (r.w <= 0 || r.h <= 0) return;
+    int vmax = std::max(1, max_value);
+    int v = std::clamp(value, 0, vmax);
+    const SkinImage *bar = ap.art("progress.bar");
+    const SkinImage *fill = ap.art("progress.fill");
+    if (bar) {
+        cv.nine_slice(*bar, r);
+    } else {
+        cv.fill(r, ap.c("progress.bkgnd"));
+        cv.frame(r, ap.c("progress.frame"));
+        cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("progress.bkgnd_light"));
+        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_light"));
+        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("progress.bkgnd_dark"));
+        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("progress.bkgnd_dark"));
+    }
+    int inset_l = 2, inset_r = 2, inset_t = 2, inset_b = 2;
+    if (fill) {
+        if (fill->positions[0]) inset_l = fill->positions[0];
+        if (fill->positions[2]) inset_r = fill->positions[2];
+        if (fill->positions[1]) inset_t = fill->positions[1];
+        if (fill->positions[3]) inset_b = fill->positions[3];
+    }
+    int inner_w = r.w - inset_l - inset_r;
+    int fill_w = (inner_w * v) / vmax;
+    if (fill_w <= 0) return;
+    Rect fr{r.x + inset_l, r.y + inset_t, fill_w, r.h - inset_t - inset_b};
+    if (fr.h <= 0) return;
+    if (fill) {
+        cv.nine_slice(*fill, fr);
+    } else {
+        Color stops[10];
+        for (int i = 0; i < 10; ++i) {
+            char key[40];
+            std::snprintf(key, sizeof(key), "progress.transition.%d", i);
+            stops[i] = ap.c(key);
+        }
+        cv.rect_grad_v(fr, stops, 10);
+        cv.frame(fr, ap.c("progress.frame"));
+    }
+}
+
+inline void paint_separator_h(Canvas &cv, const Appearance &ap, Rect r) {
+    const SkinImage *img = ap.art("separator.h");
+    if (img) {
+        int h = std::min(img->h, r.h > 0 ? r.h : img->h);
+        if (h > 4) h = 4;
+        Rect dest{r.x, r.y + (r.h - h) / 2, r.w, h};
+        cv.nine_slice(*img, dest);
+        return;
+    }
+    int y = r.y + r.h / 2;
+    cv.hline(r.x, r.right(), y, ap.c("primary.dark"));
+    cv.hline(r.x, r.right(), y + 1, ap.c("primary.light"));
+}
+
+inline void paint_separator_v(Canvas &cv, const Appearance &ap, Rect r) {
+    const SkinImage *img = ap.art("separator.v");
+    if (img) {
+        int w = std::min(img->w, r.w > 0 ? r.w : img->w);
+        if (w > 4) w = 4;
+        Rect dest{r.x + (r.w - w) / 2, r.y, w, r.h};
+        cv.nine_slice(*img, dest);
+        return;
+    }
+    int x = r.x + r.w / 2;
+    cv.vline(x, r.y, r.bottom(), ap.c("primary.dark"));
+    cv.vline(x + 1, r.y, r.bottom(), ap.c("primary.light"));
+}
+
+// Grouping box — AppearanceEdit "Box". Optional title on the top edge.
+inline void paint_box(Canvas &cv, const Appearance &ap, Rect r, const char *title = nullptr) {
+    const SkinImage *img = ap.art("box");
+    if (img) {
+        cv.nine_slice(*img, r);
+    } else {
+        cv.frame(r, ap.c("primary.frame"));
+        cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("primary.dark"));
+    }
+    if (title && *title) {
+        int tw = cv.text_width(title);
+        int tx = r.x + 8;
+        cv.fill({tx - 2, r.y, tw + 4, kFontHeight}, ap.c("primary.background"));
+        cv.text(tx, r.y - kFontHeight / 2 + 1, title, ap.c("primary.label"));
+    }
+}
+
+// Placard / framed raised plate (top/bottom of full-bleed lists).
+inline void paint_framed_raised(Canvas &cv, const Appearance &ap, Rect r) {
+    const SkinImage *img = ap.art("framed_raised");
+    if (img) {
+        cv.nine_slice(*img, r);
+        return;
+    }
+    cv.fill(r, ap.c("button.face"));
+    rounded_frame(cv, r, ap.c("button.frame"), ap.c("primary.background"));
+    cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("button.light2"));
+    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("button.light2"));
+    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("button.dark2"));
+    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("button.dark2"));
+}
+
+enum class DisclosureKind { PlusSmall, MinusSmall, PlusMedium, MinusMedium };
+
+inline const char *disclosure_art_slot(DisclosureKind k) {
+    switch (k) {
+    case DisclosureKind::PlusSmall: return "disclosure.plus.small";
+    case DisclosureKind::MinusSmall: return "disclosure.minus.small";
+    case DisclosureKind::PlusMedium: return "disclosure.plus.medium";
+    case DisclosureKind::MinusMedium: return "disclosure.minus.medium";
+    }
+    return "disclosure.plus.small";
+}
+
+inline Rect paint_disclosure(Canvas &cv, const Appearance &ap, int x, int y,
+                             DisclosureKind kind, bool pressed = false) {
+    bool medium = kind == DisclosureKind::PlusMedium ||
+                  kind == DisclosureKind::MinusMedium;
+    int s = medium ? 16 : 12;
+    Rect b{x, y, s, s};
+    const SkinImage *img = ap.art(disclosure_art_slot(kind));
+    if (img) {
+        if (img->w == b.w && img->h == b.h)
+            cv.blit_image(*img, b.x, b.y);
+        else
+            cv.nine_slice(*img, b);
+        return b;
+    }
+    auto bc = [&](const char *suf) {
+        char buf[48];
+        std::snprintf(buf, sizeof(buf), "button.%s", suf);
+        return ap.c(buf);
+    };
+    cv.fill(b, pressed ? bc("dark1") : bc("face"));
+    rounded_frame(cv, b, bc("frame"), ap.c("primary.background"));
+    Color ink = bc("label");
+    bool plus = kind == DisclosureKind::PlusSmall || kind == DisclosureKind::PlusMedium;
+    int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    int arm = medium ? 4 : 3;
+    cv.hline(cx - arm, cx + arm + 1, cy, ink);
+    cv.hline(cx - arm, cx + arm + 1, cy - 1, ink);
+    if (plus) {
+        cv.vline(cx, cy - arm, cy + arm + 1, ink);
+        cv.vline(cx - 1, cy - arm, cy + arm + 1, ink);
+    }
+    return b;
+}
+
+// Focus box art around a field/list (3px thick, transparent centre). Colour
+// path already draws focus.box frames in paint_field; this overlays art.
+inline void paint_focus_box(Canvas &cv, const Appearance &ap, Rect r,
+                            bool hilited = false, bool disabled = false) {
+    const char *slot = disabled ? "focus_box.disabled"
+                                : (hilited ? "focus_box.hilited" : "focus_box.normal");
+    const SkinImage *img = ap.art(slot);
+    if (!img) img = ap.art("focus_box.normal");
+    if (img) {
+        cv.nine_slice(*img, r);
+        return;
+    }
+    Color ring = disabled ? ap.c("primary.disable_frame") : ap.c("focus.box");
+    cv.frame(r, ring);
+    cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ring);
+    cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ring);
+}
+
 struct KitPreviewLayout {
     Rect bounds{};
     Rect btn_ok{}, btn_cancel{}, btn_press{};
@@ -946,6 +1251,23 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
     paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
     y += kDefaultButtonH + 8;
+
+    // Tick (checkbox) + Mutex (radio) + disclosure
+    paint_tick(cv, ap, x, y, TickMark::Ticked, "Tick on");
+    paint_tick(cv, ap, x + 110, y, TickMark::Blank, "Tick off");
+    paint_tick(cv, ap, x + 220, y, TickMark::Tristate, "Tri", false, false);
+    paint_mutex(cv, ap, x + 300, y, TickMark::Ticked, "Mutex A");
+    paint_mutex(cv, ap, x + 400, y, TickMark::Blank, "Mutex B");
+    paint_disclosure(cv, ap, x + 510, y, DisclosureKind::PlusSmall);
+    paint_disclosure(cv, ap, x + 528, y, DisclosureKind::MinusSmall);
+    y += kTickBox + 10;
+
+    // Progress + separator
+    cv.text(x, y + 1, "Progress", ap.c("primary.label"));
+    paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
+    y += kProgressH + 8;
+    paint_separator_h(cv, ap, {x, y, std::min(w, 320), 4});
+    y += 10;
 
     // Field + dropdown — AppearanceEdit: usually 20px tall
     int field_w = std::min(w, 280);

@@ -128,6 +128,29 @@ face + 3 px on each side (`kDefaultButtonPad`).
 **SagradoKit names:** `popup.normal`, `popup.hilited`, `popup.disabled`,
 `popup.no_title.*`, `popup.symbol.*`.
 
+### Tick / Mutex (checkbox / radio)
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Tick Button Blank Normal/Hilited/Disabled | **57** / **58** / **59** | Height ≤ 18; title outside |
+| Tick Button Ticked Normal/Hilited/Disabled | **61** / **62** / **63** | |
+| Tick Button Tristated Normal/Hilited/Disabled | **65** / **66** / **67** | |
+| Mutex Button Blank Normal/Hilited/Disabled | **69** / **70** / **71** | Mutually exclusive group |
+| Mutex Button Ticked Normal/Hilited/Disabled | **73** / **74** / **75** | |
+| Mutex Button Tristated Normal/Hilited/Disabled | **77** / **78** / **79** | |
+
+**SagradoKit names:** `tick.blank.*`, `tick.ticked.*`, `tick.tristate.*`,
+`mutex.blank.*`, `mutex.ticked.*`, `mutex.tristate.*`.
+
+### Disclosure / separators / box / progress
+
+| AppearanceEdit name | Hap slot | SagradoKit |
+|---|---|---|
+| Small Plus / Minus | **81** / **85** | `disclosure.plus.small`, `disclosure.minus.small` |
+| Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
+| Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
+| Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
+
 ### Menu (open list)
 
 | AppearanceEdit name | Hap slot | Paint |

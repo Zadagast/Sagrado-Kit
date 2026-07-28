@@ -74,6 +74,7 @@ Art/icon maps are reserved in this slice (paths accepted, painting later).
 | `slider` | `bar`, `bar_frame`, `bar_hilite`, `bar_hilite_frame`, `indicator_light`, `indicator`, `indicator_dark`, `indicator_frame`, `indicator_hilite_*`, `disable_*` |
 | `scrollbar` | `frame`, `light`, `face`, `dark`, `label`, `hilite_light`, `hilite`, `hilite_dark`, `hilite_label`, `indicator_light`, `indicator`, `indicator_dark`, `track_light2`, `track_light1`, `track`, `track_dark1`, `track_dark2` |
 | `column_header` | `frame`, `light`, `face`, `dark`, `label`, `hilite_light`, `hilite`, `hilite_dark`, `hilite_label` |
+| `progress` | `bkgnd_light`, `bkgnd`, `bkgnd_dark`, `frame`, `label` + `transition` (10 colours) |
 | `workspace` | `background1` … `background4` |
 
 Title and header ink should prefer `primary.label` when window/header labels
@@ -88,7 +89,7 @@ that map for what Positions mean on each control.
 
 | Namespace | Keys (first wave + reserved) |
 |---|---|
-| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.normal`, `default_button.hilited`, `default_button.disabled`, `popup.normal`, `popup.hilited`, `popup.disabled`, `popup.symbol.normal`, `popup.symbol.hilited`, `popup.symbol.disabled`, `popup_frame.normal`, `popup_frame.focus`, `menu.background`, `menu.item.normal`, `menu.item.hilited`, `menu.item.disabled`, `menu.separator`, `slider.h.bar.normal`, `slider.h.indicator.normal`, `slider.h.indicator.hilited`, `scrollbar.v.double_arrows`, `scrollbar.v.indicator.normal`, `scrollbar.v.indicator.hilited`, `scrollbar.v.grips.normal`, `scrollbar.h.double_arrows`, `scrollbar.h.indicator.normal`, `scrollbar.h.grips.normal`, `column_header.normal`, `column_header.hilited`, `window.frame.normal`, `window.frame.focus`, `window.close.normal`, `window.close.focus`, `window.close.hilited`, `window.minimize.*`, `window.maximize.*`, `window.menu.*`, `window.resize.normal`, `window.resize.focus` |
+| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.normal`, `default_button.hilited`, `default_button.disabled`, `tick.blank.*`, `tick.ticked.*`, `tick.tristate.*`, `mutex.blank.*`, `mutex.ticked.*`, `mutex.tristate.*`, `disclosure.plus.small`, `disclosure.minus.small`, `disclosure.plus.medium`, `disclosure.minus.medium`, `popup.normal`, `popup.hilited`, `popup.disabled`, `popup.symbol.normal`, `popup.symbol.hilited`, `popup.symbol.disabled`, `popup_frame.normal`, `popup_frame.focus`, `menu.background`, `menu.item.normal`, `menu.item.hilited`, `menu.item.disabled`, `menu.separator`, `separator.h`, `separator.v`, `box`, `framed_raised`, `progress.bar`, `progress.fill`, `focus_box.normal`, `focus_box.hilited`, `focus_box.disabled`, `slider.h.bar.normal`, `slider.h.indicator.normal`, `slider.h.indicator.hilited`, `scrollbar.v.double_arrows`, `scrollbar.v.indicator.normal`, `scrollbar.v.indicator.hilited`, `scrollbar.v.grips.normal`, `scrollbar.h.double_arrows`, `scrollbar.h.indicator.normal`, `scrollbar.h.grips.normal`, `column_header.normal`, `column_header.hilited`, `window.frame.normal`, `window.frame.focus`, `window.close.normal`, `window.close.focus`, `window.close.hilited`, `window.minimize.*`, `window.maximize.*`, `window.menu.*`, `window.resize.normal`, `window.resize.focus` |
 | `icons` | `file.generic.16`, `file.generic.32`, `folder.16`, `folder.32`, `user.16`, `user.32` |
 
 Art painting is gated on the surface map (verified Hap index + caps/positions
@@ -113,11 +114,14 @@ Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 
 1. **Gel window** — framed window with title bar, close + hatch + min/max boxes, client fill
 2. **Button** — raised bevel push button (pressed / default variants)
-3. **Field** — sunken text field with focus ring and caret
-4. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
-5. **Slider** — bar + draggable indicator thumb
-6. **List + header** — column header plate + list rows with hilite
-7. **Scrollbar** — track, arrows, proportional thumb
+3. **Tick / Mutex** — checkbox and radio (`paint_tick` / `paint_mutex`, blank/ticked/tristate)
+4. **Field** — sunken text field with focus ring and caret
+5. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
+6. **Slider** — bar + draggable indicator thumb
+7. **Progress** — empty bar + fill (`paint_progress`)
+8. **List + header** — column header plate + list rows with hilite
+9. **Scrollbar** — track, arrows, proportional thumb
+10. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.
