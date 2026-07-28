@@ -256,15 +256,78 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
 
 // --- Controls ------------------------------------------------------------
 
-inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
-    cv.hline(r.x + 1, r.right() - 1, r.y, frame);
-    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 1, frame);
-    cv.vline(r.x, r.y + 1, r.bottom() - 1, frame);
-    cv.vline(r.right() - 1, r.y + 1, r.bottom() - 1, frame);
-    cv.put(r.x, r.y, pack(bg));
-    cv.put(r.right() - 1, r.y, pack(bg));
-    cv.put(r.x, r.bottom() - 1, pack(bg));
-    cv.put(r.right() - 1, r.bottom() - 1, pack(bg));
+// Soft round corners like KDX Settings buttons (not just 1 corner pixel).
+// `rad` 3 reads as a real curve on 20–26px controls.
+inline void punch_round_corner(Canvas &cv, int cx, int cy, int dx, int dy,
+                               int rad, Color bg) {
+    // Cut pixels outside a quarter-circle of radius `rad` at corner (cx,cy).
+    // dx/dy are +1 or -1 toward the interior.
+    for (int y = 0; y <= rad; ++y) {
+        for (int x = 0; x <= rad; ++x) {
+            // Outside the circle centred at (cx+dx*rad, cy+dy*rad)
+            int ox = rad - x;
+            int oy = rad - y;
+            if (ox * ox + oy * oy > rad * rad)
+                cv.put(cx + dx * x, cy + dy * y, pack(bg));
+        }
+    }
+}
+
+inline void round_punch(Canvas &cv, Rect r, Color bg, int rad) {
+    if (r.w < rad * 2 + 2 || r.h < rad * 2 + 2) rad = 1;
+    punch_round_corner(cv, r.x, r.y, +1, +1, rad, bg);
+    punch_round_corner(cv, r.right() - 1, r.y, -1, +1, rad, bg);
+    punch_round_corner(cv, r.x, r.bottom() - 1, +1, -1, rad, bg);
+    punch_round_corner(cv, r.right() - 1, r.bottom() - 1, -1, -1, rad, bg);
+}
+
+// Outline that follows the soft round (Haxial button silhouette).
+inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg, int rad = 3) {
+    if (r.w <= 0 || r.h <= 0) return;
+    if (r.w < rad * 2 + 2 || r.h < rad * 2 + 2) rad = 1;
+    // Straight edges
+    cv.hline(r.x + rad, r.right() - rad, r.y, frame);
+    cv.hline(r.x + rad, r.right() - rad, r.bottom() - 1, frame);
+    cv.vline(r.x, r.y + rad, r.bottom() - rad, frame);
+    cv.vline(r.right() - 1, r.y + rad, r.bottom() - rad, frame);
+    // Quarter-circle arcs (Bresenham-ish: plot rim pixels)
+    auto arc = [&](int cx, int cy, int sx, int sy) {
+        for (int y = 0; y <= rad; ++y) {
+            for (int x = 0; x <= rad; ++x) {
+                int d = x * x + y * y;
+                int outer = rad * rad;
+                int inner = (rad - 1) * (rad - 1);
+                if (d <= outer && d > inner)
+                    cv.put(cx + sx * x, cy + sy * y, pack(frame));
+            }
+        }
+    };
+    // Arc centres sit `rad` inward from each corner
+    arc(r.x + rad, r.y + rad, -1, -1);
+    arc(r.right() - 1 - rad, r.y + rad, +1, -1);
+    arc(r.x + rad, r.bottom() - 1 - rad, -1, +1);
+    arc(r.right() - 1 - rad, r.bottom() - 1 - rad, +1, +1);
+    round_punch(cv, r, bg, rad);
+}
+
+// Raised (button) or inset (popup trough) 2px bevel that follows round corners.
+inline void round_bevel(Canvas &cv, Rect r, Color l2, Color l1, Color d1, Color d2,
+                        bool inset, int rad = 3) {
+    if (inset) {
+        Color t;
+        t = l2; l2 = d2; d2 = t;
+        t = l1; l1 = d1; d1 = t;
+    }
+    // Outer bevel ring
+    cv.hline(r.x + rad, r.right() - rad, r.y + 1, l2);
+    cv.vline(r.x + 1, r.y + rad, r.bottom() - rad, l2);
+    cv.hline(r.x + rad, r.right() - rad, r.bottom() - 2, d2);
+    cv.vline(r.right() - 2, r.y + rad, r.bottom() - rad, d2);
+    // Inner bevel ring
+    cv.hline(r.x + rad + 1, r.right() - rad - 1, r.y + 2, l1);
+    cv.vline(r.x + 2, r.y + rad + 1, r.bottom() - rad - 1, l1);
+    cv.hline(r.x + rad + 1, r.right() - rad - 1, r.bottom() - 3, d1);
+    cv.vline(r.right() - 3, r.y + rad + 1, r.bottom() - rad - 1, d1);
 }
 
 // `r` is the outer hit/layout rect. Default buttons use a slightly taller
@@ -272,29 +335,25 @@ inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default) {
     Color workspace = ap.c("primary.background");
+    constexpr int kRad = 3;
     if (is_default) {
-        rounded_frame(cv, r, ap.c("default_button.frame"), workspace);
-        cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("default_button.light"));
-        cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ap.c("default_button.face"));
+        rounded_frame(cv, r, ap.c("default_button.frame"), workspace, kRad);
+        rounded_frame(cv, {r.x + 1, r.y + 1, r.w - 2, r.h - 2},
+                      ap.c("default_button.light"), workspace, kRad);
+        rounded_frame(cv, {r.x + 2, r.y + 2, r.w - 4, r.h - 4},
+                      ap.c("default_button.face"), workspace, kRad > 1 ? kRad - 1 : 1);
         r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
              r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
     }
     Color face = ap.c("button.face");
-    Color l2 = pressed ? ap.c("button.dark2") : ap.c("button.light2");
-    Color l1 = pressed ? ap.c("button.dark1") : ap.c("button.light1");
-    Color d1 = pressed ? ap.c("button.light1") : ap.c("button.dark1");
-    Color d2 = pressed ? ap.c("button.light2") : ap.c("button.dark2");
+    Color l2 = ap.c("button.light2");
+    Color l1 = ap.c("button.light1");
+    Color d1 = ap.c("button.dark1");
+    Color d2 = ap.c("button.dark2");
     cv.fill(r, face);
-    rounded_frame(cv, r, ap.c("button.frame"), workspace);
-    cv.hline(r.x + 1, r.right() - 1, r.y + 1, l2);
-    cv.hline(r.x + 2, r.right() - 2, r.y + 2, l1);
-    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, l2);
-    cv.vline(r.x + 2, r.y + 2, r.bottom() - 2, l1);
-    cv.hline(r.x + 2, r.right() - 2, r.bottom() - 3, d1);
-    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
-    cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
-    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
-    // Haxial TextEdit placement: advance-box centre (matches measured Find).
+    round_punch(cv, r, workspace, kRad);
+    rounded_frame(cv, r, ap.c("button.frame"), workspace, kRad);
+    round_bevel(cv, r, l2, l1, d1, d2, /*inset=*/pressed, kRad);
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
     cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
@@ -565,67 +624,50 @@ inline int menu_hit_row(const MenuLayout &lay, int mx, int my) {
     return row;
 }
 
-// Haxial Popup Button — a real push-button plate with a recessed arrow well.
-// NOT a text field. AppearanceEdit: usually ~20px; KDX Settings matches sibling
-// dialog buttons. Colour path uses Button / Button Hilite groups + Symbol.
+// Haxial Popup Button — one recessed trough, bevelled all the way through.
+// Arrow lives in the same sunken face behind a divider (not an inverted well).
+// Matches KDX Settings "General Settings" / "Sound List".
 inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
                            const char *label, bool open, bool pressed,
                            bool disabled = false) {
     Color workspace = ap.c("primary.background");
-    const char *grp = disabled ? "button_disable"
-                     : (pressed || open) ? "button_hilite" : "button";
+    constexpr int kRad = 3;
+    const char *grp = disabled ? "button_disable" : "button";
     auto bc = [&](const char *suffix) {
         char buf[48];
         std::snprintf(buf, sizeof(buf), "%s.%s", grp, suffix);
         return ap.c(buf);
     };
 
-    Color face = bc("face");
+    // Trough face is darker than the workspace so the inset reads clearly
+    // (KDX Settings sunken plate — not the same grey as a raised button).
+    Color face = disabled ? bc("face")
+                : (pressed || open) ? bc("dark2") : bc("dark1");
     Color l2 = bc("light2");
     Color l1 = bc("light1");
     Color d1 = bc("dark1");
     Color d2 = bc("dark2");
-    Color fr = bc("frame");
     Color ink = bc("label");
 
-    // Whole control = button chrome (rounded frame + 2px bevel)
     cv.fill(r, face);
-    rounded_frame(cv, r, fr, workspace);
-    if (!pressed && !open) {
-        cv.hline(r.x + 1, r.right() - 1, r.y + 1, l2);
-        cv.hline(r.x + 2, r.right() - 2, r.y + 2, l1);
-        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, l2);
-        cv.vline(r.x + 2, r.y + 2, r.bottom() - 2, l1);
-        cv.hline(r.x + 2, r.right() - 2, r.bottom() - 3, d1);
-        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
-        cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
-        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
-    } else {
-        // Depressed / open — invert bevel
-        cv.hline(r.x + 1, r.right() - 1, r.y + 1, d2);
-        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, d2);
-        cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, l2);
-        cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, l2);
-    }
+    round_punch(cv, r, workspace, kRad);
+    rounded_frame(cv, r, bc("frame"), workspace, kRad);
+    // Whole control is INSET (sunken trough) — same bevel on text + arrow.
+    round_bevel(cv, r, l2, l1, d1, d2, /*inset=*/true, kRad);
 
-    // Recessed arrow well on the right (KDX Settings)
     int aw = std::min(kDropArrowW, r.w / 3);
     if (aw < 14) aw = std::min(14, r.w);
-    Rect well{r.right() - aw - 1, r.y + 2, aw - 1, r.h - 4};
-    if (well.w > 4 && well.h > 4) {
-        cv.fill(well, d1);
-        // Inset bevel: dark top-left, light bottom-right
-        cv.hline(well.x, well.right(), well.y, d2);
-        cv.vline(well.x, well.y, well.bottom(), d2);
-        cv.hline(well.x, well.right(), well.bottom() - 1, l2);
-        cv.vline(well.right() - 1, well.y, well.bottom(), l2);
-        paint_arrow(cv, well, false, ink);
-    }
+    int div_x = r.right() - aw;
+    // Divider shares the trough — no second bevel, just a seam
+    cv.vline(div_x, r.y + 3, r.bottom() - 3, d2);
+    cv.vline(div_x + 1, r.y + 3, r.bottom() - 3, l2);
 
-    // Title left of the well
+    Rect well{div_x + 2, r.y, r.right() - (div_x + 2), r.h};
+    paint_arrow(cv, well, false, ink);
+
     int tx = r.x + 8;
     int ty = r.y + (r.h - kFontHeight) / 2 + ((pressed || open) ? 1 : 0);
-    int max_w = well.x - tx - 4;
+    int max_w = div_x - tx - 4;
     if (max_w < 8) max_w = 8;
     if (cv.text_width(label) <= max_w)
         cv.text(tx, ty, label, ink);
