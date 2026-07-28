@@ -31,6 +31,22 @@ int main(int argc, char **argv) {
         if (ap.icon("file.generic.16"))
             std::printf("file.generic.16 icon %dx%d\n", ap.icon("file.generic.16")->w,
                         ap.icon("file.generic.16")->h);
+        if (ap.icon("folder.16"))
+            std::printf("folder.16 icon %dx%d\n", ap.icon("folder.16")->w,
+                        ap.icon("folder.16")->h);
+        if (ap.icon("user.16"))
+            std::printf("user.16 icon %dx%d\n", ap.icon("user.16")->w,
+                        ap.icon("user.16")->h);
+        if (ap.art("hap.image.271"))
+            std::printf("hap.image.271 preserved %dx%d\n", ap.art("hap.image.271")->w,
+                        ap.art("hap.image.271")->h);
+        if (ap.art("menu.item.hilited"))
+            std::printf("menu.item.hilited art %dx%d\n", ap.art("menu.item.hilited")->w,
+                        ap.art("menu.item.hilited")->h);
+        if (ap.art("slider.h.bar.disabled"))
+            std::printf("slider.h.bar.disabled art %dx%d\n",
+                        ap.art("slider.h.bar.disabled")->w,
+                        ap.art("slider.h.bar.disabled")->h);
     }
 
     Color bg = ap.c("primary.background");

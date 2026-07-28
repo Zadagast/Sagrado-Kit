@@ -40,6 +40,11 @@ file = "menu_item_normal.skimg"
 caps = [19, 9, 18, 8]
 positions = [0, 0, 0, 0]
 
+[art."menu.item.hilited"]
+file = "menu_item_hilited.skimg"
+caps = [19, 9, 18, 8]
+positions = [0, 0, 0, 0]
+
 [art."menu.separator"]
 file = "menu_separator.skimg"
 caps = [9, 0, 10, 0]
@@ -100,3 +105,5 @@ positions = [0, 0, 0, 0]
 "file.generic.32" = "file_generic_32.skimg"
 "folder.16" = "folder_16.skimg"
 "folder.32" = "folder_32.skimg"
+"user.16" = "user_16.skimg"
+"user.32" = "user_32.skimg"

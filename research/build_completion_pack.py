@@ -39,10 +39,13 @@ ART_SLOTS = {
 }
 
 ICON_SLOTS = {
-    4: "file.generic.16",
-    5: "file.generic.32",
-    8: "folder.16",
-    9: "folder.32",
+    # Correct Hap catalog indices (Stop was formerly mislabeled file.generic).
+    68: "file.generic.16",
+    69: "file.generic.32",
+    160: "folder.16",
+    161: "folder.32",
+    360: "user.16",
+    361: "user.32",
 }
 
 
@@ -54,6 +57,8 @@ def main():
     donors = [
         ROOT / "research" / "haps" / "Boilerplate.hap",
         ROOT / "research" / "haps" / "Ashen.hap",
+        ROOT / "research" / "haps" / "X.hap",
+        ROOT / "research" / "haps" / "Blue Print.hap",
         ROOT / "research" / "haps" / "Function 2.0.hap",
         ROOT / "research" / "haps" / "BeOS.hap",
         ROOT / "research" / "haps" / "Mjolnir.hap",
@@ -74,6 +79,9 @@ def main():
             if key.startswith("popup_frame") and img["w"] * img["h"] < 25:
                 print(f"  skip [{slot}] {key} tiny {img['w']}x{img['h']} from {dpath.name}")
                 continue
+            if key == "menu.item.hilited" and img["w"] * img["h"] < 25:
+                print(f"  skip [{slot}] {key} tiny {img['w']}x{img['h']} from {dpath.name}")
+                continue
             images[slot] = img
             print(f"  art [{slot}] {key} from {dpath.name} {img['w']}x{img['h']}")
         for slot, key in ICON_SLOTS.items():
@@ -81,6 +89,12 @@ def main():
                 continue
             icons[slot] = icos[slot]
             print(f"  icon [{slot}] {key} from {dpath.name}")
+
+    # No theme authors a real menu.item.hilited plate — clone Normal so soft-complete
+    # can fill the hilited key (paint already falls back, but the pack should ship it).
+    if 207 not in images and 206 in images:
+        images[207] = dict(images[206])
+        print("  art [207] menu.item.hilited cloned from menu.item.normal")
 
     # If normal focus box missing, clone hilited.
     if 101 not in images and 102 in images:

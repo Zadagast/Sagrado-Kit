@@ -321,20 +321,22 @@ this many pixels from the end”).
 ## Icons catalog (AppearanceEdit)
 
 Icons are a separate Hap table (16×16 and 32×32). Programs pick a size.
-Transparent Color + 256-colour rules apply. SagradoKit currently imports only
-`file.generic.16/32` and `folder.16/32` (Hap icon slots 4/5, 8/9).
+Transparent Color + 256-colour rules apply.
 
-Exe name table (summary — each name has 16 and 32 variants in the panel):
+SagradoKit imports the full AppearanceEdit catalog. Each icon type uses Hap
+slots `id*4` (16×16) and `id*4+1` (32×32). Type IDs were verified against
+complete themes (X.hap / Ashen) and AppearanceEdit panel order:
 
-Stop, Note, Caution, Question, Program, Plugin, Shared Library, Unattached Alias,
-Document (+ Text / Image / Audio / Video / Font / Archive / Partial),
-Folder (+ Uploads / DropBox / Programs / Programming / Games / Internet /
-Pictures / Sounds), RAM Disk, Hard Disk, Network Disk, Compact Disk,
-Removable Media, Settings, Tools, Exit, About, Information, Address Book,
-Launch, Create Folder, Connect, Disconnect, Data Transfer, News, Chat,
-Message, Users, Haxial, Server, Files, Document Saved, Document Unsaved.
+| Catalog name | Type id | Slots |
+|---|---|---|
+| Stop / Note / Caution / Question | 1–4 | 4/5 … 16/17 |
+| Program / Plugin / Shared Library / Unattached Alias | 10–12, 16 | 40…65 |
+| Document (+ variants) | 17–24 | 68…97 |
+| Folder (+ variants) | 40, 43–44, 48–53 | 160…213 |
+| Disks / Settings… / Users… / Files / Document Saved | 60–95 | 240…381 |
 
-Full Icons catalog import beyond file/folder is out of scope until a later wave.
+Aliases: `file.generic` = Document (68/69), `user` = Users (360/361).
+Unknown image slots (e.g. **271**) are kept as `hap.image.N` on Hap→Sap.
 
 ---
 
@@ -379,8 +381,8 @@ Before painting art for a control in `engine/`:
 |---|---|
 | Menu Bar Hap indices | Empty across probed themes — colour/`menu_bar.*` keys only |
 | `menu.item.disabled` Hap index | Paint key ready; no probed occupancy (TBD) |
-| Full Icons catalog | Names recorded above; import beyond file/folder deferred |
-| Editor Images / Icons / Information / Groups UI | Later wave (not Hap import) |
+| Full Icons catalog | Imported (type-id map + aliases); Icons panel in editor |
+| Editor Images / Icons / Information / Groups UI | Panels + Import Colors + Colors Preview |
 
 ---
 

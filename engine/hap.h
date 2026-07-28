@@ -155,6 +155,9 @@ struct ThemeImage {
 
 struct Theme {
     std::string name;
+    std::string version;
+    std::string creator;
+    std::string description;
     bool has_colors = false;
     uint32_t colors[kColorTableLen] = {}; // 0x00RRGGBB
     std::map<int, ThemeImage> images;
@@ -263,12 +266,20 @@ inline bool load_hap(const std::string &path, Theme &theme) {
     size_t img_off = rd32(d, 0x34), img_len = rd32(d, 0x38);
     size_t col_off = rd32(d, 0x3c), col_len = rd32(d, 0x40);
 
-    // Metadata: 4 string lengths at +0x22, strings at +0x34.
+    // Metadata: 4 string lengths at +0x22 (name, version, creator, description),
+    // strings concatenated at +0x34.
     if (info_len >= 0x34 && info_off + 0x34 <= d.size()) {
         size_t s = info_off + 0x34;
-        size_t l = d[info_off + 0x22];
-        if (s + l <= d.size() && l > 0)
-            theme.name.assign(reinterpret_cast<const char *>(&d[s]), l);
+        const uint8_t *lens = &d[info_off + 0x22];
+        std::string *fields[4] = {&theme.name, &theme.version, &theme.creator,
+                                  &theme.description};
+        for (int i = 0; i < 4; ++i) {
+            size_t l = lens[i];
+            if (s + l > d.size()) break;
+            if (l > 0)
+                fields[i]->assign(reinterpret_cast<const char *>(&d[s]), l);
+            s += l;
+        }
     }
 
     size_t n = col_len / 4;

@@ -304,13 +304,118 @@ static const HapColorMap kHapColorMap[] = {
 };
 static constexpr int kHapColorMapN = 143;
 
+// Icons catalog — AppearanceEdit panel order mapped onto Hap type IDs.
+// Each type uses slots id*4 (16×16) and id*4+1 (32×32). Type IDs match the
+// occupied pairs in complete themes (X.hap / Ashen); verified visually
+// (Stop@4, Document@68, Folder@160, Users@360, Compact Disk@252, Connect@336).
+// `file.generic` aliases `document`; `user` aliases `users`.
 static const HapArtMap kHapIconMap[] = {
-    {4, "file.generic.16"},
-    {5, "file.generic.32"},
-    {8, "folder.16"},
-    {9, "folder.32"},
+    {4, "stop.16"},
+    {5, "stop.32"},
+    {8, "note.16"},
+    {9, "note.32"},
+    {12, "caution.16"},
+    {13, "caution.32"},
+    {16, "question.16"},
+    {17, "question.32"},
+    {40, "program.16"},
+    {41, "program.32"},
+    {44, "plugin.16"},
+    {45, "plugin.32"},
+    {48, "shared_library.16"},
+    {49, "shared_library.32"},
+    {64, "unattached_alias.16"},
+    {65, "unattached_alias.32"},
+    {68, "document.16"},
+    {69, "document.32"},
+    {68, "file.generic.16"}, // alias — Kit Preview / contract name
+    {69, "file.generic.32"},
+    {72, "document.text.16"},
+    {73, "document.text.32"},
+    {76, "document.image.16"},
+    {77, "document.image.32"},
+    {80, "document.audio.16"},
+    {81, "document.audio.32"},
+    {84, "document.video.16"},
+    {85, "document.video.32"},
+    {88, "document.font.16"},
+    {89, "document.font.32"},
+    {92, "document.archive.16"},
+    {93, "document.archive.32"},
+    {96, "document.partial.16"},
+    {97, "document.partial.32"},
+    {160, "folder.16"},
+    {161, "folder.32"},
+    {172, "folder.uploads.16"},
+    {173, "folder.uploads.32"},
+    {176, "folder.dropbox.16"},
+    {177, "folder.dropbox.32"},
+    {192, "folder.programs.16"},
+    {193, "folder.programs.32"},
+    {196, "folder.programming.16"},
+    {197, "folder.programming.32"},
+    {200, "folder.games.16"},
+    {201, "folder.games.32"},
+    {204, "folder.internet.16"},
+    {205, "folder.internet.32"},
+    {208, "folder.pictures.16"},
+    {209, "folder.pictures.32"},
+    {212, "folder.sounds.16"},
+    {213, "folder.sounds.32"},
+    {240, "ram_disk.16"},
+    {241, "ram_disk.32"},
+    {244, "hard_disk.16"},
+    {245, "hard_disk.32"},
+    {248, "network_disk.16"},
+    {249, "network_disk.32"},
+    {252, "compact_disk.16"},
+    {253, "compact_disk.32"},
+    {256, "dvd.16"},
+    {257, "dvd.32"},
+    {260, "removable_media.16"},
+    {261, "removable_media.32"},
+    {288, "settings.16"},
+    {289, "settings.32"},
+    {292, "tools.16"},
+    {293, "tools.32"},
+    {296, "exit.16"},
+    {297, "exit.32"},
+    {300, "about.16"},
+    {301, "about.32"},
+    {308, "information.16"},
+    {309, "information.32"},
+    {312, "address_book.16"},
+    {313, "address_book.32"},
+    {324, "launch.16"},
+    {325, "launch.32"},
+    {328, "create_folder.16"},
+    {329, "create_folder.32"},
+    {336, "connect.16"},
+    {337, "connect.32"},
+    {340, "disconnect.16"},
+    {341, "disconnect.32"},
+    {344, "data_transfer.16"},
+    {345, "data_transfer.32"},
+    {348, "news.16"},
+    {349, "news.32"},
+    {352, "chat.16"},
+    {353, "chat.32"},
+    {356, "message.16"},
+    {357, "message.32"},
+    {360, "users.16"},
+    {361, "users.32"},
+    {360, "user.16"}, // alias — contract / Kit Preview
+    {361, "user.32"},
+    {368, "haxial.16"},
+    {369, "haxial.32"},
+    {372, "server.16"},
+    {373, "server.32"},
+    {376, "files.16"},
+    {377, "files.32"},
+    {380, "document.saved.16"},
+    {381, "document.saved.32"},
 };
-static constexpr int kHapIconMapN = 4;
+static constexpr int kHapIconMapN = sizeof(kHapIconMap) / sizeof(kHapIconMap[0]);
 
 inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     SkinImage s;
@@ -424,8 +529,12 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme,
                             const std::string &soft_complete_path = {}) {
     Skin skin = stock_skin();
     skin.meta.name = theme.name.empty() ? "Hap Theme" : theme.name;
-    skin.meta.creator = "imported from .hap";
-    skin.meta.description = "Live Hap import (Sagrado-style)";
+    skin.meta.version = theme.version.empty() ? "1.0" : theme.version;
+    skin.meta.creator =
+        theme.creator.empty() ? "imported from .hap" : theme.creator;
+    skin.meta.description = theme.description.empty()
+                                ? "Live Hap import (Sagrado-style)"
+                                : theme.description;
 
     if (theme.has_colors) {
         for (int i = 0; i < kHapColorMapN; ++i) {
@@ -453,10 +562,24 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme,
     ap.art_cache.clear();
     ap.icon_cache.clear();
 
+    // Named art map first.
+    bool mapped_art[512] = {};
     for (int i = 0; i < kHapArtMapN; ++i) {
-        const ThemeImage *img = theme.image(kHapArtMap[i].slot);
+        int slot = kHapArtMap[i].slot;
+        if (slot >= 0 && slot < 512) mapped_art[slot] = true;
+        const ThemeImage *img = theme.image(slot);
         if (!img || img->w <= 0) continue;
         ap.art_cache[kHapArtMap[i].key] = theme_image_to_skin(*img);
+    }
+    // Preserve unknown occupied image slots by index (e.g. 271) so Hap→Sap
+    // round-trip does not discard chrome that is not yet named.
+    for (const auto &kv : theme.images) {
+        int slot = kv.first;
+        if (slot < 0 || (slot < 512 && mapped_art[slot])) continue;
+        if (kv.second.w <= 0) continue;
+        char key[40];
+        std::snprintf(key, sizeof(key), "hap.image.%d", slot);
+        ap.art_cache[key] = theme_image_to_skin(kv.second);
     }
     for (int i = 0; i < kHapIconMapN; ++i) {
         const ThemeImage *img = theme.icon(kHapIconMap[i].slot);

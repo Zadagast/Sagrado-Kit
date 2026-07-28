@@ -16,10 +16,21 @@
 
 namespace {
 
-constexpr int kWinW = 960;
-constexpr int kWinH = 640;
+constexpr int kWinW = 1040;
+constexpr int kWinH = 700;
 constexpr int kRoleRowH = 20;
 constexpr int kSwatchW = 28;
+constexpr int kPanelTabH = 22;
+constexpr int kPanelTabW = 88;
+
+enum Panel : int {
+    PanelColors = 0,
+    PanelInfo,
+    PanelImages,
+    PanelIcons,
+    PanelGroups,
+    PanelCount,
+};
 
 enum Drag : int {
     DragNone = 0,
@@ -31,6 +42,8 @@ enum Drag : int {
     DragBtnLoad,
     DragBtnSave,
     DragBtnStock,
+    DragBtnImportColors,
+    DragBtnColorsOnly,
     DragPreviewBtn,
     DragCloseBox,
     DragMaxBox,
@@ -41,6 +54,8 @@ enum Drag : int {
     DragThumbPreviewH,
     DragSliderKit,
     DragDropdown,
+    DragPanelTab,
+    DragGroupBase,
 };
 
 struct App {
@@ -51,11 +66,14 @@ struct App {
     bool focused = true;
     bool caret_on = true;
 
+    int panel = PanelColors;
     int scroll = 0;
     int selected = 0;
     int list_sel = 1;
     int preview_scroll = 0;
     KitPreviewState preview_st{};
+    int asset_sel = 0; // images / icons list selection
+    Color group_base{180, 180, 180};
 
     int drag = DragNone;
     int drag_btn = 0;       // active preview button id (1..3) while over it
@@ -73,15 +91,25 @@ struct App {
     Rect role_sbar{};
     Rect preview{};
     Rect btn_load{}, btn_save{}, btn_stock{};
+    Rect btn_import_colors{}, btn_colors_only{};
+    Rect panel_tabs[PanelCount]{};
     Rect slider_r{}, slider_g{}, slider_b{};
     Rect hex_field{};
+    Rect group_swatch{};
+    Rect info_fields[4]{};
 
     int roles_page() const {
         int body_h = role_list.h - kHeaderH;
         return std::max(1, body_h / kRoleRowH);
     }
     int roles_max_scroll() const {
-        return std::max(0, (int)all_color_roles().size() - roles_page());
+        if (panel == PanelColors)
+            return std::max(0, (int)all_color_roles().size() - roles_page());
+        if (panel == PanelImages)
+            return std::max(0, (int)ap.art_cache.size() - roles_page());
+        if (panel == PanelIcons)
+            return std::max(0, (int)ap.icon_cache.size() - roles_page());
+        return 0;
     }
     int preview_max_scroll() const {
         return std::max(0, preview_lay.row_count - preview_lay.page_rows);
@@ -224,6 +252,41 @@ void do_stock() {
     set_status("Reset to stock");
 }
 
+// Import Colors — copy colour table from another Hap/Sap (AppearanceEdit Window Menu).
+void do_import_colors() {
+    std::string path;
+    if (!dialog_open_path(path)) return;
+    Appearance donor;
+    if (!donor.load(path)) {
+        set_status("Import Colors failed: " + path);
+        return;
+    }
+    int n = 0;
+    for (const auto &kv : donor.skin.colors) {
+        g.ap.skin.colors[kv.first] = kv.second;
+        ++n;
+    }
+    set_status("Imported " + std::to_string(n) + " colours from " + path);
+}
+
+// ♦ Primary Group — derive Light / Background / Dark / Frame from a base.
+void apply_primary_group(Color base) {
+    g.group_base = base;
+    auto clamp8 = [](int v) -> uint8_t {
+        return uint8_t(std::clamp(v, 0, 255));
+    };
+    Color light{clamp8(int(base.r) + 40), clamp8(int(base.g) + 40),
+                clamp8(int(base.b) + 40)};
+    Color dark{clamp8(int(base.r) - 40), clamp8(int(base.g) - 40),
+               clamp8(int(base.b) - 40)};
+    Color frame{clamp8(int(base.r) - 70), clamp8(int(base.g) - 70),
+                clamp8(int(base.b) - 70)};
+    g.ap.set_color("primary.light", light);
+    g.ap.set_color("primary.background", base);
+    g.ap.set_color("primary.dark", dark);
+    g.ap.set_color("primary.frame", frame);
+}
+
 void paint_slider(Canvas &cv, Rect r, const char *label, int value, Color fill) {
     cv.text(r.x, r.y + 2, label, g.ap.c("primary.label"));
     Rect track{r.x + 16, r.y + 4, r.w - 56, r.h - 8};
@@ -259,12 +322,26 @@ void layout() {
     g.btn_load = {client.x + 12, by, kToolBtnW, kButtonH};
     g.btn_save = default_button_rect(g.btn_load.right() + kToolGap, by, kToolBtnW);
     g.btn_stock = {g.btn_save.right() + kToolGap, by, kToolBtnW, kButtonH};
+    g.btn_import_colors = {g.btn_stock.right() + kToolGap, by, 110, kButtonH};
+    g.btn_colors_only = {g.btn_import_colors.right() + kToolGap, by, 100, kButtonH};
 
-    int split = client.x + 420;
+    int split = client.x + 440;
     int content_top = by + kDefaultButtonH + 10;
     int content_h = client.bottom() - content_top - 8;
 
-    g.role_list = {client.x + 10, content_top, 400, content_h - 90};
+    // Panel tabs above the left list.
+    static const char *tab_labels[] = {"Colors", "Info", "Images", "Icons", "Groups"};
+    (void)tab_labels;
+    int tx = client.x + 10;
+    for (int i = 0; i < PanelCount; ++i) {
+        g.panel_tabs[i] = {tx, content_top, kPanelTabW, kPanelTabH};
+        tx += kPanelTabW + 4;
+    }
+
+    int list_top = content_top + kPanelTabH + 6;
+    int list_h = content_h - kPanelTabH - 6 - 90;
+    if (g.panel == PanelInfo || g.panel == PanelGroups) list_h = content_h - kPanelTabH - 6;
+    g.role_list = {client.x + 10, list_top, 420, std::max(80, list_h)};
     int body_y = g.role_list.y + kHeaderH;
     int body_h = g.role_list.h - kHeaderH;
     g.role_sbar = {g.role_list.right() - kScrollbarW, body_y, kScrollbarW, body_h};
@@ -274,10 +351,13 @@ void layout() {
     g.slider_g = {client.x + 10, ey + 24, 360, 20};
     g.slider_b = {client.x + 10, ey + 48, 360, 20};
     g.hex_field = {client.x + 330, ey + 18, 72, kFieldH};
+    g.group_swatch = {client.x + 24, list_top + 40, 64, 64};
+
+    // Information meta field rows
+    for (int i = 0; i < 4; ++i)
+        g.info_fields[i] = {client.x + 120, list_top + 28 + i * 28, 280, kFieldH};
 
     g.preview = {split + 10, content_top, client.right() - split - 20, content_h};
-    // Approximate preview layout metrics for hit-testing before paint.
-    // paint() overwrites preview_lay with exact rects.
     g.preview_lay.bounds = g.preview;
     g.preview_lay.page_rows = std::max(1, (g.preview.h - (kFindDlgH + 200)) / kRowH);
     g.preview_lay.row_count = 8;
@@ -299,51 +379,208 @@ void paint() {
     bool load_p = g.drag == DragBtnLoad && g.btn_load.contains(pt.x, pt.y);
     bool save_p = g.drag == DragBtnSave && g.btn_save.contains(pt.x, pt.y);
     bool stock_p = g.drag == DragBtnStock && g.btn_stock.contains(pt.x, pt.y);
+    bool import_p =
+        g.drag == DragBtnImportColors && g.btn_import_colors.contains(pt.x, pt.y);
+    bool only_p =
+        g.drag == DragBtnColorsOnly && g.btn_colors_only.contains(pt.x, pt.y);
     paint_button(cv, ap, g.btn_load, "Load", load_p, false);
     paint_button(cv, ap, g.btn_save, "Save", save_p, true);
     paint_button(cv, ap, g.btn_stock, "Stock", stock_p, false);
+    paint_button(cv, ap, g.btn_import_colors, "Import Colors", import_p, false);
+    paint_button(cv, ap, g.btn_colors_only,
+                 g.preview_st.colours_only ? "Full Preview" : "Colors Preview",
+                 only_p || g.preview_st.colours_only, false);
 
-    cv.text(g.btn_stock.right() + 16,
+    cv.text(g.btn_colors_only.right() + 12,
             g.btn_load.y + (g.btn_load.h - kFontHeight) / 2, g.status.c_str(),
             ap.c("primary.disable_label"));
 
-    // Role list
+    // Panel tabs
+    static const char *tab_labels[] = {"Colors", "Info", "Images", "Icons", "Groups"};
+    for (int i = 0; i < PanelCount; ++i) {
+        bool on = g.panel == i;
+        Rect t = g.panel_tabs[i];
+        if (on)
+            cv.fill(t, ap.c("list.hilite_background"));
+        else
+            paint_button_face(cv, ap, t, false, false);
+        cv.frame(t, ap.c("primary.frame"));
+        Color ink = on ? ap.c("list.hilite_foreground") : ap.c("primary.label");
+        int tw = cv.text_width(tab_labels[i]);
+        cv.text(t.x + (t.w - tw) / 2, t.y + (t.h - kFontHeight) / 2, tab_labels[i],
+                ink);
+    }
+
+    // Left panel body
     cv.fill(g.role_list, ap.c("list.background"));
     cv.frame(g.role_list, ap.c("primary.frame"));
-    paint_column_header(cv, ap,
-                        {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
-                        "Colour Roles", true);
 
-    const auto &roles = all_color_roles();
-    int body_y = g.role_list.y + kHeaderH;
-    int page = g.roles_page();
-    int max_scroll = g.roles_max_scroll();
-    for (int i = 0; i < page; ++i) {
-        int idx = g.scroll + i;
-        if (idx >= (int)roles.size()) break;
-        Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
-                 g.role_list.w - 2 - kScrollbarW, kRoleRowH};
-        bool sel = idx == g.selected;
-        if (sel) cv.fill(row, ap.c("list.hilite_background"));
-        Color col = ap.c(roles[size_t(idx)].path);
-        Rect sw{row.x + 4, row.y + 3, kSwatchW, kRoleRowH - 6};
-        cv.fill(sw, col);
-        cv.frame(sw, ap.c("primary.frame"));
-        Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
-        cv.text(sw.right() + 8, row.y + (kRoleRowH - kFontHeight) / 2,
-                roles[size_t(idx)].label, ink);
+    if (g.panel == PanelColors) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Colour Roles", true);
+        const auto &roles = all_color_roles();
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        int max_scroll = g.roles_max_scroll();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= (int)roles.size()) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.selected;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            Color col = ap.c(roles[size_t(idx)].path);
+            Rect sw{row.x + 4, row.y + 3, kSwatchW, kRoleRowH - 6};
+            cv.fill(sw, col);
+            cv.frame(sw, ap.c("primary.frame"));
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            cv.text(sw.right() + 8, row.y + (kRoleRowH - kFontHeight) / 2,
+                    roles[size_t(idx)].label, ink);
+        }
+        bool roles_thumb_hot = g.drag == DragThumbRoles;
+        ScrollArrowHot roles_arrow =
+            g.drag == DragScrollArrowRoles ? g.arrow_hot : ScrollArrowHot::None;
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page,
+                        roles_thumb_hot, false, false, roles_arrow);
+
+        Color cur = selected_color();
+        paint_slider(cv, g.slider_r, "R", cur.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", cur.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", cur.b, rgb(40, 80, 200));
+        paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
+    } else if (g.panel == PanelInfo) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Information", true);
+        static const char *labs[] = {"Name:", "Version:", "Creator:", "Description:"};
+        std::string vals[] = {ap.skin.meta.name, ap.skin.meta.version,
+                              ap.skin.meta.creator, ap.skin.meta.description};
+        for (int i = 0; i < 4; ++i) {
+            cv.text(g.role_list.x + 12, g.info_fields[i].y + 4, labs[i],
+                    ap.c("primary.label"));
+            paint_field(cv, ap, g.info_fields[i], vals[i].c_str(), i == 0, g.caret_on);
+        }
+        cv.text(g.role_list.x + 12, g.info_fields[3].bottom() + 16,
+                "Edit fields via Save As meta; Load Hap fills these.",
+                ap.c("primary.disable_label"));
+    } else if (g.panel == PanelImages) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Images", true);
+        std::vector<std::string> keys;
+        keys.reserve(ap.art_cache.size());
+        for (const auto &kv : ap.art_cache)
+            if (!kv.second.empty()) keys.push_back(kv.first);
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        int max_scroll = g.roles_max_scroll();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= (int)keys.size()) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.asset_sel;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            const SkinImage *img = ap.art(keys[size_t(idx)].c_str());
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            char detail[96];
+            if (img) {
+                std::snprintf(detail, sizeof(detail), "%s  %dx%d  caps[%d,%d,%d,%d]",
+                              keys[size_t(idx)].c_str(), img->w, img->h, img->caps[0],
+                              img->caps[1], img->caps[2], img->caps[3]);
+            } else {
+                std::snprintf(detail, sizeof(detail), "%s", keys[size_t(idx)].c_str());
+            }
+            cv.text(row.x + 6, row.y + (kRoleRowH - kFontHeight) / 2, detail, ink);
+            if (img && img->has_text_color) {
+                Rect sw{row.right() - 22, row.y + 3, 14, kRoleRowH - 6};
+                cv.fill(sw, plate_text_color(img));
+                cv.frame(sw, ap.c("primary.frame"));
+            }
+        }
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page,
+                        g.drag == DragThumbRoles, false, false,
+                        g.drag == DragScrollArrowRoles ? g.arrow_hot
+                                                       : ScrollArrowHot::None);
+        // Selected image preview + positions
+        if (g.asset_sel >= 0 && g.asset_sel < (int)keys.size()) {
+            const SkinImage *img = ap.art(keys[size_t(g.asset_sel)].c_str());
+            if (img) {
+                int px = g.slider_r.x, py = g.slider_r.y;
+                int pw = std::min(120, img->w), ph = std::min(48, img->h);
+                cv.fill({px, py, pw + 4, ph + 4}, ap.c("list.background"));
+                cv.frame({px, py, pw + 4, ph + 4}, ap.c("primary.frame"));
+                cv.place(*img, px + 2, py + 2);
+                char pos[80];
+                std::snprintf(pos, sizeof(pos), "Positions [%d,%d,%d,%d]",
+                              img->positions[0], img->positions[1], img->positions[2],
+                              img->positions[3]);
+                cv.text(px + pw + 12, py + 4, pos, ap.c("primary.label"));
+                if (img->has_text_color)
+                    cv.text(px + pw + 12, py + 20, "Text Color set",
+                            ap.c("primary.label"));
+            }
+        }
+    } else if (g.panel == PanelIcons) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Icons", true);
+        std::vector<std::string> keys;
+        keys.reserve(ap.icon_cache.size());
+        for (const auto &kv : ap.icon_cache)
+            if (!kv.second.empty()) keys.push_back(kv.first);
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        int max_scroll = g.roles_max_scroll();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= (int)keys.size()) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.asset_sel;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            paint_icon(cv, ap, row.x + 4, row.y + (kRoleRowH - 16) / 2,
+                       keys[size_t(idx)].c_str(), 16);
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            cv.text(row.x + 26, row.y + (kRoleRowH - kFontHeight) / 2,
+                    keys[size_t(idx)].c_str(), ink);
+        }
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page,
+                        g.drag == DragThumbRoles, false, false,
+                        g.drag == DragScrollArrowRoles ? g.arrow_hot
+                                                       : ScrollArrowHot::None);
+    } else if (g.panel == PanelGroups) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "♦ Primary Group", true);
+        cv.text(g.role_list.x + 12, g.role_list.y + kHeaderH + 12,
+                "Base colour → Light / Background / Dark / Frame",
+                ap.c("primary.label"));
+        cv.fill(g.group_swatch, g.group_base);
+        cv.frame(g.group_swatch, ap.c("primary.frame"));
+        Color light = ap.c("primary.light");
+        Color bg = ap.c("primary.background");
+        Color dark = ap.c("primary.dark");
+        Color frame = ap.c("primary.frame");
+        int sx = g.group_swatch.right() + 16;
+        int sy = g.group_swatch.y;
+        auto sw = [&](int i, Color c, const char *lab) {
+            Rect r{sx + i * 70, sy, 56, 56};
+            cv.fill(r, c);
+            cv.frame(r, ap.c("primary.frame"));
+            cv.text(r.x, r.bottom() + 4, lab, ap.c("primary.label"));
+        };
+        sw(0, light, "Light");
+        sw(1, bg, "Background");
+        sw(2, dark, "Dark");
+        sw(3, frame, "Frame");
+        paint_slider(cv, g.slider_r, "R", g.group_base.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", g.group_base.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", g.group_base.b, rgb(40, 80, 200));
+        paint_field(cv, ap, g.hex_field, color_to_hex(g.group_base).c_str(), true,
+                    g.caret_on);
     }
-    bool roles_thumb_hot = g.drag == DragThumbRoles;
-    ScrollArrowHot roles_arrow =
-        g.drag == DragScrollArrowRoles ? g.arrow_hot : ScrollArrowHot::None;
-    paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page, roles_thumb_hot,
-                    false, false, roles_arrow);
-
-    Color cur = selected_color();
-    paint_slider(cv, g.slider_r, "R", cur.r, rgb(200, 40, 40));
-    paint_slider(cv, g.slider_g, "G", cur.g, rgb(40, 180, 40));
-    paint_slider(cv, g.slider_b, "B", cur.b, rgb(40, 80, 200));
-    paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
 
     // Live kit preview — clip so tall samples cannot paint through the gel frame.
     cv.fill(g.preview, ap.c("primary.background"));
@@ -462,9 +699,38 @@ void mouse_down(int mx, int my) {
         redraw();
         return;
     }
+    if (g.btn_import_colors.contains(mx, my)) {
+        g.drag = DragBtnImportColors;
+        redraw();
+        return;
+    }
+    if (g.btn_colors_only.contains(mx, my)) {
+        g.drag = DragBtnColorsOnly;
+        redraw();
+        return;
+    }
+
+    // Panel tabs
+    for (int i = 0; i < PanelCount; ++i) {
+        if (g.panel_tabs[i].contains(mx, my)) {
+            g.panel = i;
+            g.scroll = 0;
+            g.asset_sel = 0;
+            if (i == PanelGroups) g.group_base = g.ap.c("primary.background");
+            set_status(std::string("Panel: ") +
+                       (i == 0   ? "Colors"
+                        : i == 1 ? "Information"
+                        : i == 2 ? "Images"
+                        : i == 3 ? "Icons"
+                                 : "Groups"));
+            redraw();
+            return;
+        }
+    }
 
     // Role-list scrollbar
-    if (g.role_sbar.contains(mx, my)) {
+    if (g.role_sbar.contains(mx, my) &&
+        (g.panel == PanelColors || g.panel == PanelImages || g.panel == PanelIcons)) {
         ScrollLayout sl =
             scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
         ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
@@ -492,40 +758,71 @@ void mouse_down(int mx, int my) {
         }
     }
 
-    // Role rows
+    // Role / asset rows
     if (g.role_list.contains(mx, my) && my >= g.role_list.y + kHeaderH &&
-        mx < g.role_sbar.x) {
+        mx < g.role_sbar.x &&
+        (g.panel == PanelColors || g.panel == PanelImages || g.panel == PanelIcons)) {
         int row = (my - (g.role_list.y + kHeaderH)) / kRoleRowH;
         int idx = g.scroll + row;
-        if (idx >= 0 && idx < (int)all_color_roles().size()) {
-            g.selected = idx;
-            redraw();
+        if (g.panel == PanelColors) {
+            if (idx >= 0 && idx < (int)all_color_roles().size()) {
+                g.selected = idx;
+                redraw();
+            }
+        } else if (g.panel == PanelImages) {
+            if (idx >= 0 && idx < (int)g.ap.art_cache.size()) {
+                g.asset_sel = idx;
+                redraw();
+            }
+        } else if (g.panel == PanelIcons) {
+            if (idx >= 0 && idx < (int)g.ap.icon_cache.size()) {
+                g.asset_sel = idx;
+                redraw();
+            }
         }
         return;
     }
 
-    // RGB sliders
-    if (g.slider_r.contains(mx, my)) {
+    // RGB sliders (Colors + Groups)
+    if ((g.panel == PanelColors || g.panel == PanelGroups) &&
+        g.slider_r.contains(mx, my)) {
         g.drag = DragSliderR;
-        Color c = selected_color();
-        c.r = uint8_t(slider_value_at(g.slider_r, mx));
-        set_selected_color(c);
+        if (g.panel == PanelGroups) {
+            g.group_base.r = uint8_t(slider_value_at(g.slider_r, mx));
+            apply_primary_group(g.group_base);
+        } else {
+            Color c = selected_color();
+            c.r = uint8_t(slider_value_at(g.slider_r, mx));
+            set_selected_color(c);
+        }
         redraw();
         return;
     }
-    if (g.slider_g.contains(mx, my)) {
+    if ((g.panel == PanelColors || g.panel == PanelGroups) &&
+        g.slider_g.contains(mx, my)) {
         g.drag = DragSliderG;
-        Color c = selected_color();
-        c.g = uint8_t(slider_value_at(g.slider_g, mx));
-        set_selected_color(c);
+        if (g.panel == PanelGroups) {
+            g.group_base.g = uint8_t(slider_value_at(g.slider_g, mx));
+            apply_primary_group(g.group_base);
+        } else {
+            Color c = selected_color();
+            c.g = uint8_t(slider_value_at(g.slider_g, mx));
+            set_selected_color(c);
+        }
         redraw();
         return;
     }
-    if (g.slider_b.contains(mx, my)) {
+    if ((g.panel == PanelColors || g.panel == PanelGroups) &&
+        g.slider_b.contains(mx, my)) {
         g.drag = DragSliderB;
-        Color c = selected_color();
-        c.b = uint8_t(slider_value_at(g.slider_b, mx));
-        set_selected_color(c);
+        if (g.panel == PanelGroups) {
+            g.group_base.b = uint8_t(slider_value_at(g.slider_b, mx));
+            apply_primary_group(g.group_base);
+        } else {
+            Color c = selected_color();
+            c.b = uint8_t(slider_value_at(g.slider_b, mx));
+            set_selected_color(c);
+        }
         redraw();
         return;
     }
@@ -686,19 +983,34 @@ void mouse_move(int mx, int my) {
         g.preview_st.h_scroll = scroll_from_thumb_x(sl, mx, 8);
         redraw();
     } else if (g.drag == DragSliderR) {
-        Color c = selected_color();
-        c.r = uint8_t(slider_value_at(g.slider_r, mx));
-        set_selected_color(c);
+        if (g.panel == PanelGroups) {
+            g.group_base.r = uint8_t(slider_value_at(g.slider_r, mx));
+            apply_primary_group(g.group_base);
+        } else {
+            Color c = selected_color();
+            c.r = uint8_t(slider_value_at(g.slider_r, mx));
+            set_selected_color(c);
+        }
         redraw();
     } else if (g.drag == DragSliderG) {
-        Color c = selected_color();
-        c.g = uint8_t(slider_value_at(g.slider_g, mx));
-        set_selected_color(c);
+        if (g.panel == PanelGroups) {
+            g.group_base.g = uint8_t(slider_value_at(g.slider_g, mx));
+            apply_primary_group(g.group_base);
+        } else {
+            Color c = selected_color();
+            c.g = uint8_t(slider_value_at(g.slider_g, mx));
+            set_selected_color(c);
+        }
         redraw();
     } else if (g.drag == DragSliderB) {
-        Color c = selected_color();
-        c.b = uint8_t(slider_value_at(g.slider_b, mx));
-        set_selected_color(c);
+        if (g.panel == PanelGroups) {
+            g.group_base.b = uint8_t(slider_value_at(g.slider_b, mx));
+            apply_primary_group(g.group_base);
+        } else {
+            Color c = selected_color();
+            c.b = uint8_t(slider_value_at(g.slider_b, mx));
+            set_selected_color(c);
+        }
         redraw();
     } else if (g.drag == DragSliderKit) {
         g.preview_st.slider_value =
@@ -718,7 +1030,8 @@ void mouse_move(int mx, int my) {
         g.pressed_box = g.gel.min_box.contains(mx, my) ? 4 : 0;
         redraw();
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
-               g.drag == DragBtnStock || g.drag == DragPreviewBtn ||
+               g.drag == DragBtnStock || g.drag == DragBtnImportColors ||
+               g.drag == DragBtnColorsOnly || g.drag == DragPreviewBtn ||
                g.drag == DragDropdown) {
         if (g.drag == DragPreviewBtn) {
             bool over =
@@ -769,7 +1082,13 @@ void mouse_up(int mx, int my) {
     if (was == DragBtnLoad && g.btn_load.contains(mx, my)) do_load();
     else if (was == DragBtnSave && g.btn_save.contains(mx, my)) do_save();
     else if (was == DragBtnStock && g.btn_stock.contains(mx, my)) do_stock();
-    else if (was == DragPreviewBtn) {
+    else if (was == DragBtnImportColors && g.btn_import_colors.contains(mx, my))
+        do_import_colors();
+    else if (was == DragBtnColorsOnly && g.btn_colors_only.contains(mx, my)) {
+        g.preview_st.colours_only = !g.preview_st.colours_only;
+        set_status(g.preview_st.colours_only ? "Colors Preview (no images/icons)"
+                                             : "Full Kit Preview");
+    } else if (was == DragPreviewBtn) {
         if (target == 1 && g.preview_lay.btn_ok.contains(mx, my))
             set_status("Preview: OK clicked");
         else if (target == 2 && g.preview_lay.btn_cancel.contains(mx, my))

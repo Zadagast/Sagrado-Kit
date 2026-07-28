@@ -2084,35 +2084,46 @@ inline int slider_value_at_y(const SliderLayout &s, int my) {
 
 inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
                                  int value, int max_value, bool hilite,
-                                 bool pointed = false) {
-    SliderLayout s = slider_layout(ap, r, value, max_value, hilite, pointed);
-
-    const char *bslot = hilite ? "slider.h.bar.hilited" : "slider.h.bar.normal";
+                                 bool pointed = false, bool disabled = false) {
+    // Disabled art when present; layout still uses normal metrics if disabled
+    // plates are missing (Hap often authors only Normal/Hilited).
+    const char *bslot = disabled ? "slider.h.bar.disabled"
+                                 : (hilite ? "slider.h.bar.hilited"
+                                           : "slider.h.bar.normal");
     const SkinImage *bar = ap.art(bslot);
+    if (!bar && disabled) bar = ap.art("slider.h.bar.normal");
     if (!bar) bar = ap.art("slider.h.bar.normal");
     const char *islot =
-        pointed ? (hilite ? "slider.h.indicator_pointed.hilited"
-                          : "slider.h.indicator_pointed.normal")
-                : (hilite ? "slider.h.indicator.hilited"
-                          : "slider.h.indicator.normal");
+        disabled
+            ? (pointed ? "slider.h.indicator_pointed.disabled"
+                       : "slider.h.indicator.disabled")
+            : (pointed ? (hilite ? "slider.h.indicator_pointed.hilited"
+                                 : "slider.h.indicator_pointed.normal")
+                       : (hilite ? "slider.h.indicator.hilited"
+                                 : "slider.h.indicator.normal"));
+    SliderLayout s = slider_layout(ap, r, value, max_value, hilite && !disabled,
+                                   pointed);
     const SkinImage *ind = ap.art(islot);
-    if (!ind && pointed)
+    if (!ind && pointed && !disabled)
         ind = ap.art(hilite ? "slider.h.indicator.hilited"
                             : "slider.h.indicator.normal");
+    if (!ind && disabled) {
+        ind = ap.art(pointed ? "slider.h.indicator_pointed.normal"
+                             : "slider.h.indicator.normal");
+    }
     if (!ind) ind = ap.art("slider.h.indicator.normal");
 
     if (bar) {
         cv.nine_slice(*bar, s.bar);
+    } else if (disabled) {
+        // Colour-path disabled: flat disable plate, no value-fill trough.
+        cv.fill(s.bar, ap.c("slider.disable"));
+        cv.frame(s.bar, ap.c("slider.disable_frame"));
     } else {
+        // Hap travel model: full trough in Bar colour; indicator alone shows
+        // value. Do not value-fill the trough (old kit mistake).
         cv.fill(s.bar, ap.c("slider.bar"));
         cv.frame(s.bar, ap.c("slider.bar_frame"));
-        if (s.value > 0) {
-            int fill_w = (s.thumb.x + s.thumb_w / 2) - s.bar.x;
-            fill_w = std::clamp(fill_w, 0, s.bar.w);
-            Rect fill{s.bar.x, s.bar.y, fill_w, s.bar.h};
-            cv.fill(fill, ap.c("slider.bar_hilite"));
-            cv.frame(fill, ap.c("slider.bar_hilite_frame"));
-        }
     }
 
     if (ind) {
@@ -2123,6 +2134,12 @@ inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
         return s;
     }
 
+    if (disabled) {
+        cv.fill(s.thumb, ap.c("slider.disable"));
+        rounded_frame(cv, s.thumb, ap.c("slider.disable_frame"),
+                      ap.c("primary.background"));
+        return s;
+    }
     Color il = hilite ? ap.c("slider.indicator_hilite_light")
                       : ap.c("slider.indicator_light");
     Color face = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
@@ -2144,25 +2161,38 @@ inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
 
 inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
                                    int value, int max_value, bool hilite,
-                                   bool pointed = false) {
-    SliderLayout s = slider_layout_v(ap, r, value, max_value, hilite, pointed);
-
-    const char *bslot = hilite ? "slider.v.bar.hilited" : "slider.v.bar.normal";
+                                   bool pointed = false, bool disabled = false) {
+    const char *bslot = disabled ? "slider.v.bar.disabled"
+                                 : (hilite ? "slider.v.bar.hilited"
+                                           : "slider.v.bar.normal");
     const SkinImage *bar = ap.art(bslot);
+    if (!bar && disabled) bar = ap.art("slider.v.bar.normal");
     if (!bar) bar = ap.art("slider.v.bar.normal");
     const char *islot =
-        pointed ? (hilite ? "slider.v.indicator_pointed.hilited"
-                          : "slider.v.indicator_pointed.normal")
-                : (hilite ? "slider.v.indicator.hilited"
-                          : "slider.v.indicator.normal");
+        disabled
+            ? (pointed ? "slider.v.indicator_pointed.disabled"
+                       : "slider.v.indicator.disabled")
+            : (pointed ? (hilite ? "slider.v.indicator_pointed.hilited"
+                                 : "slider.v.indicator_pointed.normal")
+                       : (hilite ? "slider.v.indicator.hilited"
+                                 : "slider.v.indicator.normal"));
+    SliderLayout s =
+        slider_layout_v(ap, r, value, max_value, hilite && !disabled, pointed);
     const SkinImage *ind = ap.art(islot);
-    if (!ind && pointed)
+    if (!ind && pointed && !disabled)
         ind = ap.art(hilite ? "slider.v.indicator.hilited"
                             : "slider.v.indicator.normal");
+    if (!ind && disabled) {
+        ind = ap.art(pointed ? "slider.v.indicator_pointed.normal"
+                             : "slider.v.indicator.normal");
+    }
     if (!ind) ind = ap.art("slider.v.indicator.normal");
 
     if (bar) {
         cv.nine_slice(*bar, s.bar);
+    } else if (disabled) {
+        cv.fill(s.bar, ap.c("slider.disable"));
+        cv.frame(s.bar, ap.c("slider.disable_frame"));
     } else {
         cv.fill(s.bar, ap.c("slider.bar"));
         cv.frame(s.bar, ap.c("slider.bar_frame"));
@@ -2176,6 +2206,12 @@ inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
         return s;
     }
 
+    if (disabled) {
+        cv.fill(s.thumb, ap.c("slider.disable"));
+        rounded_frame(cv, s.thumb, ap.c("slider.disable_frame"),
+                      ap.c("primary.background"));
+        return s;
+    }
     Color il = hilite ? ap.c("slider.indicator_hilite_light")
                       : ap.c("slider.indicator_light");
     Color face = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
@@ -2244,6 +2280,23 @@ inline void paint_mutex_dot(Canvas &cv, Rect b, Color ink) {
             if (dx * dx + dy * dy <= 5) cv.put(cx + dx, cy + dy, pack(ink));
 }
 
+// Place Tick/Mutex art: Hap marks are ≤18 and must not smear via nine_slice
+// into kTickBox. Centre-blit natural size when close to the dest.
+inline void place_tick_art(Canvas &cv, const SkinImage &img, Rect &b) {
+    auto adiff = [](int a, int b) { return a > b ? a - b : b - a; };
+    if (img.w <= 18 && img.h <= 18 && adiff(img.w, b.w) <= 6 &&
+        adiff(img.h, b.h) <= 6) {
+        b.w = img.w;
+        b.h = img.h;
+        cv.blit_image(img, b.x, b.y);
+        return;
+    }
+    if (img.w == b.w && img.h == b.h)
+        cv.blit_image(img, b.x, b.y);
+    else
+        cv.nine_slice(img, b);
+}
+
 // Checkbox. Returns the hit box (glyph only).
 inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
                        TickMark mark, const char *label, bool pressed = false,
@@ -2254,11 +2307,7 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
     if (!img && mark != TickMark::Blank)
         img = ap.art(tick_art_slot(TickMark::Blank, pressed, disabled));
     if (img) {
-        // Art is placed 1:1 (or nine-sliced into the box if larger/smaller).
-        if (img->w == b.w && img->h == b.h)
-            cv.blit_image(*img, b.x, b.y);
-        else
-            cv.nine_slice(*img, b);
+        place_tick_art(cv, *img, b);
     } else {
         const char *grp = disabled ? "button_disable" : "button";
         auto bc = [&](const char *s) {
@@ -2293,10 +2342,7 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
     if (!img && mark != TickMark::Blank)
         img = ap.art(mutex_art_slot(TickMark::Blank, pressed, disabled));
     if (img) {
-        if (img->w == b.w && img->h == b.h)
-            cv.blit_image(*img, b.x, b.y);
-        else
-            cv.nine_slice(*img, b);
+        place_tick_art(cv, *img, b);
     } else {
         const char *grp = disabled ? "button_disable" : "button";
         auto bc = [&](const char *s) {
@@ -2563,8 +2609,20 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
                        const char *slot = "file.generic.16", int size = 16) {
     Rect b{x, y, size, size};
     const SkinImage *img = ap.icon(slot);
-    if (!img && size >= 32) img = ap.icon("file.generic.32");
-    if (!img && size < 32) img = ap.icon("file.generic.16");
+    if (!img && size >= 32) {
+        if (std::strcmp(slot, "file.generic.32") == 0 ||
+            std::strcmp(slot, "document.32") == 0)
+            img = ap.icon("document.32");
+        if (!img) img = ap.icon("file.generic.32");
+        if (!img) img = ap.icon("document.32");
+    }
+    if (!img && size < 32) {
+        if (std::strcmp(slot, "file.generic.16") == 0 ||
+            std::strcmp(slot, "document.16") == 0)
+            img = ap.icon("document.16");
+        if (!img) img = ap.icon("file.generic.16");
+        if (!img) img = ap.icon("document.16");
+    }
     if (!img) return b;
     if (img->w == size && img->h == size)
         cv.blit_image(*img, b.x, b.y);
@@ -2576,6 +2634,14 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
 // True when the requested icon (or a size fallback) is in the cache.
 inline bool has_icon(const Appearance &ap, const char *slot, int size = 16) {
     if (ap.icon(slot)) return true;
+    if (std::strcmp(slot, "file.generic.16") == 0 ||
+        std::strcmp(slot, "document.16") == 0)
+        return ap.icon("document.16") || ap.icon("file.generic.16");
+    if (std::strcmp(slot, "file.generic.32") == 0 ||
+        std::strcmp(slot, "document.32") == 0)
+        return ap.icon("document.32") || ap.icon("file.generic.32");
+    if (std::strcmp(slot, "user.16") == 0)
+        return ap.icon("users.16") || ap.icon("user.16");
     if (size >= 32) return ap.icon("file.generic.32") != nullptr;
     return ap.icon("file.generic.16") != nullptr;
 }
@@ -2651,7 +2717,8 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
                                            int ncols, const char *name,
                                            const char *size, const char *status,
                                            const char *rate, WonderLightState light,
-                                           int progress_pct, bool selected) {
+                                           int progress_pct, bool selected,
+                                           const char *icon_slot = "file.generic.16") {
     TransferRow tr;
     tr.bounds = row;
     if (selected)
@@ -2673,7 +2740,7 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
         } else if (std::strcmp(key, "Name") == 0) {
             int ix = cell.x + 2;
             int iy = row.y + (row.h - 16) / 2;
-            paint_icon(cv, ap, ix, iy, "file.generic.16", 16);
+            paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16", 16);
             int text_x = ix + 18;
             int name_w = cell.right() - text_x - 2;
             if (name_w < 4) name_w = 4;
@@ -2780,12 +2847,14 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
         WonderLightState light;
         int pct;
         bool sel;
+        const char *icon;
     };
     static const Sample samples[] = {
         {"server_info.txt", "1.1K", "Finished", "573/sec", WonderLightState::Finished,
-         100, false},
-        {"readme.txt", "48K", "Receiving", "12K/sec", WonderLightState::Go, 42, true},
-        {"patch.zip", "2.4M", "Awaiting", "—", WonderLightState::Pause, 10, false},
+         100, false, "file.generic.16"},
+        {"Uploads", "—", "Receiving", "12K/sec", WonderLightState::Go, 42, true,
+         "folder.uploads.16"},
+        {"alice", "—", "Awaiting", "—", WonderLightState::Pause, 10, false, "user.16"},
     };
     constexpr int kSamples = 3;
     int visible = body.h / kRowH;
@@ -2796,7 +2865,7 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
             cv.fill(row, ap.c("list.sort_column_background"));
         paint_transfer_list_row(cv, ap, row, cols, 6, samples[i].name, samples[i].size,
                                 samples[i].status, samples[i].rate, samples[i].light,
-                                samples[i].pct, samples[i].sel);
+                                samples[i].pct, samples[i].sel, samples[i].icon);
     }
 
     // Footer buttons — Close / Stop All / Clear Finished
@@ -2993,18 +3062,30 @@ struct KitPreviewState {
     int slider_value = 40;
     bool slider_hot = false;
     int h_scroll = 2;
+    bool colours_only = false; // AppearanceEdit Colors Preview (hide images/icons)
 };
 
 // Full kit preview panel inside a gel client rect.
 // All ink is clipped to `client` so nested gels / wide rows cannot spill the
 // host window frame. Sections that no longer fit vertically are skipped.
-inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
+inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
                                           Rect client, bool caret_on,
                                           int list_sel, int scroll_val,
                                           const KitPreviewState &st = {}) {
     KitPreviewLayout lay;
     lay.bounds = client;
     CanvasClip panel_clip(cv, client);
+
+    // Colours-only Preview (AppearanceEdit Colors Preview): hide images/icons.
+    Appearance ap_colours;
+    const Appearance *ap_ptr = &ap_in;
+    if (st.colours_only) {
+        ap_colours.skin = ap_in.skin;
+        ap_colours.stock = ap_in.stock;
+        // Leave art/icon caches empty → colour-path paint.
+        ap_ptr = &ap_colours;
+    }
+    const Appearance &ap = *ap_ptr;
 
     int pad = 10;
     int x = client.x + pad;
@@ -3014,10 +3095,11 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     const int right = client.right() - pad;
     auto fits = [&](int need_h) { return y + need_h <= client.bottom() - pad; };
 
-    cv.text(x, y, "Kit Preview", ap.c("primary.label"));
+    cv.text(x, y, st.colours_only ? "Kit Preview (colours)" : "Kit Preview",
+            ap.c("primary.label"));
     y += kFontHeight + 8;
 
-    // Icon buttons + menu bar (one band). Scroll samples live with the list.
+    // Icon buttons + catalog strip + menu bar (one band).
     {
         const SkinImage *ib_hi = ap.art("icon_button.hilited");
         const SkinImage *ib_n = ap.art("icon_button.normal");
@@ -3029,7 +3111,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         } else if (ib_n) {
             ib_w = std::max(ib_w, ib_n->w);
         }
-        int need = ib_h + kMenuBarH + 16;
+        int need = ib_h + 20 + kMenuBarH + 16;
         if (fits(need)) {
             Rect ib0{x, y, ib_w, ib_h};
             Rect ib1{ib0.right() + 6, y, ib_w, ib_h};
@@ -3042,8 +3124,19 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
                 paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
             Rect ibd{ib2.right() + 6, y, ib_w, ib_h};
             if (ibd.right() <= right)
-                paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
+                paint_icon_button(cv, ap, ibd, "user.16", nullptr, false, false);
             y += ib_h + 6;
+            // High-occupancy catalog strip used in lists/menus/FT.
+            static const char *strip[] = {
+                "file.generic.16", "folder.16", "folder.uploads.16", "user.16",
+                "document.text.16", "stop.16", "caution.16", "message.16"};
+            int ix = x;
+            for (const char *slot : strip) {
+                if (ix + 18 > right) break;
+                paint_icon(cv, ap, ix, y, slot, 16);
+                ix += 20;
+            }
+            y += 20;
             static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
             paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
                            1, 0);
@@ -3144,9 +3237,9 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += kKitButtonH + 8;
     }
 
-    // One H slider + one pointed V — enough to exercise fill/travel.
+    // One H slider + disabled + one pointed V — exercise fill/travel/disabled.
     if (fits(48)) {
-        int slide_w = std::min(std::max(80, w - 80), 200);
+        int slide_w = std::min(std::max(80, w - 120), 160);
         lay.slider = {x, y, slide_w, 22};
         if (lay.slider.right() > right) lay.slider.w = std::max(40, right - lay.slider.x);
         lay.slider_lay =
@@ -3155,7 +3248,11 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
         if (lay.slider.right() + 28 <= right)
             cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
-        Rect vslide{lay.slider.right() + 48, y - 2, 22, 48};
+        Rect dis_slide{lay.slider.right() + 40, y, std::min(80, right - (lay.slider.right() + 40)),
+                       22};
+        if (dis_slide.w >= 40)
+            paint_slider(cv, ap, dis_slide, 30, 100, false, false, true);
+        Rect vslide{dis_slide.right() + 12, y - 2, 22, 48};
         if (vslide.right() <= right && vslide.bottom() <= client.bottom() - pad)
             paint_slider_v(cv, ap, vslide, st.slider_value, 100, true, true);
         y += 52;
@@ -3164,6 +3261,9 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     // List + header + V/H scrollbars (KDX list chrome: H inside list bounds).
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
+    static const char *row_icons[] = {
+        "file.generic.16", "folder.16", "user.16", "document.text.16",
+        "folder.uploads.16", "message.16", "hard_disk.16", "files.16"};
     lay.row_count = 8;
     int list_h = client.bottom() - y - pad;
     if (list_h >= kHeaderH + kRowH + kScrollbarW) {
@@ -3194,7 +3294,9 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             if (idx >= 0 && idx < lay.row_count) {
                 Color ink = sel ? ap.c("list.hilite_foreground")
                                 : file_label_color(ap, idx % 16);
-                cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
+                int iy = row.y + (kRowH - 16) / 2;
+                paint_icon(cv, ap, row.x + 4, iy, row_icons[idx], 16);
+                cv.text(row.x + 24, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
             }
             cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
         }
