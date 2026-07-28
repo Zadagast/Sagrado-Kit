@@ -1319,6 +1319,20 @@ struct TransferCol {
     int w;
 };
 
+// Ellipsize label so it never paints past the cell (KDX list columns).
+inline void paint_cell_text(Canvas &cv, int x, int y, int max_w, const char *text,
+                            Color ink) {
+    if (!text || max_w <= 0) return;
+    if (cv.text_width(text) <= max_w) {
+        cv.text(x, y, text, ink);
+        return;
+    }
+    std::string s(text);
+    while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w) s.pop_back();
+    s += "..";
+    cv.text(x, y, s.c_str(), ink);
+}
+
 // KDX File Transfers list row — single line, columns, LED meter in Progress.
 inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
                                            Rect row, const TransferCol *cols,
@@ -1336,27 +1350,31 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
     for (int i = 0; i < ncols; ++i) {
         Rect cell{x, row.y, cols[i].w, row.h};
         const char *key = cols[i].title ? cols[i].title : "";
+        int text_pad = 4;
+        int max_w = cell.w - text_pad - 2;
+        if (max_w < 4) max_w = 4;
         if (std::strcmp(key, "") == 0 || std::strcmp(key, " ") == 0) {
             // Lamp column — WonderLight only.
             int ly = row.y + (row.h - kWonderLight) / 2;
             tr.light = paint_wonderlight(cv, ap, cell.x + (cell.w - kWonderLight) / 2,
                                          ly, light);
         } else if (std::strcmp(key, "Name") == 0) {
-            cv.text(cell.x + 4, ty, name, ink);
+            paint_cell_text(cv, cell.x + text_pad, ty, max_w, name, ink);
         } else if (std::strcmp(key, "Size") == 0) {
-            cv.text(cell.x + 4, ty, size, ink);
+            paint_cell_text(cv, cell.x + text_pad, ty, max_w, size, ink);
         } else if (std::strcmp(key, "Progress") == 0) {
             int ph = progress_art_height(ap.art("progress.bar"), ap.art("progress.fill"));
             int pw = cell.w - 6;
-            if (pw < 20) pw = cell.w;
+            if (pw < 20) pw = std::max(8, cell.w - 2);
             tr.progress = {cell.x + 3, row.y + (row.h - ph) / 2, pw, ph};
-            Color tint = wonderlight_color(light);
+            // Hap path: tile progress.fill art. Colour path: progress.transition.*
+            // (no WonderLight rainbow tint — that is not a Hap progress colour).
             paint_progress(cv, ap, tr.progress, progress_pct, 100,
-                           ProgressStyle::Segmented, &tint);
+                           ProgressStyle::Segmented, nullptr);
         } else if (std::strcmp(key, "Status") == 0) {
-            cv.text(cell.x + 4, ty, status, ink);
+            paint_cell_text(cv, cell.x + text_pad, ty, max_w, status, ink);
         } else if (std::strcmp(key, "Rate") == 0) {
-            cv.text(cell.x + 4, ty, rate, ink);
+            paint_cell_text(cv, cell.x + text_pad, ty, max_w, rate, ink);
         }
         x += cols[i].w;
     }
@@ -1385,29 +1403,38 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     if (list_h < kHeaderH + kRowH) list_h = kHeaderH + kRowH;
     ft.list = {cl.x + kPad, cl.y + kPad, cl.w - 2 * kPad, list_h};
 
-    // Columns sized to the list width (lamp leads — no document icon).
+    // Column widths: Status/Rate wide enough for sample strings; Name absorbs rest.
+    // "Receiving" ~9 glyphs, "573/sec" ~7 — size for our bitmap font + pad.
     TransferCol cols[6] = {
         {"", 22},
-        {"Name", 100},
-        {"Size", 44},
+        {"Name", 118},
+        {"Size", 40},
         {"Progress", 100},
-        {"Status", 56},
-        {"Rate", 40},
+        {"Status", 76},
+        {"Rate", 62},
     };
-    int fixed = 0;
-    for (int i = 0; i < 5; ++i) fixed += cols[i].w;
-    cols[5].w = std::max(36, ft.list.w - fixed);
-    // If Progress would starve, steal from Name.
-    int total = 0;
-    for (int i = 0; i < 6; ++i) total += cols[i].w;
-    if (total > ft.list.w) {
-        int overflow = total - ft.list.w;
-        cols[1].w = std::max(60, cols[1].w - overflow);
+    int min_total = 0;
+    for (int i = 0; i < 6; ++i) min_total += cols[i].w;
+    if (min_total > ft.list.w) {
+        // Steal from Name, then Progress, keep Status/Rate readable.
+        int need = min_total - ft.list.w;
+        int take = std::min(need, std::max(0, cols[1].w - 56));
+        cols[1].w -= take;
+        need -= take;
+        if (need > 0) {
+            take = std::min(need, std::max(0, cols[3].w - 64));
+            cols[3].w -= take;
+            need -= take;
+        }
+        if (need > 0) {
+            take = std::min(need, std::max(0, cols[4].w - 56));
+            cols[4].w -= take;
+            need -= take;
+        }
+        if (need > 0) cols[5].w = std::max(40, cols[5].w - need);
+    } else if (min_total < ft.list.w) {
+        cols[1].w += ft.list.w - min_total; // leftover → Name
     }
-    // Grow Progress with leftover.
-    total = 0;
-    for (int i = 0; i < 6; ++i) total += cols[i].w;
-    if (total < ft.list.w) cols[3].w += ft.list.w - total;
 
     // Header plates per column (KDX list).
     int hx = ft.list.x;
@@ -1459,7 +1486,6 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
     ft.btn_clear = {bx + 2 * (bw + gap), by, 110, kButtonH};
     if (ft.btn_clear.right() > cl.right() - kPad) {
-        // Narrow panel: shrink buttons to fit.
         int avail = cl.w - 2 * kPad - 2 * gap;
         bw = avail / 3;
         ft.btn_close = {bx, by, bw, kButtonH};
@@ -1478,7 +1504,6 @@ inline TransferRow paint_transfer_row(Canvas &cv, const Appearance &ap, Rect r,
                                       const char *name, const char *status,
                                       WonderLightState light, int progress_pct,
                                       bool /*finished*/) {
-    // Map into a one-row column strip so old call sites still paint LEDs.
     TransferCol cols[6] = {{"", 22}, {"Name", 120}, {"Size", 1}, {"Progress", 140},
                            {"Status", 1}, {"Rate", 1}};
     cols[3].w = std::max(80, r.w - 22 - 120 - 3);
@@ -1686,7 +1711,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     y += 10;
 
     // Official-style KDX File Transfers window (columns + LEDs + footer).
-    int ftw = std::min(w, 380);
+    int ftw = std::min(w, 450);
     int fth = 158;
     paint_file_transfers_window(cv, ap, {x, y, ftw, fth});
     y += fth + 8;
