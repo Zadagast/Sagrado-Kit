@@ -13,6 +13,10 @@ SLOT_MAP = {
     37: "default_button.normal",
     38: "default_button.hilited",
     39: "default_button.disabled",
+    # Icon Button
+    49: "icon_button.normal",
+    50: "icon_button.hilited",
+    51: "icon_button.disabled",
     # Tick Blank / Ticked / Tristate × Normal/Hilited/Disabled
     57: "tick.blank.normal",
     58: "tick.blank.hilited",
@@ -57,24 +61,54 @@ SLOT_MAP = {
     130: "slider.h.indicator.normal",
     131: "slider.h.indicator.hilited",
     132: "slider.h.indicator.disabled",
+    134: "slider.h.indicator_pointed.normal",
+    135: "slider.h.indicator_pointed.hilited",
+    136: "slider.h.indicator_pointed.disabled",
     138: "slider.v.bar.normal",
     139: "slider.v.bar.hilited",
     140: "slider.v.bar.disabled",
     142: "slider.v.indicator.normal",
     143: "slider.v.indicator.hilited",
     144: "slider.v.indicator.disabled",
+    146: "slider.v.indicator_pointed.normal",
+    147: "slider.v.indicator_pointed.hilited",
+    148: "slider.v.indicator_pointed.disabled",
     # Column header
     150: "column_header.normal",
     151: "column_header.hilited",
+    152: "column_header.disabled",
     # H scrollbar
     162: "scrollbar.h.double_arrows",
+    163: "scrollbar.h.single_arrows",
+    164: "scrollbar.h.disabled",
+    165: "scrollbar.h.too_small",
     166: "scrollbar.h.indicator.normal",
     167: "scrollbar.h.indicator.hilited",
+    169: "scrollbar.h.grips.normal",
+    170: "scrollbar.h.grips.hilited",
+    172: "scrollbar.h.arrow_hilite.first_left",
+    173: "scrollbar.h.arrow_hilite.first_right",
+    174: "scrollbar.h.arrow_hilite.second_left",
+    175: "scrollbar.h.arrow_hilite.second_right",
+    176: "scrollbar.h.arrow_hilite.single_left",
+    177: "scrollbar.h.arrow_hilite.single_right",
     # V scrollbar
     181: "scrollbar.v.double_arrows",
+    182: "scrollbar.v.single_arrows",
+    183: "scrollbar.v.disabled",
+    184: "scrollbar.v.too_small",
     185: "scrollbar.v.indicator.normal",
     186: "scrollbar.v.indicator.hilited",
+    188: "scrollbar.v.grips.normal",
+    189: "scrollbar.v.grips.hilited",
+    191: "scrollbar.v.arrow_hilite.first_up",
+    192: "scrollbar.v.arrow_hilite.first_down",
+    193: "scrollbar.v.arrow_hilite.second_up",
+    194: "scrollbar.v.arrow_hilite.second_down",
+    195: "scrollbar.v.arrow_hilite.single_up",
+    196: "scrollbar.v.arrow_hilite.single_down",
     # Menu (often absent in Milk — donor fill from Boilerplate)
+    # Menu Bar family: no Hap occupancy in probed themes (197–199 empty)
     200: "menu.background_pattern",
     201: "menu.background",
     206: "menu.item.normal",
@@ -402,20 +436,34 @@ def main():
     name, colors, images, icons = load_hap(hap)
     print(f"theme: {name}  images={len(images)}  colors={len(colors)}  icons={len(icons)}")
 
-    # Fill missing image slots from Boilerplate (WonderLight, menu, no-title popup…)
-    if donor.exists():
-        _, _, donor_imgs, _ = load_hap(donor)
+    # Fill missing image slots from donors (WonderLight, menu, grips, disabled header…)
+    donor_paths = [
+        donor,
+        icon_donor,
+        root / "research" / "haps" / "Function 2.0.hap",
+    ]
+    for dpath in donor_paths:
+        if not dpath.exists():
+            continue
+        _, _, donor_imgs, _ = load_hap(dpath)
         filled = 0
         for slot, key in SLOT_MAP.items():
             if slot not in images and slot in donor_imgs:
                 images[slot] = donor_imgs[slot]
                 filled += 1
-                print(f"  donor fill [{slot}] {key}")
+                print(f"  donor fill [{slot}] {key} from {dpath.name}")
         # Milk 208 is not a thin separator rule — prefer Boilerplate's.
-        if 208 in images and images[208]["h"] > 12 and 208 in donor_imgs:
+        if dpath == donor and 208 in images and images[208]["h"] > 12 and 208 in donor_imgs:
             images[208] = donor_imgs[208]
             print("  donor override [208] menu.separator (Milk geometry wrong)")
-        print(f"donor filled {filled} image slots from {donor.name}")
+        # Ashen 152 is a 3×3 stub — prefer Function's real header plate.
+        if dpath.name.startswith("Function") and 152 in donor_imgs:
+            stub = images.get(152)
+            if stub is None or stub["w"] * stub["h"] < 64:
+                images[152] = donor_imgs[152]
+                print(f"  donor override [152] column_header.disabled from {dpath.name}")
+        if filled:
+            print(f"donor filled {filled} image slots from {dpath.name}")
 
     if icon_donor.exists() and not icons:
         _, _, _, donor_icons = load_hap(icon_donor)
@@ -482,7 +530,7 @@ def main():
         "[meta]",
         f'name = "{name}"',
         'creator = "extracted from Hap"',
-        'description = "Art seed: buttons, popup, gel, tick/mutex, progress, scroll/header, slider/menu, WonderLight, icons"',
+        'description = "Art seed: buttons, icon button, popup, gel, tick/mutex, progress, scroll extras, pointed sliders, header, menu, WonderLight, icons"',
         'version = "1.0"',
         "",
     ]

@@ -90,7 +90,7 @@ that map for what Positions mean on each control.
 
 | Namespace | Keys (first wave + reserved) |
 |---|---|
-| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.normal`, `default_button.hilited`, `default_button.disabled`, `tick.blank.*`, `tick.ticked.*`, `tick.tristate.*`, `mutex.blank.*`, `mutex.ticked.*`, `mutex.tristate.*`, `disclosure.plus.small`, `disclosure.minus.small`, `disclosure.plus.medium`, `disclosure.minus.medium`, `popup.normal`, `popup.hilited`, `popup.disabled`, `popup.symbol.normal`, `popup.symbol.hilited`, `popup.symbol.disabled`, `popup_frame.normal`, `popup_frame.focus`, `menu.background`, `menu.item.normal`, `menu.item.hilited`, `menu.item.disabled`, `menu.separator`, `separator.h`, `separator.v`, `box`, `framed_raised`, `progress.bar`, `progress.fill`, `focus_box.normal`, `focus_box.hilited`, `focus_box.disabled`, `slider.h.bar.normal`, `slider.h.indicator.normal`, `slider.h.indicator.hilited`, `scrollbar.v.double_arrows`, `scrollbar.v.indicator.normal`, `scrollbar.v.indicator.hilited`, `scrollbar.v.grips.normal`, `scrollbar.h.double_arrows`, `scrollbar.h.indicator.normal`, `scrollbar.h.grips.normal`, `column_header.normal`, `column_header.hilited`, `window.frame.normal`, `window.frame.focus`, `window.close.normal`, `window.close.focus`, `window.close.hilited`, `window.minimize.*`, `window.maximize.*`, `window.menu.*`, `window.resize.normal`, `window.resize.focus` |
+| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.*`, `icon_button.normal`, `icon_button.hilited`, `icon_button.disabled`, `tick.*`, `mutex.*`, `disclosure.*`, `popup.*`, `popup.no_title.*`, `popup.symbol.*`, `popup_frame.*`, `menu.background(_pattern)`, `menu.item.*`, `menu.separator`, `menu_bar.pattern`, `menu_bar.background`, `menu_bar.title*`, `separator.h/v`, `box`, `framed_raised`, `progress.*`, `focus_box.*`, `slider.h/v.bar.*`, `slider.h/v.indicator.*`, `slider.h/v.indicator_pointed.*`, `scrollbar.v/h.double_arrows`, `scrollbar.v/h.single_arrows`, `scrollbar.v/h.disabled`, `scrollbar.v/h.too_small`, `scrollbar.v/h.indicator.*`, `scrollbar.v/h.grips.*`, `scrollbar.v/h.arrow_hilite.*`, `column_header.normal/hilited/disabled`, `window.frame.*`, `window.close/minimize/maximize/menu/resize.*`, `wonderlight.*` |
 | `icons` | `file.generic.16`, `file.generic.32`, `folder.16`, `folder.32`, `user.16`, `user.32` |
 
 Art painting is gated on the surface map (verified Hap index + caps/positions
@@ -114,18 +114,20 @@ skin is incomplete. How each art slot plugs in is defined in
 Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 
 1. **Gel window** — framed window with title bar, close + Window Menu rectangle + min/max boxes, client fill
-2. **Button** — raised bevel push button (pressed / default / disabled variants)
-3. **Tick / Mutex** — checkbox and radio (`paint_tick` / `paint_mutex`, blank/ticked/tristate)
-4. **Field** — sunken text field with focus ring and caret
-5. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
-6. **Slider** — bar + draggable indicator thumb
-7. **Progress** — empty bar + fill (`paint_progress`)
-8. **List + header** — column header (art-first) + list rows with hilite / `file_label` tints
-9. **Scrollbar** — V/H art-first (`double_arrows` + indicator + grips) or colour; travel Positions honored
-10. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
-11. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
-12. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
-13. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
+2. **Button** — raised bevel push button (pressed uses `button_hilite.*` / default / disabled)
+3. **Icon Button** — `paint_icon_button` (Hap 49–51 + optional title)
+4. **Tick / Mutex** — checkbox and radio (`paint_tick` / `paint_mutex`, blank/ticked/tristate)
+5. **Field** — sunken text field with focus ring and caret
+6. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
+7. **Menu Bar** — `paint_menu_bar` (colour path; optional `menu_bar.*` art)
+8. **Slider** — bar + indicator; optional pointed indicators (`paint_slider(..., pointed)`)
+9. **Progress** — empty bar + fill (`paint_progress`)
+10. **List + header** — column header normal/hilited/disabled + list rows with hilite / `file_label` tints
+11. **Scrollbar** — V/H art-first (double/single arrows, disabled, too-small, grips hilited, arrow-hilite overlays)
+12. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
+13. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
+14. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
+15. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.

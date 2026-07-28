@@ -175,41 +175,51 @@ Colours always apply for label / hilite / disable ink even when art is present.
 |---|---|---|---|
 | H Slider Bar Normal/Hilited/Disabled | **126** / **127** / **128** | Bar vertically centred; height+indicator ≤ 30 | Track; **L/R Positions = travel limits** |
 | H Slider Indicator Normal/Hilited/Disabled | **130** / **131** / **132** | **Top Position** = px above bar top | Thumb (blit or 9-slice) |
-| H Slider Pointed Indicator * | **134** / **135** / **136** | Points down (scale below) | Optional (P2) |
+| H Slider Pointed Indicator * | **134** / **135** / **136** | Points down (scale below) | Optional; `slider.h.indicator_pointed.*` |
 | V Slider Bar * | **138** / **139** / **140** | Horizontally centred; width+indicator ≤ 30 | **T/B Positions = travel** |
 | V Slider Indicator * | **142** / **143** / **144** | **Left Position** = px left of bar | Thumb |
-| V Slider Pointed Indicator * | **146** / **147** / **148** | | Optional (P2) |
+| V Slider Pointed Indicator * | **146** / **147** / **148** | Points right (scale beside) | Optional; `slider.v.indicator_pointed.*` |
 
 **SagradoKit names:** `slider.h.bar.normal` …, `slider.h.indicator.normal` …,
-`slider.v.*` (pointed variants optional).
+`slider.h.indicator_pointed.*`, `slider.v.*`.
 
 ### Scrollbar
 
 | AppearanceEdit name | Hap slot | Caps / Positions | Paint |
 |---|---|---|---|
 | V Scroll Bar Double Arrows | **181** | Width **exactly 16**; T/B caps | 9-slice whole bar; **T/B Positions = thumb travel** (fallback: caps) |
-| V Scroll Bar Single Arrows | index TBD | same idea | Single arrow ends |
-| V Scroll Bar Disabled / Too Small | index TBD | | Disabled / undersized bar |
-| V Scroll Bar Indicator Normal/Hilited | **185** / +1 | | Thumb 9-slice into thumb rect |
-| V Scroll Bar Indicator Grips Normal/Hilited | **188** / +1 | often caps 0 | Optional, **centred on thumb** |
-| V Scroll Bar * Arrow Hilited | index TBD | Position = stamp offset | Pressed arrow overlays |
+| V Scroll Bar Single Arrows | **182** | same idea | Single arrow ends |
+| V Scroll Bar Disabled / Too Small | **183** / **184** | | Disabled / undersized bar |
+| V Scroll Bar Indicator Normal/Hilited | **185** / **186** | | Thumb 9-slice into thumb rect |
+| V Scroll Bar Indicator Grips Normal/Hilited | **188** / **189** | often caps 0 | Optional, **centred on thumb** |
+| V Scroll Bar * Arrow Hilited | **191–196** | Position = stamp offset | Pressed arrow overlays |
 | H Scroll Bar Double Arrows | **162** | Height **exactly 16**; L/R caps | Same as V, horizontal |
-| H Scroll Bar Indicator Normal | **166** | | Thumb |
-| H Scroll Bar Indicator Grips Normal | **169** | | Optional grips |
+| H Scroll Bar Single / Disabled / Too Small | **163** / **164** / **165** | | |
+| H Scroll Bar Indicator Normal/Hilited | **166** / **167** | | Thumb |
+| H Scroll Bar Indicator Grips Normal/Hilited | **169** / **170** | | Optional grips |
+| H Scroll Bar * Arrow Hilited | **172–177** | Position = stamp offset | Pressed arrow overlays |
 
 Probe note: Double Arrows images are long strips (~16×64); `pos` travel insets
 are ~28–36 px — matching the docs (“indicator can be dragged no further than
 this many pixels from the end”).
 
-**SagradoKit names:** `scrollbar.v.double_arrows`, `scrollbar.v.indicator.normal`,
-`scrollbar.v.grips.normal`, `scrollbar.h.*`, plus single/disabled/arrow-hilite
-when mapped.
+**SagradoKit names:** `scrollbar.v.double_arrows`, `scrollbar.v.single_arrows`,
+`scrollbar.v.disabled`, `scrollbar.v.too_small`, `scrollbar.v.indicator.*`,
+`scrollbar.v.grips.*`, `scrollbar.v.arrow_hilite.*`, and `scrollbar.h.*`.
+
+### Icon Button / Menu Bar / Column header
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Icon Button Normal/Hilited/Disabled | **49** / **50** / **51** | `icon_button.*`; icon + optional title |
+| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers; disabled often donor-filled |
+| Menu Bar Pattern / Menu Bar / Titles | rarely authored | Colour path `paint_menu_bar`; optional `menu_bar.*` art (no Hap occupancy in probed themes) |
 
 ### Column header / gel (related)
 
 | AppearanceEdit name | Hap slot | Notes |
 |---|---|---|
-| Column Header Normal/Hilited/Disabled | **150** / **151** / TBD | List headers + often tabs |
+| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers + often tabs |
 | Window Frame Normal/Focus | **220** / **221** | Positions = frame thickness; centre transparent |
 | Window Close/Min/Max/Menu … | **223+** | Positions place buttons; Disabled optional (else hide) |
 | Window Resize Normal/Focus | **243** / **244** | Bottom-right; no transparent colour |
@@ -253,8 +263,8 @@ Before painting art for a control in `engine/`:
 
 **Needs index probe before art paint:**
 
-Popup window frame (rare), pointed sliders, scroll arrow hilite overlays,
-menu item disabled, menu bar family.
+Menu bar Hap indices (empty across probed themes), popup window frame (rare),
+full Hap icon catalog beyond file/folder/user.
 
 ---
 

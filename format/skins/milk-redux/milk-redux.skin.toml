@@ -5,7 +5,7 @@ version = 1
 [meta]
 name = "Milk Redux"
 creator = "extracted from Hap"
-description = "Art seed: buttons, popup, gel, tick/mutex, progress, scroll/header, slider/menu, WonderLight, icons"
+description = "Art seed: buttons, icon button, popup, gel, tick/mutex, progress, scroll extras, pointed sliders, header, menu, WonderLight, icons"
 version = "1.0"
 
 [colors.button]
@@ -245,6 +245,21 @@ file = "default_button_disabled.skimg"
 caps = [13, 11, 12, 11]
 positions = [0, 0, 0, 0]
 
+[art."icon_button.normal"]
+file = "icon_button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."icon_button.hilited"]
+file = "icon_button_hilited.skimg"
+caps = [15, 11, 15, 11]
+positions = [0, 0, 0, 0]
+
+[art."icon_button.disabled"]
+file = "icon_button_disabled.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
 [art."tick.blank.normal"]
 file = "tick_blank_normal.skimg"
 caps = [0, 0, 0, 0]
@@ -450,6 +465,21 @@ file = "slider_h_indicator_disabled.skimg"
 caps = [0, 0, 0, 0]
 positions = [0, 0, 0, 0]
 
+[art."slider.h.indicator_pointed.normal"]
+file = "slider_h_indicator_pointed_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 3, 0, 0]
+
+[art."slider.h.indicator_pointed.hilited"]
+file = "slider_h_indicator_pointed_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 3, 0, 0]
+
+[art."slider.h.indicator_pointed.disabled"]
+file = "slider_h_indicator_pointed_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."slider.v.bar.normal"]
 file = "slider_v_bar_normal.skimg"
 caps = [0, 2, 0, 3]
@@ -480,6 +510,21 @@ file = "slider_v_indicator_disabled.skimg"
 caps = [0, 0, 0, 0]
 positions = [0, 0, 0, 0]
 
+[art."slider.v.indicator_pointed.normal"]
+file = "slider_v_indicator_pointed_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [3, 0, 0, 0]
+
+[art."slider.v.indicator_pointed.hilited"]
+file = "slider_v_indicator_pointed_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [3, 0, 0, 0]
+
+[art."slider.v.indicator_pointed.disabled"]
+file = "slider_v_indicator_pointed_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."column_header.normal"]
 file = "column_header_normal.skimg"
 caps = [2, 10, 2, 9]
@@ -490,10 +535,30 @@ file = "column_header_hilited.skimg"
 caps = [2, 10, 2, 9]
 positions = [0, 0, 0, 0]
 
+[art."column_header.disabled"]
+file = "column_header_disabled.skimg"
+caps = [8, 8, 9, 9]
+positions = [0, 0, 0, 0]
+
 [art."scrollbar.h.double_arrows"]
 file = "scrollbar_h_double_arrows.skimg"
 caps = [30, 0, 31, 0]
 positions = [30, 0, 30, 0]
+
+[art."scrollbar.h.single_arrows"]
+file = "scrollbar_h_single_arrows.skimg"
+caps = [15, 0, 16, 0]
+positions = [15, 0, 15, 0]
+
+[art."scrollbar.h.disabled"]
+file = "scrollbar_h_disabled.skimg"
+caps = [15, 0, 16, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.too_small"]
+file = "scrollbar_h_too_small.skimg"
+caps = [2, 0, 2, 0]
+positions = [0, 0, 0, 0]
 
 [art."scrollbar.h.indicator.normal"]
 file = "scrollbar_h_indicator_normal.skimg"
@@ -505,10 +570,65 @@ file = "scrollbar_h_indicator_hilited.skimg"
 caps = [23, 0, 23, 0]
 positions = [0, 0, 0, 0]
 
+[art."scrollbar.h.grips.normal"]
+file = "scrollbar_h_grips_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.grips.hilited"]
+file = "scrollbar_h_grips_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.first_left"]
+file = "scrollbar_h_arrow_hilite_first_left.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.first_right"]
+file = "scrollbar_h_arrow_hilite_first_right.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.second_left"]
+file = "scrollbar_h_arrow_hilite_second_left.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 14, 0]
+
+[art."scrollbar.h.arrow_hilite.second_right"]
+file = "scrollbar_h_arrow_hilite_second_right.skimg"
+caps = [0, 0, 0, 0]
+positions = [14, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.single_left"]
+file = "scrollbar_h_arrow_hilite_single_left.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.single_right"]
+file = "scrollbar_h_arrow_hilite_single_right.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."scrollbar.v.double_arrows"]
 file = "scrollbar_v_double_arrows.skimg"
 caps = [0, 30, 0, 31]
 positions = [0, 30, 0, 30]
+
+[art."scrollbar.v.single_arrows"]
+file = "scrollbar_v_single_arrows.skimg"
+caps = [0, 15, 0, 16]
+positions = [0, 15, 0, 15]
+
+[art."scrollbar.v.disabled"]
+file = "scrollbar_v_disabled.skimg"
+caps = [0, 15, 0, 16]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.too_small"]
+file = "scrollbar_v_too_small.skimg"
+caps = [0, 2, 0, 2]
+positions = [0, 0, 0, 0]
 
 [art."scrollbar.v.indicator.normal"]
 file = "scrollbar_v_indicator_normal.skimg"
@@ -519,6 +639,46 @@ positions = [0, 0, 0, 0]
 file = "scrollbar_v_indicator_hilited.skimg"
 caps = [0, 23, 0, 23]
 positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.grips.normal"]
+file = "scrollbar_v_grips_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.grips.hilited"]
+file = "scrollbar_v_grips_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.first_up"]
+file = "scrollbar_v_arrow_hilite_first_up.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.first_down"]
+file = "scrollbar_v_arrow_hilite_first_down.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.second_up"]
+file = "scrollbar_v_arrow_hilite_second_up.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 14]
+
+[art."scrollbar.v.arrow_hilite.second_down"]
+file = "scrollbar_v_arrow_hilite_second_down.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 14]
+
+[art."scrollbar.v.arrow_hilite.single_up"]
+file = "scrollbar_v_arrow_hilite_single_up.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.single_down"]
+file = "scrollbar_v_arrow_hilite_single_down.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 14]
 
 [art."menu.background_pattern"]
 file = "menu_background_pattern.skimg"
