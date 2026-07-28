@@ -3,7 +3,10 @@
 #pragma once
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "hap.h"
 #include "skin.h"
@@ -316,6 +319,8 @@ inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     s.px = t.px;
     std::memcpy(s.caps, t.caps, 4);
     std::memcpy(s.positions, t.positions, 4);
+    s.has_text_color = t.has_text_color;
+    s.text_color = t.text_color;
     return s;
 }
 
@@ -324,9 +329,75 @@ inline Color hap_u32_to_color(uint32_t v) {
             uint8_t(v & 0xff)};
 }
 
-// Fill Skin colours + art/icon caches from a Hap Theme (incomplete OK).
+// Locate format/skins/completion/completion.sap relative to a Hap path or CWD.
+inline std::string find_completion_pack(const std::string &hap_path = {}) {
+    std::vector<std::string> cands;
+    auto push = [&](std::string p) {
+        if (!p.empty()) cands.push_back(std::move(p));
+    };
+    if (!hap_path.empty()) {
+        std::string dir = parent_dir(hap_path);
+        push(join_path(dir, "completion.sap"));
+        push(join_path(dir, "../completion/completion.sap"));
+        push(join_path(dir, "../../format/skins/completion/completion.sap"));
+        push(join_path(dir, "../../../format/skins/completion/completion.sap"));
+        push(join_path(dir, "../format/skins/completion/completion.sap"));
+    }
+    push("format/skins/completion/completion.sap");
+    push("../format/skins/completion/completion.sap");
+    push("../../format/skins/completion/completion.sap");
+    for (const auto &p : cands) {
+        std::ifstream f(p, std::ios::binary);
+        if (f) return p;
+    }
+    return {};
+}
+
+// Fill empty art/icon caches from the Kit completion pack. Never overwrites
+// Hap-authored slots. Never fills primary.background image.
 template <typename AppearanceT>
-inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
+inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
+    if (pack_path.empty()) return 0;
+    Skin pack;
+    if (!skin_toml::load(pack_path, pack)) return 0;
+    std::string dir = parent_dir(pack_path);
+    int filled = 0;
+
+    for (const auto &kv : pack.art) {
+        if (kv.first == "primary.background") continue;
+        if (ap.art_cache.count(kv.first) && !ap.art_cache[kv.first].empty())
+            continue;
+        SkinImage img;
+        std::string full = join_path(dir, kv.second.path);
+        if (!load_skin_image(full, img) || img.empty()) continue;
+        if (kv.second.has_caps) std::memcpy(img.caps, kv.second.caps, 4);
+        if (kv.second.has_positions)
+            std::memcpy(img.positions, kv.second.positions, 4);
+        // Reject absurd separator geometry even from the pack.
+        if (kv.first == "menu.separator" && img.h > 4) continue;
+        if (kv.first.rfind("popup_frame", 0) == 0 && img.w * img.h < 25) continue;
+        ap.art_cache[kv.first] = std::move(img);
+        ++filled;
+    }
+    for (const auto &kv : pack.icons) {
+        if (ap.icon_cache.count(kv.first) && !ap.icon_cache[kv.first].empty())
+            continue;
+        SkinImage img;
+        std::string full = join_path(dir, kv.second);
+        if (!load_skin_image(full, img) || img.empty()) continue;
+        std::memset(img.caps, 0, 4);
+        std::memset(img.positions, 0, 4);
+        ap.icon_cache[kv.first] = std::move(img);
+        ++filled;
+    }
+    return filled;
+}
+
+// Fill Skin colours + art/icon caches from a Hap Theme (incomplete OK).
+// soft_complete_path: optional Kit completion.sap for empty slots only.
+template <typename AppearanceT>
+inline bool apply_hap_theme(AppearanceT &ap, Theme &theme,
+                            const std::string &soft_complete_path = {}) {
     Skin skin = stock_skin();
     skin.meta.name = theme.name.empty() ? "Hap Theme" : theme.name;
     skin.meta.creator = "imported from .hap";
@@ -368,6 +439,10 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
         if (!img || img->w <= 0) continue;
         ap.icon_cache[kHapIconMap[i].key] = theme_image_to_skin(*img);
     }
+
+    std::string pack = soft_complete_path;
+    if (pack.empty()) pack = find_completion_pack();
+    if (!pack.empty()) soft_complete(ap, pack);
     return true;
 }
 

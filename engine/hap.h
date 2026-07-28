@@ -145,6 +145,10 @@ struct ThemeImage {
     std::vector<uint32_t> px; // 0xFFRRGGBB opaque, 0x00000000 transparent
     uint8_t caps[4] = {0, 0, 0, 0};      // l, t, r, b
     uint8_t positions[4] = {0, 0, 0, 0}; // l, t, r, b
+    // AppearanceEdit "Text Color" (image record +8..+11, 0x00RRGGBB).
+    // has_text_color false when unset / zero.
+    bool has_text_color = false;
+    uint32_t text_color = 0;
 
     uint32_t at(int x, int y) const { return px[size_t(y) * w + x]; }
 };
@@ -197,9 +201,15 @@ inline bool parse_image(const std::vector<uint8_t> &d, size_t o,
     if (is_icon) {
         std::memset(out.caps, 0, 4);
         std::memset(out.positions, 0, 4);
+        out.has_text_color = false;
+        out.text_color = 0;
         pal_off = o + 8;
     } else {
         if (o + 20 > d.size()) return false;
+        // +8..+11 = Text Color / aux (0x00RRGGBB big-endian).
+        uint32_t tc = rd32(d, o + 8) & 0x00ffffffu;
+        out.has_text_color = tc != 0;
+        out.text_color = tc;
         for (int i = 0; i < 4; ++i) {
             out.caps[i] = d[o + 12 + i];
             out.positions[i] = d[o + 16 + i];

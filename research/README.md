@@ -7,6 +7,8 @@ Working files for mapping Haxial’s Appearance Engine into SagradoKit.
 | `AppearanceEdit-Documentation.txt` | Official AppearanceEdit 1.200 PDF, extracted |
 | `probe_haps.py` | Slot occupancy / caps / positions across `.hap` samples |
 | `probe-report.txt` | Last probe output |
+| `build_completion_pack.py` | Rebuild `format/skins/completion/` soft-fill pack |
+| `extract_milk_redux.py` | Extract Milk Redux `.hap` → donor-filled `.sap` |
 
 Download AppearanceEdit (do not commit the binary):
 

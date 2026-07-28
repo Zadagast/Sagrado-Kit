@@ -1,6 +1,7 @@
 // Appearance Engine — every window speaks this.
 // Resolve tokens (art → colour → stock) and paint kit surfaces into a Canvas.
 #pragma once
+#include <cstdint>
 #include <algorithm>
 #include <cstring>
 #include <map>
@@ -70,6 +71,10 @@ struct Appearance {
             if (!load_skin_image(full, img)) return;
             if (ref.has_caps) std::memcpy(img.caps, ref.caps, 4);
             if (ref.has_positions) std::memcpy(img.positions, ref.positions, 4);
+            if (ref.has_text_color) {
+                img.has_text_color = true;
+                img.text_color = ref.text_color;
+            }
             if (!ref.has_caps && img.caps[0] == 0 && img.caps[1] == 0 &&
                 img.caps[2] == 0 && img.caps[3] == 0 && img.w > 1 && img.h > 1) {
                 img.caps[0] = uint8_t(img.w / 2);
@@ -109,7 +114,7 @@ struct Appearance {
         if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".hap") == 0) {
             Theme theme;
             if (!load_hap(path, theme)) return false;
-            return apply_hap_theme(*this, theme);
+            return apply_hap_theme(*this, theme, find_completion_pack(path));
         }
         Skin s;
         if (!skin_toml::load(path, s)) return false;
@@ -152,6 +157,8 @@ struct Appearance {
             std::memcpy(ref.positions, kv.second.positions, 4);
             ref.has_caps = true;
             ref.has_positions = true;
+            ref.has_text_color = kv.second.has_text_color;
+            ref.text_color = kv.second.text_color;
         }
         for (const auto &kv : icon_cache) {
             if (kv.second.empty()) continue;
@@ -452,8 +459,31 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
     }
 }
 
-// Gel: art frame + title boxes when present; else Standard colour chrome.
-// disabled_mask bits: 1=close, 2=menu, 3=max, 4=min — Disabled art or hide.
+// True when a title-button plate is near-uniform (Milk blank spheres) so
+// Standard glyphs should be stamped on top. Art that already draws an X/−/+
+// has enough luminance variance to skip the overlay.
+inline bool skin_image_blankish(const SkinImage &img) {
+    if (img.empty() || img.w < 4 || img.h < 4) return true;
+    int samples = 0;
+    int64_t sum = 0, sum2 = 0;
+    int step_x = std::max(1, img.w / 4);
+    int step_y = std::max(1, img.h / 4);
+    for (int y = 0; y < img.h; y += step_y) {
+        for (int x = 0; x < img.w; x += step_x) {
+            uint32_t p = img.at(x, y);
+            if ((p >> 24) < 128) continue; // ignore transparent
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            int lum = (r + g + b) / 3;
+            sum += lum;
+            sum2 += lum * lum;
+            ++samples;
+        }
+    }
+    if (samples < 4) return true;
+    double mean = double(sum) / samples;
+    double var = double(sum2) / samples - mean * mean;
+    return var < 180.0; // blank spheres sit well under this; ink marks don't
+}
 inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                       const char *title, bool focused, int pressed_box = 0,
                       GelStyle style = GelStyle::Main,
@@ -466,7 +496,8 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     if (!frame) frame = ap.art("window.frame.normal");
     if (frame) {
         cv.nine_slice(*frame, win);
-        Color tc = ap.title_label(focused);
+        Color tc = frame->has_text_color ? plate_text_color(frame)
+                                         : ap.title_label(focused);
         int tw = cv.text_width(title);
         cv.text(win.x + (win.w - tw) / 2,
                 win.y + (lay.title_h - kFontHeight) / 2, title, tc);
@@ -486,9 +517,9 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
             else
                 cv.place(*img, r.x + (r.w - img->w) / 2,
                          r.y + (r.h - img->h) / 2);
-            // Milk Redux plates are blank spheres — draw Standard glyphs on top
-            // for interactive states only (disabled art carries its own look).
-            if (!disabled && glyph) glyph(cv, r, tc);
+            // Blank Milk-style spheres get Standard glyphs; themes that already
+            // drew marks (Ashen/BeOS) skip the overlay.
+            if (!disabled && glyph && skin_image_blankish(*img)) glyph(cv, r, tc);
         };
         paint_btn(lay.close_box, 1, "window.close.normal", "window.close.focus",
                   "window.close.hilited", "window.close.disabled", gel_close_glyph);
@@ -679,11 +710,19 @@ inline void paint_default_ring_color(Canvas &cv, const Appearance &ap, Rect r) {
     cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ap.c("default_button.face"));
 }
 
-// Art-first button; colour path = Sagrado draw_button.
-// Hap art themes (Milk): Button Label is often white on white plates — use
-// Primary Label for ink when art is present (KDX title-label practice).
-inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art) {
+// Prefer Hap plate Text Color when set; else Button Label with white-on-art
+// fallback to Primary Label (KDX title-label practice).
+inline Color plate_text_color(const SkinImage *plate) {
+    if (!plate || !plate->has_text_color) return {0, 0, 0};
+    return {uint8_t((plate->text_color >> 16) & 0xff),
+            uint8_t((plate->text_color >> 8) & 0xff),
+            uint8_t(plate->text_color & 0xff)};
+}
+
+inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
+                              const SkinImage *plate = nullptr) {
     if (disabled) return ap.c("button_disable.label");
+    if (plate && plate->has_text_color) return plate_text_color(plate);
     Color ink = ap.c("button.label");
     if (has_art && ink.r > 200 && ink.g > 200 && ink.b > 200)
         return ap.c("primary.label");
@@ -695,6 +734,7 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          bool disabled = false) {
     if (disabled) pressed = false;
     bool used_art = false;
+    const SkinImage *plate = nullptr;
     if (is_default) {
         const char *dslot = disabled ? "default_button.disabled"
                                      : (pressed ? "default_button.hilited"
@@ -704,25 +744,27 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
         if (dimg) {
             cv.nine_slice(*dimg, r);
             used_art = true;
+            plate = dimg;
         } else {
             paint_default_ring_color(cv, ap, r);
             r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
                  r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
             paint_button_face(cv, ap, r, pressed, disabled);
-            used_art = ap.art(disabled ? "button.disabled"
-                                       : (pressed ? "button.hilited"
-                                                  : "button.normal")) != nullptr;
+            plate = ap.art(disabled ? "button.disabled"
+                                    : (pressed ? "button.hilited" : "button.normal"));
+            used_art = plate != nullptr;
         }
     } else {
         const char *slot = disabled ? "button.disabled"
                                     : (pressed ? "button.hilited" : "button.normal");
-        used_art = ap.art(slot) != nullptr ||
-                   (pressed && ap.art("button.normal") != nullptr);
+        plate = ap.art(slot);
+        if (!plate && pressed) plate = ap.art("button.normal");
+        used_art = plate != nullptr;
         paint_button_face(cv, ap, r, pressed, disabled);
     }
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
-    Color ink = button_label_ink(ap, disabled, used_art);
+    Color ink = button_label_ink(ap, disabled, used_art, plate);
     cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
             label, ink);
 }
@@ -823,9 +865,18 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
                                 const char *label, bool hilite,
                                 bool disabled = false) {
     if (disabled) hilite = false;
+    const char *slot = disabled ? "column_header.disabled"
+                                : (hilite ? "column_header.hilited"
+                                          : "column_header.normal");
+    const SkinImage *img = ap.art(slot);
+    if (!img && disabled) img = ap.art("column_header.normal");
+    if (!img && hilite) img = ap.art("column_header.normal");
+
     Color ink = hilite ? ap.c("column_header.hilite_label") : ap.title_label(true);
     if (disabled) {
         ink = ap.c("primary.disable_label");
+    } else if (img && img->has_text_color) {
+        ink = plate_text_color(img);
     } else if (!hilite) {
         Color hl = ap.c("column_header.label");
         bool white = hl.r == 255 && hl.g == 255 && hl.b == 255;
@@ -835,12 +886,6 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
             ink = hl;
     }
 
-    const char *slot = disabled ? "column_header.disabled"
-                                : (hilite ? "column_header.hilited"
-                                          : "column_header.normal");
-    const SkinImage *img = ap.art(slot);
-    if (!img && disabled) img = ap.art("column_header.normal");
-    if (!img && hilite) img = ap.art("column_header.normal");
     if (img) {
         cv.nine_slice(*img, r);
         cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
@@ -937,23 +982,25 @@ inline void scrollbar_h_insets(const Appearance &ap, int bar_h, int &left,
     if (right <= 0) right = bar_h;
 }
 
-// Min thumb length: Hap indicator natural size (or caps sum), never just bar thickness.
+// Min thumb length: stretch-template floor = along-axis caps + 1px mid
+// (Milk V: 23+23+1 = 47). Do not use full bitmap height as a rigid brick —
+// short Ashen indicators (h=5) correctly floor at bar thickness.
 inline int scrollbar_min_thumb_v(const Appearance &ap, int bar_w) {
     const SkinImage *ind = ap.art("scrollbar.v.indicator.normal");
-    if (ind && ind->h > 0) return std::max(bar_w, ind->h);
     if (ind) {
         int c = int(ind->caps[1]) + int(ind->caps[3]) + 1;
-        if (c > bar_w) return c;
+        if (c > 1) return std::max(bar_w, c);
+        if (ind->h > 0) return std::max(bar_w, std::min(ind->h, bar_w * 3));
     }
     return bar_w;
 }
 
 inline int scrollbar_min_thumb_h(const Appearance &ap, int bar_h) {
     const SkinImage *ind = ap.art("scrollbar.h.indicator.normal");
-    if (ind && ind->w > 0) return std::max(bar_h, ind->w);
     if (ind) {
         int c = int(ind->caps[0]) + int(ind->caps[2]) + 1;
-        if (c > bar_h) return c;
+        if (c > 1) return std::max(bar_h, c);
+        if (ind->w > 0) return std::max(bar_h, std::min(ind->w, bar_h * 3));
     }
     return bar_h;
 }
@@ -1241,6 +1288,22 @@ inline Rect scrollbar_thumb_on_strip(Rect thumb, Rect strip, bool vertical) {
     return {thumb.x, strip.y, thumb.w, strip.h};
 }
 
+// Centre the indicator in the arrow strip cross-axis (Milk 14-wide art in a
+// 15-wide strip) — never stretch cross-axis via nine_slice.
+inline Rect scrollbar_indicator_dest(Rect thumb_on_strip, bool vertical,
+                                     int art_thickness) {
+    if (art_thickness <= 0) return thumb_on_strip;
+    if (vertical) {
+        if (art_thickness >= thumb_on_strip.w) return thumb_on_strip;
+        return {thumb_on_strip.x + (thumb_on_strip.w - art_thickness) / 2,
+                thumb_on_strip.y, art_thickness, thumb_on_strip.h};
+    }
+    if (art_thickness >= thumb_on_strip.h) return thumb_on_strip;
+    return {thumb_on_strip.x,
+            thumb_on_strip.y + (thumb_on_strip.h - art_thickness) / 2,
+            thumb_on_strip.w, art_thickness};
+}
+
 // Art-first vertical scrollbar (double/single arrows + indicator + grips + overlays).
 // `arrow_hot` stamps pressed-arrow hilite overlays (Haxial Positions = offsets).
 inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
@@ -1285,9 +1348,11 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
                                              : "scrollbar.v.indicator.normal";
             const SkinImage *ind = ap.art(islot);
             if (!ind) ind = ap.art("scrollbar.v.indicator.normal");
-            if (ind && th.h > 0)
-                cv.nine_slice(*ind, th);
-            else if (th.h > 0) {
+            if (ind && th.h > 0) {
+                Rect idest = scrollbar_indicator_dest(th, true, ind->w);
+                cv.nine_slice(*ind, idest);
+                th = idest; // grips centre on the painted indicator
+            } else if (th.h > 0) {
                 Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
                                           : ap.c("scrollbar.indicator");
                 cv.fill(th, face);
@@ -1373,9 +1438,11 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
                                              : "scrollbar.h.indicator.normal";
             const SkinImage *ind = ap.art(islot);
             if (!ind) ind = ap.art("scrollbar.h.indicator.normal");
-            if (ind && th.w > 0)
-                cv.nine_slice(*ind, th);
-            else if (th.w > 0) {
+            if (ind && th.w > 0) {
+                Rect idest = scrollbar_indicator_dest(th, false, ind->h);
+                cv.nine_slice(*ind, idest);
+                th = idest;
+            } else if (th.w > 0) {
                 Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
                                           : ap.c("scrollbar.indicator");
                 cv.fill(th, face);
@@ -1444,11 +1511,26 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
     const SkinImage *frame = ap.art("popup_frame.focus");
     if (!frame) frame = ap.art("popup_frame.normal");
     if (frame) {
-        // Positions = frame thickness (even); fall back to 2px.
-        pad_l = frame->positions[0] > 0 ? frame->positions[0] : 2;
-        pad_t = frame->positions[1] > 0 ? frame->positions[1] : 2;
-        pad_r = frame->positions[2] > 0 ? frame->positions[2] : 2;
-        pad_b = frame->positions[3] > 0 ? frame->positions[3] : 2;
+        // Positions = frame thickness (even). If all zero, derive from caps
+        // (even, ≥2) so Milk's 3×3 stub still pads sanely.
+        auto even_thick = [](int v) {
+            if (v <= 0) return 0;
+            if (v < 2) return 2;
+            return v & ~1;
+        };
+        pad_l = even_thick(frame->positions[0]);
+        pad_t = even_thick(frame->positions[1]);
+        pad_r = even_thick(frame->positions[2]);
+        pad_b = even_thick(frame->positions[3]);
+        if (pad_l + pad_t + pad_r + pad_b == 0) {
+            pad_l = pad_t = pad_r = pad_b =
+                even_thick(std::max({int(frame->caps[0]), int(frame->caps[1]),
+                                     int(frame->caps[2]), int(frame->caps[3]), 2}));
+        }
+        if (pad_l <= 0) pad_l = 2;
+        if (pad_t <= 0) pad_t = 2;
+        if (pad_r <= 0) pad_r = 2;
+        if (pad_b <= 0) pad_b = 2;
     }
 
     int inner_h = count * kMenuItemH;
@@ -1486,8 +1568,10 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
                                    std::strcmp(items[i], "—") == 0);
 
         if (is_sep) {
+            // Hap docs: separator ≤4 px. Milk's 28×36 plate is not a rule —
+            // treat as missing and draw the colour path.
             const SkinImage *sep = ap.art("menu.separator");
-            if (sep) {
+            if (sep && sep->h > 0 && sep->h <= 4) {
                 int sh = std::min(sep->h, row.h);
                 Rect dest{row.x, row.y + (row.h - sh) / 2, row.w, sh};
                 cv.nine_slice(*sep, dest);
@@ -1528,6 +1612,7 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
 
         Color ink = dis ? ap.c("menu.disable_label")
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        if (!dis && item && item->has_text_color) ink = plate_text_color(item);
         cv.text(row.x + 8, row.y + (kMenuItemH - kFontHeight) / 2, items[i], ink);
     }
     return lay;
@@ -1595,6 +1680,8 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
 
         Color ink = dis ? ap.c("menu.disable_label")
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        if (!dis && title_art && title_art->has_text_color)
+            ink = plate_text_color(title_art);
         cv.text(item.x + 8, item.y + (item.h - kFontHeight) / 2, t, ink);
         x += iw;
     }
@@ -1660,7 +1747,7 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
             cv.place(*sym, sx, sy);
         }
         if (no_title || !label || !*label) return;
-        Color ink = button_label_ink(ap, disabled, plate != nullptr);
+        Color ink = button_label_ink(ap, disabled, true, plate);
         int tx = r.x + 8 + (down ? 1 : 0);
         int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
         int max_w = (sym ? (sym->positions[2] > 0 ? r.w - sym->positions[2] - sym->w
@@ -2363,36 +2450,27 @@ inline Rect paint_wonderlight(Canvas &cv, const Appearance &ap, int x, int y,
     return b;
 }
 
-// File / folder icon — skin [icons] slot, else a drawn document glyph.
+// File / folder icon — skin [icons] slot. No synthetic document fallback:
+// incomplete Haps leave the chrome empty until soft-complete / authoring.
 inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
                        const char *slot = "file.generic.16", int size = 16) {
     Rect b{x, y, size, size};
     const SkinImage *img = ap.icon(slot);
     if (!img && size >= 32) img = ap.icon("file.generic.32");
     if (!img && size < 32) img = ap.icon("file.generic.16");
-    if (img) {
-        if (img->w == size && img->h == size)
-            cv.blit_image(*img, b.x, b.y);
-        else
-            cv.nine_slice(*img, b);
-        return b;
-    }
-    // Document plate
-    Color paper = ap.c("primary.light");
-    Color edge = ap.c("primary.dark");
-    Color ink = ap.c("primary.frame");
-    int fold = size / 4;
-    cv.fill({b.x + 2, b.y + 1, size - 5, size - 3}, paper);
-    cv.frame({b.x + 2, b.y + 1, size - 5, size - 3}, ink);
-    // dog-ear
-    for (int i = 0; i < fold; ++i) {
-        cv.hline(b.right() - 3 - fold + i, b.right() - 3, b.y + 1 + i, edge);
-        cv.put(b.right() - 3 - fold + i, b.y + 1 + i, pack(ink));
-    }
-    // text lines
-    for (int i = 0; i < 3; ++i)
-        cv.hline(b.x + 4, b.right() - 5, b.y + size / 2 + i * 3 - 2, edge);
+    if (!img) return b;
+    if (img->w == size && img->h == size)
+        cv.blit_image(*img, b.x, b.y);
+    else
+        cv.place(*img, b.x + (b.w - img->w) / 2, b.y + (b.h - img->h) / 2);
     return b;
+}
+
+// True when the requested icon (or a size fallback) is in the cache.
+inline bool has_icon(const Appearance &ap, const char *slot, int size = 16) {
+    if (ap.icon(slot)) return true;
+    if (size >= 32) return ap.icon("file.generic.32") != nullptr;
+    return ap.icon("file.generic.16") != nullptr;
 }
 
 // Icon Button — Hap 49/50/51. Optional title drawn beside a centred icon.
@@ -2415,22 +2493,23 @@ inline void paint_icon_button(Canvas &cv, const Appearance &ap, Rect r,
     if (icon_sz < 8) icon_sz = std::max(8, std::min(r.h, r.w) - 2);
     int off = pressed ? 1 : 0;
     bool has_title = title && *title;
+    const char *islot = icon_slot ? icon_slot : "file.generic.16";
+    bool draw_icon = has_icon(ap, islot, icon_sz);
     if (has_title) {
         int tw = cv.text_width(title);
-        int gap = 4;
-        int total = icon_sz + gap + tw;
+        int gap = draw_icon ? 4 : 0;
+        int icon_part = draw_icon ? icon_sz : 0;
+        int total = icon_part + gap + tw;
         int ix = r.x + std::max(pad, (r.w - total) / 2) + off;
         int iy = r.y + (r.h - icon_sz) / 2 + off;
-        paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16",
-                   icon_sz);
-        Color ink = button_label_ink(ap, disabled, img != nullptr);
-        cv.text(ix + icon_sz + gap, r.y + (r.h - kFontHeight) / 2 + off, title,
+        if (draw_icon) paint_icon(cv, ap, ix, iy, islot, icon_sz);
+        Color ink = button_label_ink(ap, disabled, img != nullptr, img);
+        cv.text(ix + icon_part + gap, r.y + (r.h - kFontHeight) / 2 + off, title,
                 ink);
-    } else {
+    } else if (draw_icon) {
         int ix = r.x + (r.w - icon_sz) / 2 + off;
         int iy = r.y + (r.h - icon_sz) / 2 + off;
-        paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16",
-                   icon_sz);
+        paint_icon(cv, ap, ix, iy, islot, icon_sz);
     }
 }
 
@@ -2734,6 +2813,9 @@ inline Rect paint_disclosure(Canvas &cv, const Appearance &ap, int x, int y,
     if (img) {
         if (img->w == b.w && img->h == b.h)
             cv.blit_image(*img, b.x, b.y);
+        else if (img->w * 2 <= b.w || img->h * 2 <= b.h)
+            // Much smaller than dest (Milk medium 6×8 in 16×16) — centre, no smear.
+            cv.place(*img, b.x + (b.w - img->w) / 2, b.y + (b.h - img->h) / 2);
         else
             cv.nine_slice(*img, b);
         return b;

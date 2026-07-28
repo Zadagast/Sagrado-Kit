@@ -61,3 +61,19 @@ tweak named roles, watch the gel / button / field / list / scrollbar preview,
 save. Load a `.hap` for live import; **Save** writes a `.sap` plus `.skimg`
 art beside it so the authored format can carry the same colours, caps,
 positions, and images the Hap provided.
+
+## Live Hap load
+
+Live `.hap` import copies **only occupied** Hap slots (no blind donor of
+Primary Background or window frames). Incomplete themes still resolve
+**art → colour → stock**.
+
+After import, the Kit applies a small **soft-completion** pack
+(`format/skins/completion/`) that fills **empty** art/icon keys only
+(icons, WonderLight, scroll grips, menu plates, focus box). Authored Hap
+art is never overwritten. Pure Hap without the pack is still a valid
+colour path.
+
+Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
+set, paint prefers that ink for button / header / menu / title labels on
+the matching plate.

@@ -1,0 +1,122 @@
+# SagradoKit Hap soft-completion pack
+# Fills empty art/icon slots after live Hap import. Never Primary Background.
+format = "sap"
+version = 1
+
+[meta]
+name = "Hap Completion"
+creator = "SagradoKit"
+description = "Soft-fill icons, grips, WonderLight, menu, focus box for incomplete Haps"
+
+[colors]
+
+[art."focus_box.normal"]
+file = "focus_box_normal.skimg"
+caps = [3, 3, 3, 3]
+positions = [0, 0, 0, 0]
+
+[art."focus_box.hilited"]
+file = "focus_box_hilited.skimg"
+caps = [2, 2, 2, 2]
+positions = [0, 0, 0, 0]
+
+[art."focus_box.disabled"]
+file = "focus_box_disabled.skimg"
+caps = [3, 3, 3, 3]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.grips.normal"]
+file = "scrollbar_h_grips_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.grips.hilited"]
+file = "scrollbar_h_grips_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.grips.normal"]
+file = "scrollbar_v_grips_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.grips.hilited"]
+file = "scrollbar_v_grips_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."menu.background_pattern"]
+file = "menu_background_pattern.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."menu.background"]
+file = "menu_background.skimg"
+caps = [32, 21, 32, 15]
+positions = [0, 0, 0, 0]
+
+[art."menu.item.normal"]
+file = "menu_item_normal.skimg"
+caps = [19, 9, 18, 8]
+positions = [0, 0, 0, 0]
+
+[art."menu.separator"]
+file = "menu_separator.skimg"
+caps = [9, 0, 10, 0]
+positions = [0, 0, 0, 0]
+
+[art."popup_frame.normal"]
+file = "popup_frame_normal.skimg"
+caps = [4, 4, 4, 4]
+positions = [4, 4, 4, 4]
+
+[art."popup_frame.focus"]
+file = "popup_frame_focus.skimg"
+caps = [4, 4, 4, 4]
+positions = [4, 4, 4, 4]
+
+[art."wonderlight.off"]
+file = "wonderlight_off.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.pause"]
+file = "wonderlight_pause.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.ready"]
+file = "wonderlight_ready.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.go"]
+file = "wonderlight_go.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.finished"]
+file = "wonderlight_finished.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_off"]
+file = "wonderlight_flash_off.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_on1"]
+file = "wonderlight_flash_on1.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_on2"]
+file = "wonderlight_flash_on2.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[icons]
+"file.generic.16" = "file_generic_16.skimg"
+"file.generic.32" = "file_generic_32.skimg"
+"folder.16" = "folder_16.skimg"
+"folder.32" = "folder_32.skimg"

@@ -607,6 +607,14 @@ inline bool load(const std::string &path, Skin &skin) {
             parse_section_slot(section, "art_meta.", art_slot)) {
             ArtRef &ref = skin.art[art_slot];
             if ((key == "file" || key == "path") && is_str) ref.path = str;
+            else if (key == "text_color" && is_str) {
+                Color c;
+                if (parse_hex_color(str, c)) {
+                    ref.has_text_color = true;
+                    ref.text_color = (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) |
+                                    uint32_t(c.b);
+                }
+            }
             continue;
         }
         if (section == "icons" && is_str) {
@@ -708,6 +716,11 @@ inline bool save(const std::string &path, const Skin &skin) {
             f << "positions = [" << int(ref.positions[0]) << ", "
               << int(ref.positions[1]) << ", " << int(ref.positions[2]) << ", "
               << int(ref.positions[3]) << "]\n";
+        }
+        if (ref.has_text_color && ref.text_color != 0) {
+            char hex[16];
+            std::snprintf(hex, sizeof(hex), "#%06x", ref.text_color & 0xffffffu);
+            f << "text_color = \"" << hex << "\"\n";
         }
         f << "\n";
     }
