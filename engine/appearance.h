@@ -8,6 +8,16 @@
 
 #include "skin.h"
 
+// RAII clip nest — intersects Canvas clip with `r`, restores on scope exit.
+struct CanvasClip {
+    Canvas &cv;
+    Rect prev;
+    explicit CanvasClip(Canvas &c, Rect r) : cv(c), prev(c.push_clip(r)) {}
+    ~CanvasClip() { cv.pop_clip(prev); }
+    CanvasClip(const CanvasClip &) = delete;
+    CanvasClip &operator=(const CanvasClip &) = delete;
+};
+
 // --- Gel window (Sagrado/Haxial TextEdit chrome) -------------------------
 // Metrics and paint order are a direct port of Sagrado native/src/chrome.h
 // (measured off real Haxial TextEdit). Do not "improve" these numbers.
@@ -611,6 +621,7 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     GelLayout lay = gel_layout(x, y, w, h, GelStyle::Dialog, &ap, true);
     paint_gel(cv, ap, win, "Find and Replace", true, 0, GelStyle::Dialog);
 
+    CanvasClip clip(cv, lay.client);
     Rect cl = lay.client;
     int lx = cl.x + 10;
     int fx = cl.x + 84;
@@ -649,9 +660,13 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     if (cl.w > 280) paint_check(cl.x + 190, cy, false, "Stop at End of File");
 
     int by = cl.bottom() - 34;
+    if (by < cl.y + 4) by = cl.y + 4;
     Rect b_all{lx, by, 96, kButtonH};
     Rect b_repl{b_all.right() + 8, by, 76, kButtonH};
     Rect b_find{cl.right() - 14 - 84, by, 84, kDefaultButtonH};
+    // Keep default Find bottom inside the client (outer hangs 2px vs regular).
+    if (b_find.bottom() > cl.bottom() - 2)
+        b_find.y = cl.bottom() - 2 - b_find.h;
     Rect b_cancel{b_find.x - 10 - 76, by, 76, kButtonH};
     if (b_cancel.x > b_repl.right() + 4) {
         paint_button(cv, ap, b_all, "Replace All", false, false);
@@ -1922,12 +1937,16 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     ft.gel = gel_layout(win.x, win.y, win.w, win.h, GelStyle::Dialog, &ap, true);
     paint_gel(cv, ap, win, "File Transfers", true, 0, GelStyle::Dialog);
 
+    CanvasClip clip(cv, ft.gel.client);
     Rect cl = ft.gel.client;
     constexpr int kPad = 6;
     constexpr int kFootH = kButtonH + 8;
     int list_h = cl.h - 2 * kPad - kFootH;
-    if (list_h < kHeaderH + kRowH) list_h = kHeaderH + kRowH;
-    ft.list = {cl.x + kPad, cl.y + kPad, cl.w - 2 * kPad, list_h};
+    if (list_h < 0) list_h = 0;
+    // Never force the list taller than the gel client — that spills past the frame.
+    if (list_h < kHeaderH + kRowH && cl.h >= kHeaderH + kRowH + 2 * kPad + kFootH)
+        list_h = kHeaderH + kRowH;
+    ft.list = {cl.x + kPad, cl.y + kPad, std::max(0, cl.w - 2 * kPad), list_h};
 
     // Column widths: Status/Rate wide enough for sample strings; Name absorbs rest.
     // "Receiving" ~9 glyphs, "573/sec" ~7 — size for our bitmap font + pad.
@@ -2005,6 +2024,9 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
 
     // Footer buttons — Close / Stop All / Clear Finished
     int by = cl.bottom() - kPad - kButtonH;
+    if (by < ft.list.bottom() + 2) by = ft.list.bottom() + 2;
+    if (by + kButtonH > cl.bottom() - 2) by = cl.bottom() - 2 - kButtonH;
+    if (by < cl.y) by = cl.y;
     int bw = 88;
     int gap = 8;
     int bx = cl.x + kPad;
@@ -2189,169 +2211,225 @@ struct KitPreviewState {
 };
 
 // Full kit preview panel inside a gel client rect.
+// All ink is clipped to `client` so nested gels / wide rows cannot spill the
+// host window frame. Sections that no longer fit vertically are skipped.
 inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
                                           Rect client, bool caret_on,
                                           int list_sel, int scroll_val,
                                           const KitPreviewState &st = {}) {
     KitPreviewLayout lay;
     lay.bounds = client;
+    CanvasClip panel_clip(cv, client);
+
     int pad = 10;
     int x = client.x + pad;
     int y = client.y + pad;
     int w = client.w - 2 * pad;
+    if (w < 40) w = 40;
+    const int right = client.right() - pad;
+    auto fits = [&](int need_h) { return y + need_h <= client.bottom() - pad; };
 
     cv.text(x, y, "Kit Preview", ap.c("primary.label"));
     y += kFontHeight + 8;
 
     // Find-sized dialog chrome — title bar / icons at real TextEdit proportions
     // (Sagrado Find is 442×176). Not a stubby 72px nested gel.
-    paint_find_chrome_sample(cv, ap, x, y, w, caret_on);
-    y += kFindDlgH + 10;
+    if (fits(kFindDlgH)) {
+        paint_find_chrome_sample(cv, ap, x, y, w, caret_on);
+        y += kFindDlgH + 10;
+    }
 
     // Buttons — Find metrics: regular 24px; default OK 26px outer, same top.
-    constexpr int kBtnW = 72;
-    constexpr int kBtnGap = 10;
-    lay.btn_ok = default_button_rect(x, y, kBtnW);
-    lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kButtonH};
-    lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kButtonH};
-    Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kButtonH};
-    paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
-    paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
-    paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
-    if (btn_dis.right() <= client.right() - pad)
-        paint_button(cv, ap, btn_dis, "Disabled", false, false, true);
-    y += kDefaultButtonH + 8;
+    if (fits(kDefaultButtonH)) {
+        constexpr int kBtnW = 72;
+        constexpr int kBtnGap = 10;
+        lay.btn_ok = default_button_rect(x, y, kBtnW);
+        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kButtonH};
+        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kButtonH};
+        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kButtonH};
+        paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
+        if (lay.btn_cancel.right() <= right)
+            paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
+        if (lay.btn_press.right() <= right)
+            paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
+        if (btn_dis.right() <= right)
+            paint_button(cv, ap, btn_dis, "Disabled", false, false, true);
+        y += kDefaultButtonH + 8;
+    }
 
-    // Tick (checkbox) + Mutex (radio) + disclosure
-    paint_tick(cv, ap, x, y, TickMark::Ticked, "Tick on");
-    paint_tick(cv, ap, x + 110, y, TickMark::Blank, "Tick off");
-    paint_tick(cv, ap, x + 220, y, TickMark::Tristate, "Tri", false, false);
-    paint_mutex(cv, ap, x + 300, y, TickMark::Ticked, "Mutex A");
-    paint_mutex(cv, ap, x + 400, y, TickMark::Blank, "Mutex B");
-    paint_disclosure(cv, ap, x + 510, y, DisclosureKind::PlusSmall);
-    paint_disclosure(cv, ap, x + 528, y, DisclosureKind::MinusSmall);
-    y += kTickBox + 10;
+    // Tick (checkbox) + Mutex (radio) + disclosure — only place what fits width.
+    if (fits(kTickBox)) {
+        paint_tick(cv, ap, x, y, TickMark::Ticked, "Tick on");
+        if (x + 110 + 80 <= right)
+            paint_tick(cv, ap, x + 110, y, TickMark::Blank, "Tick off");
+        if (x + 220 + 40 <= right)
+            paint_tick(cv, ap, x + 220, y, TickMark::Tristate, "Tri", false, false);
+        if (x + 300 + 70 <= right)
+            paint_mutex(cv, ap, x + 300, y, TickMark::Ticked, "Mutex A");
+        if (x + 400 + 70 <= right)
+            paint_mutex(cv, ap, x + 400, y, TickMark::Blank, "Mutex B");
+        if (x + 528 + 12 <= right) {
+            paint_disclosure(cv, ap, x + 510, y, DisclosureKind::PlusSmall);
+            paint_disclosure(cv, ap, x + 528, y, DisclosureKind::MinusSmall);
+        }
+        y += kTickBox + 10;
+    }
 
     // Progress + separators + box / framed samples
-    cv.text(x, y + 1, "Progress", ap.c("primary.label"));
-    paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
-    y += kProgressH + 8;
-    paint_separator_h(cv, ap, {x, y, std::min(w, 220), 4});
-    paint_separator_v(cv, ap, {x + std::min(w, 220) + 8, y - 6, 4, 20});
-    y += 10;
+    if (fits(kProgressH + 8)) {
+        cv.text(x, y + 1, "Progress", ap.c("primary.label"));
+        paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
+        y += kProgressH + 8;
+    }
+    if (fits(14)) {
+        int sep_w = std::min(w, 220);
+        paint_separator_h(cv, ap, {x, y, sep_w, 4});
+        if (x + sep_w + 12 <= right)
+            paint_separator_v(cv, ap, {x + sep_w + 8, y - 6, 4, 20});
+        y += 10;
+    }
 
-    // Box + framed + icons
-    paint_box(cv, ap, {x, y, 120, 36}, "Box");
-    paint_framed_raised(cv, ap, {x + 130, y, 100, 36});
-    cv.text(x + 140, y + 12, "Framed", ap.c("primary.label"));
-    paint_icon(cv, ap, x + 250, y + 8, "file.generic.16", 16);
-    paint_icon(cv, ap, x + 274, y + 8, "folder.16", 16);
-    y += 44;
+    if (fits(44)) {
+        paint_box(cv, ap, {x, y, std::min(120, w / 2), 36}, "Box");
+        if (x + 230 <= right) {
+            paint_framed_raised(cv, ap, {x + 130, y, 100, 36});
+            cv.text(x + 140, y + 12, "Framed", ap.c("primary.label"));
+        }
+        if (x + 290 <= right) {
+            paint_icon(cv, ap, x + 250, y + 8, "file.generic.16", 16);
+            paint_icon(cv, ap, x + 274, y + 8, "folder.16", 16);
+        }
+        y += 44;
+    }
 
-    // Compact Main gel (title + grip) sample
-    int gel_w = std::min(w, 220);
-    paint_gel(cv, ap, {x, y, gel_w, 56}, "Main Gel", true, 0, GelStyle::Main);
-    y += 64;
+    // Compact Main gel (title + grip) sample — clip ink to its own frame.
+    if (fits(56)) {
+        int gel_w = std::min(w, 220);
+        Rect gel_win{x, y, gel_w, 56};
+        {
+            CanvasClip gel_clip(cv, gel_win);
+            paint_gel(cv, ap, gel_win, "Main Gel", true, 0, GelStyle::Main);
+        }
+        y += 64;
+    }
 
     // Official-style KDX File Transfers window (columns + LEDs + footer).
     int ftw = std::min(w, 450);
     int fth = 158;
-    paint_file_transfers_window(cv, ap, {x, y, ftw, fth});
-    y += fth + 8;
+    if (fits(fth)) {
+        paint_file_transfers_window(cv, ap, {x, y, ftw, fth});
+        y += fth + 8;
+    }
 
     // Field + dropdown — AppearanceEdit: usually 20px tall
-    int field_w = std::min(w, 280);
-    lay.field = {x, y, field_w, kFieldH};
-    paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
-    // No-title popup well beside the field (AppearanceEdit pattern)
-    Rect no_title{lay.field.right() + 6, y, kDropArrowW + 2, kFieldH};
-    if (no_title.right() <= client.right() - pad)
-        paint_dropdown(cv, ap, no_title, "", false, false, false, true);
-    y += kFieldH + 8;
+    if (fits(kFieldH)) {
+        int field_w = std::min(w, 280);
+        // Leave room for optional no-title well.
+        if (field_w + kDropArrowW + 8 > w) field_w = std::max(80, w - kDropArrowW - 8);
+        lay.field = {x, y, field_w, kFieldH};
+        paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
+        Rect no_title{lay.field.right() + 6, y, kDropArrowW + 2, kFieldH};
+        if (no_title.right() <= right)
+            paint_dropdown(cv, ap, no_title, "", false, false, false, true);
+        y += kFieldH + 8;
+    }
 
     // Popup buttons — real bevelled plates (KDX Settings), not text fields.
-    // AppearanceEdit default ~20px; match sibling buttons when in a dialog row.
     static const char *menu_items[] = {"Standard", "Slate", "-", "Custom...", "Disabled"};
     static const unsigned kMenuDisabled = 1u << 4;
     const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 4)];
     if (st.menu_sel == 2) drop_label = "Standard"; // separator not selectable
-    int pop_h = kButtonH; // KDX Settings: popup matches sibling dialog buttons
-    lay.dropdown = {x, y, std::min(w, 200), pop_h};
-    paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
-                   st.pressed_btn == 4, false);
-    // Disabled companion (KDX Settings "Sound List" / None)
-    Rect drop_dis{lay.dropdown.right() + 10, y, std::min(120, w - lay.dropdown.w - 10),
-                  pop_h};
-    if (drop_dis.w > 60)
-        paint_dropdown(cv, ap, drop_dis, "None", false, false, true);
-    y += pop_h + 8;
+    int pop_h = kButtonH;
+    if (fits(pop_h)) {
+        lay.dropdown = {x, y, std::min(w, 200), pop_h};
+        paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
+                       st.pressed_btn == 4, false);
+        Rect drop_dis{lay.dropdown.right() + 10, y,
+                      std::min(120, right - (lay.dropdown.right() + 10)), pop_h};
+        if (drop_dis.w > 60)
+            paint_dropdown(cv, ap, drop_dis, "None", false, false, true);
+        y += pop_h + 8;
+    }
 
     // Slider H + V (art-first when present)
-    cv.text(x, y + 2, "Slider", ap.c("primary.label"));
-    lay.slider = {x + 56, y, std::min(w - 100, 200), 22};
-    lay.slider_lay =
-        paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
-    char sval[16];
-    std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
-    cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
-    Rect vslide{lay.slider.right() + 48, y - 4, 22, 72};
-    if (vslide.right() <= client.right() - pad)
-        paint_slider_v(cv, ap, vslide, st.slider_value, 100, false);
-    y += 28;
+    if (fits(28)) {
+        cv.text(x, y + 2, "Slider", ap.c("primary.label"));
+        int slide_w = std::min(std::max(80, w - 100), 200);
+        lay.slider = {x + 56, y, slide_w, 22};
+        if (lay.slider.right() > right) lay.slider.w = std::max(40, right - lay.slider.x);
+        lay.slider_lay =
+            paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
+        char sval[16];
+        std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
+        if (lay.slider.right() + 28 <= right)
+            cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
+        Rect vslide{lay.slider.right() + 48, y - 4, 22, 72};
+        if (vslide.right() <= right && vslide.bottom() <= client.bottom() - pad)
+            paint_slider_v(cv, ap, vslide, st.slider_value, 100, false);
+        y += 28;
+    }
 
-    // Compact V + H scrollbar samples (always visible above the list)
-    cv.text(x, y + 2, "Scroll", ap.c("primary.label"));
-    Rect vdemo{x + 56, y, kScrollbarW, 72};
-    paint_scrollbar(cv, ap, vdemo, 3, 10, 4, false);
-    Rect hdemo{vdemo.right() + 10, y + (72 - kScrollbarW) / 2,
-               std::min(w - 90, 200), kScrollbarW};
-    paint_scrollbar_h(cv, ap, hdemo, 2, 8, 4, true);
-    y += 80;
+    // Compact V + H scrollbar samples
+    if (fits(72)) {
+        cv.text(x, y + 2, "Scroll", ap.c("primary.label"));
+        Rect vdemo{x + 56, y, kScrollbarW, 72};
+        paint_scrollbar(cv, ap, vdemo, 3, 10, 4, false);
+        Rect hdemo{vdemo.right() + 10, y + (72 - kScrollbarW) / 2,
+                   std::min(std::max(40, right - (vdemo.right() + 10)), 200),
+                   kScrollbarW};
+        if (hdemo.w >= 40)
+            paint_scrollbar_h(cv, ap, hdemo, 2, 8, 4, true);
+        y += 80;
+    }
 
     // List + header + scrollbar (file_label tints on unselected rows)
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
     lay.row_count = 8;
-    int list_h = client.bottom() - y - pad - (kScrollbarW + 8);
-    if (list_h < 72) list_h = 72;
-    lay.list = {x, y, std::min(w, 320), list_h};
-    lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
-    int max_scroll = std::max(0, lay.row_count - lay.page_rows);
-    if (scroll_val < 0) scroll_val = 0;
-    if (scroll_val > max_scroll) scroll_val = max_scroll;
+    // Room for optional H-scrollbar under the list; never force past the panel.
+    int list_h = client.bottom() - y - pad - (kScrollbarW + 4);
+    if (list_h < kHeaderH + kRowH)
+        list_h = client.bottom() - y - pad; // drop H-scrollbar budget
+    if (list_h >= kHeaderH + kRowH) {
+        lay.list = {x, y, std::min(w, 320), list_h};
+        lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
+        int max_scroll = std::max(0, lay.row_count - lay.page_rows);
+        if (scroll_val < 0) scroll_val = 0;
+        if (scroll_val > max_scroll) scroll_val = max_scroll;
 
-    Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, kHeaderH};
-    paint_column_header(cv, ap, hdr, "Name", true);
-    Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW,
-              lay.list.h - kHeaderH};
-    cv.fill(body, ap.c("list.background"));
-    cv.frame(body, ap.c("primary.frame"));
-    for (int i = 0; i < lay.page_rows; ++i) {
-        int idx = scroll_val + i;
-        Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
-        bool sel = (idx == list_sel);
-        if (sel)
-            cv.fill(row, ap.c("list.hilite_background"));
-        else if (i % 2)
-            cv.fill(row, ap.c("list.sort_column_background"));
-        if (idx >= 0 && idx < lay.row_count) {
-            Color ink = sel ? ap.c("list.hilite_foreground")
-                            : file_label_color(ap, idx % 16);
-            cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
+        Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, kHeaderH};
+        paint_column_header(cv, ap, hdr, "Name", true);
+        Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW,
+                  lay.list.h - kHeaderH};
+        cv.fill(body, ap.c("list.background"));
+        cv.frame(body, ap.c("primary.frame"));
+        for (int i = 0; i < lay.page_rows; ++i) {
+            int idx = scroll_val + i;
+            Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+            bool sel = (idx == list_sel);
+            if (sel)
+                cv.fill(row, ap.c("list.hilite_background"));
+            else if (i % 2)
+                cv.fill(row, ap.c("list.sort_column_background"));
+            if (idx >= 0 && idx < lay.row_count) {
+                Color ink = sel ? ap.c("list.hilite_foreground")
+                                : file_label_color(ap, idx % 16);
+                cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
+            }
+            cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
         }
-        cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
+        lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
+                    lay.list.h - kHeaderH};
+        paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows,
+                        st.thumb_hot);
+
+        Rect hsbar{lay.list.x, lay.list.bottom() + 4, lay.list.w, kScrollbarW};
+        if (hsbar.bottom() <= client.bottom() - 2)
+            paint_scrollbar_h(cv, ap, hsbar, 2, 8, 4, false);
     }
-    lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
-                lay.list.h - kHeaderH};
-    paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows, st.thumb_hot);
 
-    // Horizontal scrollbar sample under the list
-    Rect hsbar{lay.list.x, lay.list.bottom() + 4, lay.list.w, kScrollbarW};
-    if (hsbar.bottom() <= client.bottom() - 2)
-        paint_scrollbar_h(cv, ap, hsbar, 2, 8, 4, false);
-
-    // Open dropdown menu painted last so it stacks above the list
-    if (st.dropdown_open) {
+    // Open dropdown menu painted last so it stacks above the list (still clipped).
+    if (st.dropdown_open && lay.dropdown.w > 0) {
         lay.menu_lay = paint_menu(cv, ap, lay.dropdown.x, lay.dropdown.bottom(),
                                   lay.dropdown.w, menu_items, 5, st.menu_hot,
                                   kMenuDisabled);

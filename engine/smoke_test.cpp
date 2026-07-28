@@ -75,6 +75,30 @@ int main(int argc, char **argv) {
     }
     std::printf("roundtrip ok → %s\n", out.c_str());
 
+    // Clip regression: tall kit content must not paint outside a short panel.
+    {
+        Canvas panel;
+        panel.resize(400, 280);
+        panel.clear(rgb(0, 0, 0));
+        Rect box{8, 8, 384, 264};
+        panel.fill(box, ap.c("workspace.background3"));
+        {
+            CanvasClip clip(panel, box);
+            paint_kit_preview(panel, ap, box, true, 1, 0);
+        }
+        size_t spill = 0;
+        for (int y = 0; y < panel.height(); ++y)
+            for (int x = 0; x < panel.width(); ++x) {
+                if (box.contains(x, y)) continue;
+                if (panel.data()[size_t(y) * panel.width() + x]) ++spill;
+            }
+        std::printf("clip spill outside preview panel: %zu pixels\n", spill);
+        if (spill != 0) {
+            std::fprintf(stderr, "kit preview spilled past clip\n");
+            return 1;
+        }
+    }
+
     // Write a PPM preview (easy to convert / view) for build verification.
     const char *ppm = ap.art("button.normal") ? "build/kit-preview-art.ppm"
                                               : "build/kit-preview.ppm";

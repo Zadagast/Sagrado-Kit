@@ -173,6 +173,28 @@ struct Canvas {
     // Place a symbol (popup arrow, etc.) — same as blit_image.
     void place(const SkinImage &img, int dx, int dy) { blit_image(img, dx, dy); }
 
+    Rect clip_rect() const { return clip_; }
+
+    // Replace clip (caller should intersect with prior clip when nesting).
+    void set_clip(Rect r) {
+        if (r.w < 0) r.w = 0;
+        if (r.h < 0) r.h = 0;
+        clip_ = r;
+    }
+
+    // Intersect current clip with r; returns previous clip for restore.
+    Rect push_clip(Rect r) {
+        Rect prev = clip_;
+        int x0 = r.x > clip_.x ? r.x : clip_.x;
+        int y0 = r.y > clip_.y ? r.y : clip_.y;
+        int x1 = r.right() < clip_.right() ? r.right() : clip_.right();
+        int y1 = r.bottom() < clip_.bottom() ? r.bottom() : clip_.bottom();
+        clip_ = {x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0)};
+        return prev;
+    }
+
+    void pop_clip(Rect prev) { clip_ = prev; }
+
     // 9-slice using AppearanceEdit caps: corners 1:1, edges/centre stretched.
     // Corners are stamped last so stretched edges cannot own corner pixels
     // (avoids the frame reading as four disconnected border sticks).

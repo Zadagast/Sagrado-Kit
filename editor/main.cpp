@@ -306,7 +306,7 @@ void paint() {
     paint_slider(cv, g.slider_b, "B", cur.b, rgb(40, 80, 200));
     paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
 
-    // Live kit preview
+    // Live kit preview — clip so tall samples cannot paint through the gel frame.
     cv.fill(g.preview, ap.c("workspace.background3"));
     cv.frame(g.preview, ap.c("focus.box"));
     g.preview_st.pressed_btn = (g.drag == DragPreviewBtn || g.drag == DragDropdown)
@@ -314,8 +314,11 @@ void paint() {
                                    : 0;
     g.preview_st.thumb_hot = g.drag == DragThumbPreview;
     g.preview_st.slider_hot = g.drag == DragSliderKit;
-    g.preview_lay = paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
-                                      g.preview_scroll, g.preview_st);
+    {
+        CanvasClip preview_clip(cv, g.preview);
+        g.preview_lay = paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
+                                          g.preview_scroll, g.preview_st);
+    }
 
     // Grow box last — same order as Sagrado (paint_grip after content).
     paint_gel_grip(cv, ap, g.gel.grip, g.focused);
