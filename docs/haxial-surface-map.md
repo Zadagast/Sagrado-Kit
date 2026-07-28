@@ -227,9 +227,9 @@ face + 3 px on each side (`kDefaultButtonPad`).
 | Medium Plus / Minus | **263** / **267** | `disclosure.plus.medium`, `disclosure.minus.medium` — docs: 16×16; occupied in 7/11 themes (stride matches Small ±4) |
 | Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` — ≤4 px |
 | Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
-| Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
-| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — **must** 16×16 |
-| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp; On1/On2 alternate |
+| Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` — AppearanceEdit is **continuous** stretch; KDX File Transfers **tiles** Fill as LED columns (`ProgressStyle::Segmented`). See [`research/kdx-downloads-progress.md`](../research/kdx-downloads-progress.md) |
+| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — **must** 16×16 (Ashen ships 12×12; Kit centres). Hap Ready≠Go (amber vs green on Milk) |
+| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp (e.g. messages); On1/On2 alternate — period undocumented |
 
 ### Menu (open list)
 

@@ -1,0 +1,56 @@
+
+=== stock (Stock) ===
+  progress.bar                 MISSING
+  progress.fill                MISSING
+  wonderlight.off              MISSING
+  wonderlight.pause            MISSING
+  wonderlight.ready            MISSING
+  wonderlight.go               MISSING
+  wonderlight.finished         MISSING
+  wonderlight.flash_off        MISSING
+  wonderlight.flash_on1        MISSING
+  wonderlight.flash_on2        MISSING
+wrote /opt/cursor/artifacts/kdx-ft-qa/kit-preview-ft-stock.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/file-transfers-stock.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/progress-compare-stock.ppm
+  LED scan stock: segs=35 avg_w=7.54 gaps=34 avg_gap=4.00 (fill_art_w=4 track=400x15)
+wrote /opt/cursor/artifacts/kdx-ft-qa/wonderlights-stock.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/led-tint-stock.ppm
+
+=== milk (Milk Redux) ===
+  progress.bar                 7x15 pos=[0,0,0,0] caps=[3,0,3,0]
+  progress.fill                4x15 pos=[0,0,0,0] caps=[2,0,1,0]
+  wonderlight.off              16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.pause            16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.ready            16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.go               16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.finished         16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.flash_off        16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.flash_on1        16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.flash_on2        16x16 pos=[0,0,0,0] caps=[0,0,0,0]
+wrote /opt/cursor/artifacts/kdx-ft-qa/kit-preview-ft-milk.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/file-transfers-milk.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/progress-compare-milk.ppm
+  LED scan milk: segs=34 avg_w=7.71 gaps=33 avg_gap=4.00 (fill_art_w=4 track=400x15)
+wrote /opt/cursor/artifacts/kdx-ft-qa/wonderlights-milk.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/led-tint-milk.ppm
+
+=== ashen (ashen) ===
+  progress.bar                 14x13 pos=[0,0,0,0] caps=[6,0,7,0]
+  progress.fill                12x13 pos=[0,0,0,0] caps=[6,0,5,0]
+  wonderlight.off              12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.pause            12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.ready            12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.go               12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.finished         12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.flash_off        12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.flash_on1        12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+  wonderlight.flash_on2        12x12 pos=[0,0,0,0] caps=[0,0,0,0]
+wrote /opt/cursor/artifacts/kdx-ft-qa/kit-preview-ft-ashen.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/file-transfers-ashen.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/progress-compare-ashen.ppm
+  LED scan ashen: segs=52 avg_w=6.65 gaps=51 avg_gap=1.00 (fill_art_w=12 track=400x13)
+wrote /opt/cursor/artifacts/kdx-ft-qa/wonderlights-ashen.ppm
+wrote /opt/cursor/artifacts/kdx-ft-qa/led-tint-ashen.ppm
+wrote build/kdx-ft-qa/file-transfers-milk.ppm
+wrote build/kdx-ft-qa/file-transfers-ashen.ppm
