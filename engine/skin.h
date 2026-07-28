@@ -110,10 +110,17 @@ inline ColorMap stock_colors() {
     set_role(m, "default_button.face", rgb(136, 0, 0));
     set_role(m, "default_button.dark", rgb(68, 0, 0));
     set_role(m, "default_button.frame", rgb(0, 0, 0));
-    // Window / window_focus
+    // Window / window_focus — Standard: unfocused is greyscale, focused red.
+    // Gradients measured off real Haxial TextEdit (rows 2..19).
+    static const uint8_t kGradRed[18] = {50,  61,  72,  82,  93,  104, 114, 125,
+                                         136, 139, 146, 153, 160, 167, 174, 181,
+                                         188, 195};
+    static const uint8_t kGradGrey[18] = {12, 15, 18, 20, 23,  26, 28,  31,
+                                          34, 39, 52, 65, 78,  91, 104, 117,
+                                          130, 143};
     auto window = [&](const char *g, Color l2, Color l1, Color face, Color d1,
-                      Color d2, Color frame, Color label,
-                      const uint8_t *grad) {
+                      Color d2, Color frame, Color label, const uint8_t *grad,
+                      bool grey_grad) {
         set_role(m, (std::string(g) + ".light2").c_str(), l2);
         set_role(m, (std::string(g) + ".light1").c_str(), l1);
         set_role(m, (std::string(g) + ".face").c_str(), face);
@@ -124,18 +131,16 @@ inline ColorMap stock_colors() {
         for (int i = 0; i < 18; ++i) {
             char key[48];
             std::snprintf(key, sizeof(key), "%s.transition.%d", g, i);
-            set_role(m, key, rgb(grad[i], 0, 0));
+            uint8_t v = grad[i];
+            set_role(m, key, grey_grad ? rgb(v, v, v) : rgb(v, 0, 0));
         }
     };
-    static const uint8_t kGrad[18] = {50,  61,  72,  82,  93,  104, 114, 125,
-                                      136, 139, 146, 153, 160, 167, 174, 181,
-                                      188, 195};
-    window("window", rgb(85, 0, 0), rgb(170, 0, 0), rgb(136, 0, 0),
-           rgb(68, 0, 0), rgb(34, 0, 0), rgb(0, 0, 0), rgb(255, 255, 255),
-           kGrad);
+    window("window", rgb(85, 85, 85), rgb(85, 85, 85), rgb(34, 34, 34),
+           rgb(17, 17, 17), rgb(17, 17, 17), rgb(0, 0, 0), rgb(136, 136, 136),
+           kGradGrey, true);
     window("window_focus", rgb(85, 0, 0), rgb(204, 0, 0), rgb(136, 0, 0),
            rgb(68, 0, 0), rgb(34, 0, 0), rgb(0, 0, 0), rgb(255, 255, 255),
-           kGrad);
+           kGradRed, false);
     // Menu
     set_role(m, "menu.light", rgb(102, 102, 102));
     set_role(m, "menu.background", rgb(51, 51, 51));

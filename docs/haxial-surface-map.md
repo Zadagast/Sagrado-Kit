@@ -223,7 +223,7 @@ Before painting art for a control in `engine/`:
 | Push button | 25 / 26 / (27) | `button.*` |
 | V/H scrollbar body + thumb + grips | 181/185/188, 162/166/169 | `scrollbar.*` |
 | Column header | 150 / 151 | `column_header.*` + Primary Label |
-| Window gel frame + traffic lights | 220+ | `window*` + Primary Label |
+| Window gel frame + title boxes (close/hatch/min/max) | 220+ | `window*` + Primary Label |
 
 **Needs index probe before art paint:**
 

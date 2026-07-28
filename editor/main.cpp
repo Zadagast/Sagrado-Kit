@@ -32,6 +32,8 @@ enum Drag : int {
     DragBtnStock,
     DragPreviewBtn,
     DragCloseBox,
+    DragMaxBox,
+    DragMinBox,
     DragScrollArrowRoles,
     DragScrollArrowPreview,
     DragSliderKit,
@@ -214,17 +216,16 @@ void layout() {
     g.gel = gel_layout(0, 0, W, H);
     Rect client = g.gel.client;
 
-    // Toolbar — Haxial proportions: 20px face; default Save is +3px outer.
+    // Toolbar — Find metrics: regular 24px; default Save 26px outer, same top.
     constexpr int kToolBtnW = 72;
     constexpr int kToolGap = 8;
-    int face_y = client.y + 10 + kDefaultButtonPad; // room for default ring above
-    g.btn_load = {client.x + 12, face_y, kToolBtnW, kButtonH};
-    Rect save_face{g.btn_load.right() + kToolGap, face_y, kToolBtnW, kButtonH};
-    g.btn_save = default_button_outer(save_face);
-    g.btn_stock = {g.btn_save.right() + kToolGap, face_y, kToolBtnW, kButtonH};
+    int by = client.y + 10;
+    g.btn_load = {client.x + 12, by, kToolBtnW, kButtonH};
+    g.btn_save = default_button_rect(g.btn_load.right() + kToolGap, by, kToolBtnW);
+    g.btn_stock = {g.btn_save.right() + kToolGap, by, kToolBtnW, kButtonH};
 
     int split = client.x + 420;
-    int content_top = face_y + kButtonH + kDefaultButtonPad + 10;
+    int content_top = by + kDefaultButtonH + 10;
     int content_h = client.bottom() - content_top - 8;
 
     g.role_list = {client.x + 10, content_top, 400, content_h - 90};
@@ -368,6 +369,18 @@ void mouse_down(int mx, int my) {
     if (g.gel.close_box.contains(mx, my)) {
         g.drag = DragCloseBox;
         g.pressed_box = 1;
+        redraw();
+        return;
+    }
+    if (g.gel.max_box.contains(mx, my)) {
+        g.drag = DragMaxBox;
+        g.pressed_box = 3;
+        redraw();
+        return;
+    }
+    if (g.gel.min_box.contains(mx, my)) {
+        g.drag = DragMinBox;
+        g.pressed_box = 4;
         redraw();
         return;
     }
@@ -613,6 +626,12 @@ void mouse_move(int mx, int my) {
     } else if (g.drag == DragCloseBox) {
         g.pressed_box = g.gel.close_box.contains(mx, my) ? 1 : 0;
         redraw();
+    } else if (g.drag == DragMaxBox) {
+        g.pressed_box = g.gel.max_box.contains(mx, my) ? 3 : 0;
+        redraw();
+    } else if (g.drag == DragMinBox) {
+        g.pressed_box = g.gel.min_box.contains(mx, my) ? 4 : 0;
+        redraw();
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
                g.drag == DragBtnStock || g.drag == DragPreviewBtn ||
                g.drag == DragDropdown) {
@@ -647,6 +666,17 @@ void mouse_up(int mx, int my) {
 
     if (was == DragCloseBox && g.gel.close_box.contains(mx, my)) {
         PostQuitMessage(0);
+        return;
+    }
+    if (was == DragMaxBox && g.gel.max_box.contains(mx, my)) {
+        WINDOWPLACEMENT wp{sizeof(wp)};
+        GetWindowPlacement(g_hwnd, &wp);
+        ShowWindow(g_hwnd, wp.showCmd == SW_SHOWMAXIMIZED ? SW_RESTORE
+                                                          : SW_SHOWMAXIMIZED);
+        return;
+    }
+    if (was == DragMinBox && g.gel.min_box.contains(mx, my)) {
+        ShowWindow(g_hwnd, SW_MINIMIZE);
         return;
     }
     if (was == DragBtnLoad && g.btn_load.contains(mx, my)) do_load();
@@ -792,6 +822,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 !g.gel.max_box.contains(pt.x, pt.y) &&
                 !g.gel.min_box.contains(pt.x, pt.y))
                 return HTCAPTION;
+            // TextEdit-style grow box in the corner
+            if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
             // Resize grips on edges
             const int grip = 4;
             int W = g.canvas.width(), H = g.canvas.height();

@@ -9,21 +9,25 @@
 
 constexpr int kTitleH = 22;
 constexpr int kBorder = 6;
-constexpr int kBtnBox = 14;
-constexpr int kScrollbarW = 16; // AppearanceEdit: scroll bars are exactly 16px thick
+constexpr int kBtnBox = 14;   // title-bar boxes, measured TextEdit
+constexpr int kBtnTop = 4;    // boxes sit 4px below window top
+constexpr int kHatchW = 32;   // title-bar drag hatch
+constexpr int kGrip = 21;     // grow box, flush with frame corner
+constexpr int kScrollbarW = 16;
 constexpr int kHeaderH = 20;
 constexpr int kRowH = 18;
 
-// AppearanceEdit: push / popup buttons are usually 20px tall. Default buttons
-// are created 3px bigger on all four sides so a border can wrap the face.
-constexpr int kButtonH = 20;
-constexpr int kDefaultButtonPad = 3;
+// Measured off Haxial TextEdit Find & Replace (Sagrado native/):
+// regular dialog buttons 24px tall; default Find button 26px outer
+// (3px ring → 20px face). Tops share the same Y; default hangs 2px lower.
+constexpr int kButtonH = 24;
+constexpr int kDefaultButtonH = 26;
+constexpr int kDefaultButtonPad = 3; // ring inset inside default outer
 constexpr int kFieldH = 20;
 
-// Outer rect for a default button whose face matches a regular `inner` button.
-inline Rect default_button_outer(Rect inner) {
-    return {inner.x - kDefaultButtonPad, inner.y - kDefaultButtonPad,
-            inner.w + 2 * kDefaultButtonPad, inner.h + 2 * kDefaultButtonPad};
+// Default-button outer around a regular face width, same top as Find.
+inline Rect default_button_rect(int x, int y, int face_w) {
+    return {x, y, face_w + 2 * kDefaultButtonPad, kDefaultButtonH};
 }
 
 struct Appearance {
@@ -48,14 +52,14 @@ struct Appearance {
     void set_color(const char *role, Color col) { skin.colors[role] = col; }
 
     Color title_label(bool focused) const {
-        // Prefer primary.label — art themes often leave window labels white.
-        Color pl = c("primary.label");
+        // Standard colour path uses Window / Window Focus Label. Bitmap themes
+        // leave those white — KDX then paints Primary Label / Disable Label.
         const char *role = focused ? "window_focus.label" : "window.label";
         Color wl = c(role);
-        bool stock_white = wl.r == 255 && wl.g == 255 && wl.b == 255;
-        bool skin_authored = skin.colors.count(role) != 0;
-        if (skin_authored && !stock_white) return wl;
-        return pl;
+        bool white = wl.r == 255 && wl.g == 255 && wl.b == 255;
+        if (white)
+            return focused ? c("primary.label") : c("primary.disable_label");
+        return wl;
     }
 };
 
@@ -65,24 +69,81 @@ struct GelLayout {
     Rect window;
     Rect client;
     Rect close_box;
+    Rect hatch_box; // w == 0 when omitted (e.g. Find dialog)
     Rect max_box;
     Rect min_box;
+    Rect grip;
     Rect title;
 };
 
+// Measured Haxial TextEdit Standard chrome: close + hatch on the left,
+// max + min on the right (not macOS traffic lights).
 inline GelLayout gel_layout(int x, int y, int w, int h) {
     GelLayout lay;
     lay.window = {x, y, w, h};
     lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder, h - kTitleH - kBorder};
-    int bx = x + w - kBorder - kBtnBox;
-    int by = y + 4;
-    lay.close_box = {bx, by, kBtnBox, kBtnBox};
-    lay.max_box = {bx - kBtnBox - 2, by, kBtnBox, kBtnBox};
-    lay.min_box = {bx - 2 * (kBtnBox + 2), by, kBtnBox, kBtnBox};
-    lay.title = {x + kBorder + 2, y + 3, lay.min_box.x - x - kBorder - 6, kFontHeight};
+    int by = y + kBtnTop;
+    lay.close_box = {x + 5, by, kBtnBox, kBtnBox};
+    lay.hatch_box = {lay.close_box.right() + 8, by, kHatchW, kBtnBox};
+    lay.min_box = {x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
+    lay.max_box = {lay.min_box.x - 4 - kBtnBox, by, kBtnBox, kBtnBox};
+    lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
+    lay.title = {x, y, w, kTitleH};
     return lay;
 }
 
+// Title-bar box as real TextEdit draws it: 1px outline over the gradient,
+// no fill/bevel. Pressed fills deep.
+inline void gel_flat_box(Canvas &cv, Rect r, bool pressed, Color deep, Color frame) {
+    if (r.w <= 0 || r.h <= 0) return;
+    if (pressed) cv.fill(r, deep);
+    cv.frame(r, frame);
+}
+
+inline void gel_close_glyph(Canvas &cv, Rect r, Color c) {
+    // 10×10 close glyph measured from Haxial TextEdit (box-relative 2,2).
+    static const char *rows[10] = {
+        "WW......WW", "WWW....WWW", ".WWW..WWW.", "..WWWWWW..",
+        "...WWWW...", "...WWWW...", "..WWWWWW..", ".WWW..WWW.",
+        "WWW....WWW", "WW......WW",
+    };
+    for (int row = 0; row < 10; ++row)
+        for (int col = 0; col < 10; ++col)
+            if (rows[row][col] == 'W')
+                cv.put(r.x + 2 + col, r.y + 2 + row, pack(c));
+}
+
+inline void gel_diagonal_hatch(Canvas &cv, Rect r, Color c) {
+    // 3px-wide '/' stripes on a 7px period — TextEdit title drag hatch.
+    for (int i = 0; i < r.w + r.h + 7; i += 7)
+        for (int t = 0; t < 3; ++t)
+            for (int row = 0; row < r.h; ++row) {
+                int col = i + t - row;
+                if (col >= 0 && col < r.w) cv.put(r.x + col, r.y + row, pack(c));
+            }
+}
+
+inline void paint_gel_grip(Canvas &cv, Rect g, Color bright, Color body,
+                           Color frame) {
+    if (g.w <= 0 || g.h <= 0) return;
+    // Grows out of the frame corner: only top/left edges are drawn.
+    cv.fill({g.x, g.y, g.w - 2, g.h - 2}, body);
+    cv.hline(g.x, g.right(), g.y, frame);
+    cv.vline(g.x, g.y, g.bottom(), frame);
+    cv.hline(g.x + 1, g.right() - 2, g.y + 1, bright);
+    cv.vline(g.x + 1, g.y + 1, g.bottom() - 2, bright);
+    for (int i = 0; i < 3; ++i) {
+        int o = 4 + i * 4;
+        for (int s = 0; s <= o; ++s) {
+            cv.put(g.right() - 3 - o + s, g.bottom() - 3 - s, pack(bright));
+            cv.put(g.right() - 2 - o + s, g.bottom() - 3 - s, pack(bright));
+        }
+    }
+}
+
+// Gel window — Standard path matches Sagrado/Haxial TextEdit chrome:
+// solid slab, title gradient into the side borders, client hole with
+// bright/shadow faces (not a generic bevelled panel).
 inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                       const char *title, bool focused, int pressed_box = 0) {
     const char *g = focused ? "window_focus" : "window";
@@ -92,86 +153,73 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         return ap.c(buf);
     };
 
-    Color face = role("face");
-    Color light2 = role("light2");
-    Color light1 = role("light1");
-    Color dark1 = role("dark1");
-    Color dark2 = role("dark2");
+    // light1 = bright face (#CC0000 focused); face = body (#880000)
+    Color bright = role("light1");
+    Color body = role("face");
+    Color deep = role("dark1");
     Color frame = role("frame");
+    Color label = ap.title_label(focused);
 
-    // Outer slab
-    cv.fill(win, face);
-    cv.frame(win, frame);
-    // Bevel
-    cv.hline(win.x + 1, win.right() - 1, win.y + 1, light2);
-    cv.vline(win.x + 1, win.y + 1, win.bottom() - 1, light2);
-    cv.hline(win.x + 2, win.right() - 2, win.y + 2, light1);
-    cv.vline(win.x + 2, win.y + 2, win.bottom() - 2, light1);
-    cv.hline(win.x + 2, win.right() - 2, win.bottom() - 3, dark1);
-    cv.vline(win.right() - 3, win.y + 2, win.bottom() - 2, dark1);
-    cv.hline(win.x + 1, win.right() - 1, win.bottom() - 2, dark2);
-    cv.vline(win.right() - 2, win.y + 1, win.bottom() - 1, dark2);
-
-    // Title gradient
     Color grad[18];
     for (int i = 0; i < 18; ++i) {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%s.transition.%d", g, i);
         grad[i] = ap.c(buf);
     }
-    Rect title_bar{win.x + kBorder, win.y + 2, win.w - 2 * kBorder, kTitleH - 2};
-    cv.rect_grad_v(title_bar, grad, 18);
 
     GelLayout lay = gel_layout(win.x, win.y, win.w, win.h);
+    Rect client = lay.client;
+    Rect slab{win.x + 1, win.y + 1, win.w - 2, win.h - 2};
 
-    // Client cut-out
-    cv.fill(lay.client, ap.c("primary.background"));
-    cv.frame(lay.client, ap.c("primary.dark"));
-    cv.hline(lay.client.x, lay.client.right(), lay.client.y, ap.c("primary.dark"));
-    cv.vline(lay.client.x, lay.client.y, lay.client.bottom(), ap.c("primary.dark"));
-    cv.hline(lay.client.x, lay.client.right(), lay.client.bottom() - 1, ap.c("primary.light"));
-    cv.vline(lay.client.right() - 1, lay.client.y, lay.client.bottom(), ap.c("primary.light"));
+    cv.fill(slab, body);
+    for (int i = 0; i < 18; ++i)
+        cv.hline(slab.x, slab.right(), win.y + 2 + i, grad[i]);
+    cv.hline(slab.x, slab.right(), win.y + kTitleH - 2, deep);
 
-    // Title text — prefer primary.label; vertically centre on ink in the bar
-    Color ink = ap.title_label(focused);
-    cv.text_centered(lay.title, title, ink, 0);
+    // Bright faces (light from top-left), including client-hole rim
+    cv.hline(slab.x, slab.right(), slab.y, bright);
+    cv.vline(slab.x, slab.y, slab.bottom(), bright);
+    cv.vline(client.right() + 1, client.y - 1, client.bottom() + 1, bright);
+    cv.hline(client.x - 1, client.right() + 2, client.bottom() + 1, bright);
 
-    // Traffic-light boxes — drawn icons centred in the plate (not font glyphs;
-    // the 16px face is taller than the 14px box and sits optically low).
-    auto paint_box = [&](Rect b, int id, int kind) {
-        bool pressed = pressed_box == id;
-        Color bf = pressed ? dark1 : light1;
-        Color bd = pressed ? light1 : dark1;
-        cv.fill(b, face);
-        cv.frame(b, frame);
-        cv.hline(b.x + 1, b.right() - 1, b.y + 1, bf);
-        cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, bf);
-        cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, bd);
-        cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, bd);
-        int cx = b.x + b.w / 2 + (pressed ? 1 : 0);
-        int cy = b.y + b.h / 2 + (pressed ? 1 : 0);
-        uint32_t p = pack(ink);
-        if (kind == 0) { // minimize —
-            for (int dx = -3; dx <= 3; ++dx) cv.put(cx + dx, cy, p);
-        } else if (kind == 1) { // maximize □
-            for (int dx = -3; dx <= 3; ++dx) {
-                cv.put(cx + dx, cy - 3, p);
-                cv.put(cx + dx, cy + 3, p);
-            }
-            for (int dy = -2; dy <= 2; ++dy) {
-                cv.put(cx - 3, cy + dy, p);
-                cv.put(cx + 3, cy + dy, p);
-            }
-        } else { // close ×
-            for (int d = -3; d <= 3; ++d) {
-                cv.put(cx + d, cy + d, p);
-                cv.put(cx + d, cy - d, p);
-            }
-        }
-    };
-    paint_box(lay.min_box, 4, 0);
-    paint_box(lay.max_box, 3, 1);
-    paint_box(lay.close_box, 1, 2);
+    // Shadow faces
+    cv.vline(client.x - 2, client.y - 2, slab.bottom(), deep);
+    cv.hline(client.x - 2, client.right() + 1, client.y - 2, deep);
+    cv.vline(slab.right() - 1, client.y - 2, slab.bottom(), deep);
+    cv.hline(slab.x + 1, slab.right(), slab.bottom() - 1, deep);
+
+    // Client-hole outline, then outer edge (TextEdit order)
+    cv.frame({client.x - 1, client.y - 1, client.w + 2, client.h + 2}, frame);
+    cv.frame(win, frame);
+    cv.fill(client, ap.c("primary.background"));
+
+    int tw = cv.text_width(title);
+    cv.text(win.x + (win.w - tw) / 2, win.y + (kTitleH - kFontHeight) / 2, title,
+            label);
+
+    // Title-bar boxes: flat outline + measured glyphs (close left, min/max right)
+    if (lay.close_box.w > 0) {
+        gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame);
+        gel_close_glyph(cv, lay.close_box, label);
+    }
+    if (lay.hatch_box.w > 0) {
+        gel_flat_box(cv, lay.hatch_box, false, deep, frame);
+        gel_diagonal_hatch(cv,
+                           {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
+                            lay.hatch_box.w - 4, lay.hatch_box.h - 4},
+                           label);
+    }
+    if (lay.max_box.w > 0) {
+        gel_flat_box(cv, lay.max_box, pressed_box == 3, deep, frame);
+        cv.fill({lay.max_box.x + 1, lay.max_box.y + 6, 10, 2}, label);
+        cv.fill({lay.max_box.x + 5, lay.max_box.y + 2, 2, 10}, label);
+    }
+    if (lay.min_box.w > 0) {
+        gel_flat_box(cv, lay.min_box, pressed_box == 4, deep, frame);
+        cv.fill({lay.min_box.x + 1, lay.min_box.y + 6, 10, 2}, label);
+    }
+
+    paint_gel_grip(cv, lay.grip, bright, body, frame);
 }
 
 // --- Controls ------------------------------------------------------------
@@ -187,9 +235,8 @@ inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
     cv.put(r.right() - 1, r.bottom() - 1, pack(bg));
 }
 
-// `r` is the outer hit/layout rect. For default buttons pass the enlarged
-// outer (regular size + kDefaultButtonPad on each side); the face is inset
-// by 3px to match Haxial ("3 pixels bigger on all 4 sides").
+// `r` is the outer hit/layout rect. Default buttons use a slightly taller
+// outer (measured Find = 26) with a 3px ring inset to the face.
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default) {
     Color workspace = ap.c("primary.background");
@@ -215,9 +262,11 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
     cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
     cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
-    // Inner face for label (keep clear of the 2px bevel)
-    Rect label_r{r.x + 3, r.y + 3, r.w - 6, r.h - 6};
-    cv.text_centered(label_r, label, ap.c("button.label"), pressed ? 1 : 0);
+    // Haxial TextEdit placement: advance-box centre (matches measured Find).
+    int tw = cv.text_width(label);
+    int off = pressed ? 1 : 0;
+    cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
+            label, ap.c("button.label"));
 }
 
 inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
@@ -553,20 +602,16 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(gl.client.x + 8, gl.client.y + 4, "Client area", ap.c("primary.label"));
     y = gel.bottom() + 10;
 
-    // Buttons — regular face 20px; default OK is +3px outer on each side.
-    // Bottom-align so the default ring doesn't shift the row baseline.
+    // Buttons — Find metrics: regular 24px; default OK 26px outer, same top.
     constexpr int kBtnW = 72;
     constexpr int kBtnGap = 10;
-    int row_h = kButtonH + 2 * kDefaultButtonPad;
-    int face_y = y + kDefaultButtonPad;
-    Rect ok_face{x + kDefaultButtonPad, face_y, kBtnW, kButtonH};
-    lay.btn_ok = default_button_outer(ok_face);
-    lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, face_y, kBtnW, kButtonH};
-    lay.btn_press = {lay.btn_cancel.right() + kBtnGap, face_y, kBtnW, kButtonH};
+    lay.btn_ok = default_button_rect(x, y, kBtnW);
+    lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kButtonH};
+    lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kButtonH};
     paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
     paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
     paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
-    y += row_h + 8;
+    y += kDefaultButtonH + 8;
 
     // Field + dropdown — AppearanceEdit: usually 20px tall
     int field_w = std::min(w, 280);
