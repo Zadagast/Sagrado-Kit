@@ -10,9 +10,21 @@
 constexpr int kTitleH = 22;
 constexpr int kBorder = 6;
 constexpr int kBtnBox = 14;
-constexpr int kScrollbarW = 16;
+constexpr int kScrollbarW = 16; // AppearanceEdit: scroll bars are exactly 16px thick
 constexpr int kHeaderH = 20;
 constexpr int kRowH = 18;
+
+// AppearanceEdit: push / popup buttons are usually 20px tall. Default buttons
+// are created 3px bigger on all four sides so a border can wrap the face.
+constexpr int kButtonH = 20;
+constexpr int kDefaultButtonPad = 3;
+constexpr int kFieldH = 20;
+
+// Outer rect for a default button whose face matches a regular `inner` button.
+inline Rect default_button_outer(Rect inner) {
+    return {inner.x - kDefaultButtonPad, inner.y - kDefaultButtonPad,
+            inner.w + 2 * kDefaultButtonPad, inner.h + 2 * kDefaultButtonPad};
+}
 
 struct Appearance {
     Skin skin;
@@ -175,6 +187,9 @@ inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
     cv.put(r.right() - 1, r.bottom() - 1, pack(bg));
 }
 
+// `r` is the outer hit/layout rect. For default buttons pass the enlarged
+// outer (regular size + kDefaultButtonPad on each side); the face is inset
+// by 3px to match Haxial ("3 pixels bigger on all 4 sides").
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default) {
     Color workspace = ap.c("primary.background");
@@ -182,7 +197,8 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
         rounded_frame(cv, r, ap.c("default_button.frame"), workspace);
         cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("default_button.light"));
         cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ap.c("default_button.face"));
-        r = {r.x + 3, r.y + 3, r.w - 6, r.h - 6};
+        r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
+             r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
     }
     Color face = ap.c("button.face");
     Color l2 = pressed ? ap.c("button.dark2") : ap.c("button.light2");
@@ -537,32 +553,38 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(gl.client.x + 8, gl.client.y + 4, "Client area", ap.c("primary.label"));
     y = gel.bottom() + 10;
 
-    // Buttons
-    lay.btn_ok = {x, y, 90, 24};
-    lay.btn_cancel = {x + 100, y, 90, 24};
-    lay.btn_press = {x + 200, y, 90, 24};
+    // Buttons — regular face 20px; default OK is +3px outer on each side.
+    // Bottom-align so the default ring doesn't shift the row baseline.
+    constexpr int kBtnW = 72;
+    constexpr int kBtnGap = 10;
+    int row_h = kButtonH + 2 * kDefaultButtonPad;
+    int face_y = y + kDefaultButtonPad;
+    Rect ok_face{x + kDefaultButtonPad, face_y, kBtnW, kButtonH};
+    lay.btn_ok = default_button_outer(ok_face);
+    lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, face_y, kBtnW, kButtonH};
+    lay.btn_press = {lay.btn_cancel.right() + kBtnGap, face_y, kBtnW, kButtonH};
     paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
     paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
     paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
-    y += 30;
+    y += row_h + 8;
 
-    // Field + dropdown on one row when wide enough
-    int field_w = std::min(w, 290);
-    lay.field = {x, y, field_w, 24};
+    // Field + dropdown — AppearanceEdit: usually 20px tall
+    int field_w = std::min(w, 280);
+    lay.field = {x, y, field_w, kFieldH};
     paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
-    y += 30;
+    y += kFieldH + 8;
 
     static const char *menu_items[] = {"Standard", "Slate", "Custom...", "Disabled"};
     static const unsigned kMenuDisabled = 1u << 3;
     const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 3)];
-    lay.dropdown = {x, y, std::min(w, 200), 24};
+    lay.dropdown = {x, y, std::min(w, 180), kButtonH};
     paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
                    st.pressed_btn == 4);
-    y += 30;
+    y += kButtonH + 8;
 
-    // Slider
-    cv.text(x, y, "Slider", ap.c("primary.label"));
-    lay.slider = {x + 56, y, std::min(w - 56, 220), 22};
+    // Slider (bar centred in a ≤30px total height band per AppearanceEdit)
+    cv.text(x, y + 2, "Slider", ap.c("primary.label"));
+    lay.slider = {x + 56, y, std::min(w - 56, 200), 22};
     lay.slider_lay =
         paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
     char sval[16];

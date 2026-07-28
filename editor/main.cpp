@@ -214,17 +214,17 @@ void layout() {
     g.gel = gel_layout(0, 0, W, H);
     Rect client = g.gel.client;
 
-    // Toolbar buttons — sized for the 16px face + bevel + default-ring.
-    constexpr int kToolBtnW = 104;
-    constexpr int kToolBtnH = 32;
-    constexpr int kToolGap = 10;
-    int ty = client.y + 10;
-    g.btn_load = {client.x + 12, ty, kToolBtnW, kToolBtnH};
-    g.btn_save = {g.btn_load.right() + kToolGap, ty, kToolBtnW, kToolBtnH};
-    g.btn_stock = {g.btn_save.right() + kToolGap, ty, kToolBtnW, kToolBtnH};
+    // Toolbar — Haxial proportions: 20px face; default Save is +3px outer.
+    constexpr int kToolBtnW = 72;
+    constexpr int kToolGap = 8;
+    int face_y = client.y + 10 + kDefaultButtonPad; // room for default ring above
+    g.btn_load = {client.x + 12, face_y, kToolBtnW, kButtonH};
+    Rect save_face{g.btn_load.right() + kToolGap, face_y, kToolBtnW, kButtonH};
+    g.btn_save = default_button_outer(save_face);
+    g.btn_stock = {g.btn_save.right() + kToolGap, face_y, kToolBtnW, kButtonH};
 
     int split = client.x + 420;
-    int content_top = ty + kToolBtnH + 12;
+    int content_top = face_y + kButtonH + kDefaultButtonPad + 10;
     int content_h = client.bottom() - content_top - 8;
 
     g.role_list = {client.x + 10, content_top, 400, content_h - 90};
@@ -236,7 +236,7 @@ void layout() {
     g.slider_r = {client.x + 10, ey, 360, 20};
     g.slider_g = {client.x + 10, ey + 24, 360, 20};
     g.slider_b = {client.x + 10, ey + 48, 360, 20};
-    g.hex_field = {client.x + 330, ey + 20, 80, 24};
+    g.hex_field = {client.x + 330, ey + 18, 72, kFieldH};
 
     g.preview = {split + 10, content_top, client.right() - split - 20, content_h};
     // Approximate preview layout metrics for hit-testing before paint.

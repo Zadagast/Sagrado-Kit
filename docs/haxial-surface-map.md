@@ -108,8 +108,9 @@ probe pass before we paint them in SagradoKit.
 | Button Hilited | **26** | same | unused | While mouse held |
 | Button Disabled | **27** (occupied with button-like geometry in probes) | same | unused | Disabled |
 
-Docs: usually ~20 px tall; caps allow other sizes. Label drawn **on top** of the
-9-sliced image.
+Docs: usually **20 px tall**; caps allow other sizes. Label drawn **on top** of
+the 9-sliced image. Kit layout constant: `kButtonH = 20`. Default outer =
+face + 3 px on each side (`kDefaultButtonPad`).
 
 | Default Button Normal/Hilited/Disabled | index TBD (follows Button block in panel) | 9-slice | unused | Default is authored **3 px larger on all sides** than a regular button so a border can fit; or 3 px transparent if no border |
 
