@@ -7,12 +7,16 @@
 
 #include "skin.h"
 
+// --- Gel window (Sagrado/Haxial TextEdit chrome) -------------------------
+// Metrics and paint order are a direct port of Sagrado native/src/chrome.h
+// (measured off real Haxial TextEdit). Do not "improve" these numbers.
+
 constexpr int kTitleH = 22;
 constexpr int kBorder = 6;
-constexpr int kBtnBox = 14;   // title-bar boxes, measured TextEdit
-constexpr int kBtnTop = 4;    // boxes sit 4px below window top
+constexpr int kBtnBox = 14;   // title-bar boxes are 14×14
+constexpr int kBtnTop = 4;    // 4px below the window top
 constexpr int kHatchW = 32;   // title-bar drag hatch
-constexpr int kGrip = 21;     // grow box, flush with frame corner
+constexpr int kGrip = 21;     // grow box, flush with the frame corner
 constexpr int kScrollbarW = 16;
 constexpr int kHeaderH = 20;
 constexpr int kRowH = 18;
@@ -24,6 +28,8 @@ constexpr int kButtonH = 24;
 constexpr int kDefaultButtonH = 26;
 constexpr int kDefaultButtonPad = 3; // ring inset inside default outer
 constexpr int kFieldH = 20;
+constexpr int kFindDlgW = 442; // Sagrado Find window size
+constexpr int kFindDlgH = 176;
 
 // Default-button outer around a regular face width, same top as Find.
 inline Rect default_button_rect(int x, int y, int face_w) {
@@ -63,25 +69,31 @@ struct Appearance {
     }
 };
 
-// --- Gel window (framed chrome + client) ---------------------------------
-
 struct GelLayout {
     Rect window;
     Rect client;
     Rect close_box;
-    Rect hatch_box; // w == 0 when omitted (e.g. Find dialog)
+    Rect hatch_box; // w == 0 when omitted (Find dialog)
     Rect max_box;
     Rect min_box;
     Rect grip;
     Rect title;
+    int title_h = kTitleH;
 };
 
-// Measured Haxial TextEdit Standard chrome: close + hatch on the left,
-// max + min on the right (not macOS traffic lights).
-inline GelLayout gel_layout(int x, int y, int w, int h) {
+enum class GelStyle {
+    Main,   // TextEdit main: close + hatch + max + min + grip
+    Dialog, // Find dialog: close + min only (no hatch/max/grip)
+};
+
+// Same placement as Sagrado chrome_layout Standard path (no art).
+inline GelLayout gel_layout(int x, int y, int w, int h,
+                            GelStyle style = GelStyle::Main) {
     GelLayout lay;
     lay.window = {x, y, w, h};
-    lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder, h - kTitleH - kBorder};
+    lay.title_h = kTitleH;
+    lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder,
+                  h - kTitleH - kBorder};
     int by = y + kBtnTop;
     lay.close_box = {x + 5, by, kBtnBox, kBtnBox};
     lay.hatch_box = {lay.close_box.right() + 8, by, kHatchW, kBtnBox};
@@ -89,11 +101,15 @@ inline GelLayout gel_layout(int x, int y, int w, int h) {
     lay.max_box = {lay.min_box.x - 4 - kBtnBox, by, kBtnBox, kBtnBox};
     lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
     lay.title = {x, y, w, kTitleH};
+    if (style == GelStyle::Dialog) {
+        // Match Sagrado paint_find_dialog chrome.
+        lay.hatch_box = {0, 0, 0, 0};
+        lay.max_box = {0, 0, 0, 0};
+        lay.grip = {0, 0, 0, 0};
+    }
     return lay;
 }
 
-// Title-bar box as real TextEdit draws it: 1px outline over the gradient,
-// no fill/bevel. Pressed fills deep.
 inline void gel_flat_box(Canvas &cv, Rect r, bool pressed, Color deep, Color frame) {
     if (r.w <= 0 || r.h <= 0) return;
     if (pressed) cv.fill(r, deep);
@@ -123,10 +139,18 @@ inline void gel_diagonal_hatch(Canvas &cv, Rect r, Color c) {
             }
 }
 
-inline void paint_gel_grip(Canvas &cv, Rect g, Color bright, Color body,
-                           Color frame) {
+// Grow box — Sagrado paint_grip. Call after chrome (and usually after content).
+inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focused) {
     if (g.w <= 0 || g.h <= 0) return;
-    // Grows out of the frame corner: only top/left edges are drawn.
+    const char *grp = focused ? "window_focus" : "window";
+    auto role = [&](const char *suffix) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s.%s", grp, suffix);
+        return ap.c(buf);
+    };
+    Color bright = role("light1");
+    Color body = role("face");
+    Color frame = role("frame");
     cv.fill({g.x, g.y, g.w - 2, g.h - 2}, body);
     cv.hline(g.x, g.right(), g.y, frame);
     cv.vline(g.x, g.y, g.bottom(), frame);
@@ -141,11 +165,11 @@ inline void paint_gel_grip(Canvas &cv, Rect g, Color bright, Color body,
     }
 }
 
-// Gel window — Standard path matches Sagrado/Haxial TextEdit chrome:
-// solid slab, title gradient into the side borders, client hole with
-// bright/shadow faces (not a generic bevelled panel).
+// Standard gel — Sagrado paint_chrome colour path (no art).
+// solid slab, title gradient into side borders, client hole, flat title boxes.
 inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
-                      const char *title, bool focused, int pressed_box = 0) {
+                      const char *title, bool focused, int pressed_box = 0,
+                      GelStyle style = GelStyle::Main) {
     const char *g = focused ? "window_focus" : "window";
     auto role = [&](const char *suffix) {
         char buf[64];
@@ -153,12 +177,15 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         return ap.c(buf);
     };
 
-    // light1 = bright face (#CC0000 focused); face = body (#880000)
+    // ChromeColors: bright=Light1, body=Face/Window, deep=Dark1
     Color bright = role("light1");
     Color body = role("face");
     Color deep = role("dark1");
     Color frame = role("frame");
-    Color label = ap.title_label(focused);
+    // Title + glyphs use Window Label on the Standard colour path (Sagrado).
+    Color label = role("label");
+    bool label_white = label.r == 255 && label.g == 255 && label.b == 255;
+    if (label_white) label = ap.title_label(focused);
 
     Color grad[18];
     for (int i = 0; i < 18; ++i) {
@@ -167,7 +194,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         grad[i] = ap.c(buf);
     }
 
-    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h);
+    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style);
     Rect client = lay.client;
     Rect slab{win.x + 1, win.y + 1, win.w - 2, win.h - 2};
 
@@ -176,19 +203,16 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         cv.hline(slab.x, slab.right(), win.y + 2 + i, grad[i]);
     cv.hline(slab.x, slab.right(), win.y + kTitleH - 2, deep);
 
-    // Bright faces (light from top-left), including client-hole rim
     cv.hline(slab.x, slab.right(), slab.y, bright);
     cv.vline(slab.x, slab.y, slab.bottom(), bright);
     cv.vline(client.right() + 1, client.y - 1, client.bottom() + 1, bright);
     cv.hline(client.x - 1, client.right() + 2, client.bottom() + 1, bright);
 
-    // Shadow faces
     cv.vline(client.x - 2, client.y - 2, slab.bottom(), deep);
     cv.hline(client.x - 2, client.right() + 1, client.y - 2, deep);
     cv.vline(slab.right() - 1, client.y - 2, slab.bottom(), deep);
     cv.hline(slab.x + 1, slab.right(), slab.bottom() - 1, deep);
 
-    // Client-hole outline, then outer edge (TextEdit order)
     cv.frame({client.x - 1, client.y - 1, client.w + 2, client.h + 2}, frame);
     cv.frame(win, frame);
     cv.fill(client, ap.c("primary.background"));
@@ -197,7 +221,6 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     cv.text(win.x + (win.w - tw) / 2, win.y + (kTitleH - kFontHeight) / 2, title,
             label);
 
-    // Title-bar boxes: flat outline + measured glyphs (close left, min/max right)
     if (lay.close_box.w > 0) {
         gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame);
         gel_close_glyph(cv, lay.close_box, label);
@@ -218,8 +241,6 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         gel_flat_box(cv, lay.min_box, pressed_box == 4, deep, frame);
         cv.fill({lay.min_box.x + 1, lay.min_box.y + 6, 10, 2}, label);
     }
-
-    paint_gel_grip(cv, lay.grip, bright, body, frame);
 }
 
 // --- Controls ------------------------------------------------------------
@@ -283,6 +304,71 @@ inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
     int end = cv.text(tx, ty, text, ap.c("text.foreground"));
     if (focused && caret_on)
         cv.vline(end + 1, r.y + 3, r.bottom() - 3, ap.c("text.insertion_point"));
+}
+
+// Find-proportioned dialog sample — Sagrado native Find size (442×176) and
+// chrome (close + min only). This is the title-bar reference, not a 72px stub.
+inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
+                                          int x, int y, int max_w,
+                                          bool caret_on) {
+    int w = std::min(max_w, kFindDlgW);
+    int h = kFindDlgH;
+    Rect win{x, y, w, h};
+    GelLayout lay = gel_layout(x, y, w, h, GelStyle::Dialog);
+    paint_gel(cv, ap, win, "Find and Replace", true, 0, GelStyle::Dialog);
+
+    Rect cl = lay.client;
+    int lx = cl.x + 10;
+    int fx = cl.x + 84;
+    int fw = cl.right() - 14 - fx;
+    if (fw < 40) fw = 40;
+    Rect find_field{fx, cl.y + 10, fw, kFieldH};
+    Rect repl_field{fx, cl.y + 40, fw, kFieldH};
+    cv.text(lx, find_field.y + 6, "Find:", ap.c("primary.label"));
+    cv.text(lx, repl_field.y + 6, "Replace:", ap.c("primary.label"));
+    paint_field(cv, ap, find_field, "needle", true, caret_on);
+    paint_field(cv, ap, repl_field, "replacement", false, false);
+
+    int cy = cl.y + 74;
+    auto paint_check = [&](int cx, int cy0, bool on, const char *lab) {
+        Rect b{cx, cy0, 14, 14};
+        cv.fill(b, ap.c("button.face"));
+        rounded_frame(cv, b, ap.c("button.frame"), ap.c("primary.background"));
+        cv.hline(b.x + 1, b.right() - 1, b.y + 1, ap.c("button.light2"));
+        cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, ap.c("button.light2"));
+        cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, ap.c("button.dark2"));
+        cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, ap.c("button.dark2"));
+        if (on) {
+            Color ink = ap.c("button.label");
+            for (int i = 0; i < 4; ++i) {
+                cv.put(b.x + 3, b.y + 6 + i, pack(ink));
+                cv.put(b.x + 4, b.y + 7 + i, pack(ink));
+            }
+            for (int i = 0; i < 6; ++i) {
+                cv.put(b.x + 5 + i, b.y + 9 - i, pack(ink));
+                cv.put(b.x + 5 + i, b.y + 10 - i, pack(ink));
+            }
+        }
+        cv.text(cx + 20, cy0 + (14 - kFontHeight) / 2, lab, ap.c("primary.label"));
+    };
+    paint_check(lx, cy, true, "Case Sensitive");
+    if (cl.w > 280) paint_check(cl.x + 190, cy, false, "Stop at End of File");
+
+    int by = cl.bottom() - 34;
+    Rect b_all{lx, by, 96, kButtonH};
+    Rect b_repl{b_all.right() + 8, by, 76, kButtonH};
+    Rect b_find{cl.right() - 14 - 84, by, 84, kDefaultButtonH};
+    Rect b_cancel{b_find.x - 10 - 76, by, 76, kButtonH};
+    if (b_cancel.x > b_repl.right() + 4) {
+        paint_button(cv, ap, b_all, "Replace All", false, false);
+        paint_button(cv, ap, b_repl, "Replace", false, false);
+        paint_button(cv, ap, b_cancel, "Cancel", false, false);
+        paint_button(cv, ap, b_find, "Find", false, true);
+    } else {
+        paint_button(cv, ap, b_cancel, "Cancel", false, false);
+        paint_button(cv, ap, b_find, "Find", false, true);
+    }
+    return lay;
 }
 
 inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
@@ -595,12 +681,10 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     cv.text(x, y, "Kit Preview", ap.c("primary.label"));
     y += kFontHeight + 8;
 
-    // Nested gel sample (compact)
-    Rect gel{x, y, std::min(w, 280), 72};
-    paint_gel(cv, ap, gel, "Preview Window", true, 0);
-    GelLayout gl = gel_layout(gel.x, gel.y, gel.w, gel.h);
-    cv.text(gl.client.x + 8, gl.client.y + 4, "Client area", ap.c("primary.label"));
-    y = gel.bottom() + 10;
+    // Find-sized dialog chrome — title bar / icons at real TextEdit proportions
+    // (Sagrado Find is 442×176). Not a stubby 72px nested gel.
+    paint_find_chrome_sample(cv, ap, x, y, w, caret_on);
+    y += kFindDlgH + 10;
 
     // Buttons — Find metrics: regular 24px; default OK 26px outer, same top.
     constexpr int kBtnW = 72;

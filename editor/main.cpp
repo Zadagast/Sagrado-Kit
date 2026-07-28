@@ -243,7 +243,7 @@ void layout() {
     // Approximate preview layout metrics for hit-testing before paint.
     // paint() overwrites preview_lay with exact rects.
     g.preview_lay.bounds = g.preview;
-    g.preview_lay.page_rows = std::max(1, (g.preview.h - 220) / kRowH);
+    g.preview_lay.page_rows = std::max(1, (g.preview.h - (kFindDlgH + 200)) / kRowH);
     g.preview_lay.row_count = 8;
     clamp_scroll();
 }
@@ -316,6 +316,9 @@ void paint() {
     g.preview_st.slider_hot = g.drag == DragSliderKit;
     g.preview_lay = paint_kit_preview(cv, ap, g.preview, g.caret_on, g.list_sel,
                                       g.preview_scroll, g.preview_st);
+
+    // Grow box last — same order as Sagrado (paint_grip after content).
+    paint_gel_grip(cv, ap, g.gel.grip, g.focused);
 }
 
 void blit(HWND hwnd) {
