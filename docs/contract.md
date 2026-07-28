@@ -5,7 +5,7 @@ own look — they load a skin through the Appearance Engine and paint kit
 surfaces from resolved tokens.
 
 ```
-┌─────────────────┐     .skin.toml      ┌──────────────────┐
+┌─────────────────┐        .sap         ┌──────────────────┐
 │  SagradoKit      │ ─────────────────► │  Appearance       │
 │  Editor          │   load / save      │  Engine           │
 └─────────────────┘                     └────────┬─────────┘
@@ -22,17 +22,17 @@ surfaces from resolved tokens.
 
 | Piece | Path | Job |
 |---|---|---|
-| Skin format | `format/` | Named colour roles + reserved art/icon slots (`.skin.toml`) |
+| Skin format | `format/` | Named colour roles + reserved art/icon slots (`.sap`) |
 | Appearance Engine | `engine/` | Load skin, resolve tokens, paint kit surfaces into a software framebuffer |
 | Editor | `editor/` | Win32 AppearanceEdit-style app — author the format against a live kit preview |
 
-## Skin format (`.skin.toml`)
+## Skin format (`.sap`)
 
-Human-authored TOML. Schema: [`format/schema.json`](../format/schema.json).
-Example: [`format/skins/stock.skin.toml`](../format/skins/stock.skin.toml).
+Human-authored TOML (Sagrado Appearance). Schema: [`format/schema.json`](../format/schema.json).
+Example: [`format/skins/stock.sap`](../format/skins/stock.sap).
 
 ```toml
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]
@@ -134,7 +134,7 @@ resolved colour roles). They do not hardcode a parallel palette.
 
 ## Editor responsibilities
 
-- Load / save `.skin.toml`
+- Load / save `.sap` (also load Haxial `.hap`)
 - Present named colour roles for editing
 - Live preview of the kit surfaces above, driven by the same engine apps use
 - Leave incomplete skins valid (partial colour tables are fine)

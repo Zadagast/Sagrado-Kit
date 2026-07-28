@@ -1,6 +1,6 @@
 # Example author skin — partial colours only. Missing roles → stock.
 
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]

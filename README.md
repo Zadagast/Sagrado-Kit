@@ -6,11 +6,11 @@ theirs.
 - **Software framebuffer UI** — every pixel painted by the kit, blitted to the
   window with one GDI call (`SetDIBitsToDevice`). No OS widgets, no CSS.
 - **One Appearance Engine** every window speaks (`engine/`).
-- **One skin format** the engine loads (`.skin.toml` — named colour roles;
-  art/icon slots reserved). **Also loads Haxial `.hap` live** (Sagrado-style:
-  colour table + image slots mapped into the same painters).
+- **One skin format** the engine loads (`.sap` — Sagrado Appearance; named
+  colour roles; art/icon slots reserved). **Also loads Haxial `.hap` live**
+  (colour table + image slots mapped into the same painters).
 - **One editor** that authors that format against a live kit preview
-  (`editor/`), like AppearanceEdit. **Load** accepts `.hap` or `.skin.toml`.
+  (`editor/`), like AppearanceEdit. **Load** accepts `.hap` or `.sap`.
 
 Incomplete skins are valid. Token resolution: **art → colour → stock**.
 
@@ -37,7 +37,7 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 | Language | C++17 |
 | Host | Win32 (native Windows, or Wine on Linux/macOS) |
 | Drawing | Software framebuffer → `SetDIBitsToDevice` |
-| Skin | Named `.skin.toml` (schema in `format/schema.json`) |
+| Skin | Named `.sap` (schema in `format/schema.json`) |
 
 ## Build
 
@@ -68,11 +68,11 @@ i686-w64-mingw32-g++ -std=c++17 -O2 -Iengine editor/main.cpp \
 
 Run `build/SagradoKitEditor.exe`. Example skins are in
 `build/format/skins/` (and `format/skins/` in the repo). The editor prefers
-`milk-redux/milk-redux.skin.toml` when that folder was copied by `make skins`.
+`milk-redux/milk-redux.sap` when that folder was copied by `make skins`.
 
 ## Editor
 
-- **Load / Save** — `.skin.toml` files (same format apps load)
+- **Load / Save** — `.sap` files (same format apps load); **Load** also accepts `.hap`
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
 - **Kit Preview** — live gel + controls; look for the **`P2  icon / menu / scroll`**
@@ -85,7 +85,7 @@ move; the close box quits.
 ## For app authors
 
 1. Include `engine/appearance.h` (pulls in canvas + skin).
-2. Hold an `Appearance`, `load("path.skin.toml")` or start from `stock_skin()`.
+2. Hold an `Appearance`, `load("path.sap")` or `load("path.hap")`, or start from `stock_skin()`.
 3. Paint with `paint_gel`, `paint_button`, `paint_field`, `paint_list`,
    `paint_scrollbar` (or compose from `ap.c("role.path")`).
 4. Blit your `Canvas` with `SetDIBitsToDevice` — same as the editor.

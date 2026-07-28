@@ -1,5 +1,5 @@
 # SagradoKit skin — Milk Redux + donor WonderLight/icons
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]

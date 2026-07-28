@@ -248,7 +248,7 @@ Before painting art for a control in `engine/`:
 
 1. Row in this file has a **verified Hap slot** (or explicit “colour-only”).
 2. Caps/positions meaning recorded.
-3. Named `.skin.toml` `[art]` key listed in `docs/contract.md`.
+3. Named `.sap` `[art]` key listed in `docs/contract.md`.
 4. Fallback colour roles listed.
 5. Probe at least 3 art-heavy themes for that slot (size/caps sanity).
 

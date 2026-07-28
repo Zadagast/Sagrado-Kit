@@ -417,7 +417,7 @@ inline const std::vector<ColorRole> &all_color_roles() {
     return roles;
 }
 
-// --- Minimal TOML subset reader/writer for .skin.toml --------------------
+// --- Minimal TOML subset reader/writer for .sap (Sagrado Appearance) -----
 
 namespace skin_toml {
 inline std::string trim(const std::string &s) {
@@ -626,7 +626,7 @@ inline bool save(const std::string &path, const Skin &skin) {
     std::ofstream f(path);
     if (!f) return false;
     f << "# SagradoKit skin\n";
-    f << "format = \"sagrado-skin\"\n";
+    f << "format = \"sap\"\n";
     f << "version = " << skin.format_version << "\n\n";
     f << "[meta]\n";
     f << "name = \"" << skin.meta.name << "\"\n";

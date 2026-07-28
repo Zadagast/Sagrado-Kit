@@ -48,6 +48,6 @@ icons. The authoritative plug-in map (AppearanceEdit docs + probes) lives in
 ## Editor practice
 
 AppearanceEdit let authors edit colours (and art) against a live preview of
-kit controls. SagradoKit’s editor is the same job for `.skin.toml`: load,
+kit controls. SagradoKit’s editor is the same job for `.sap`: load,
 tweak named roles, watch the gel / button / field / list / scrollbar preview,
 save.

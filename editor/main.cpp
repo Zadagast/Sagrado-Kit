@@ -1,6 +1,6 @@
 // SagradoKit Editor — AppearanceEdit-style authoring app.
 // Entire UI painted into a software framebuffer and blitted with
-// SetDIBitsToDevice. Edits the same .skin.toml format apps load.
+// SetDIBitsToDevice. Edits the same .sap format apps load.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <windowsx.h>
@@ -62,7 +62,7 @@ struct App {
     int pressed_box = 0;
 
     std::string path;
-    std::string status = "Stock skin — edit colours, Save to write a .skin.toml";
+    std::string status = "Stock skin — edit colours, Save to write a .sap";
 
     Rect role_list{};
     Rect role_sbar{};
@@ -95,18 +95,18 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    // Prefer live Hap (Sagrado-style), then extracted Milk skin.toml, then stock.
+    // Prefer live Hap, then extracted Milk .sap, then stock.
     const char *cands[] = {
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
-        "\\format\\skins\\milk-redux\\milk-redux.skin.toml",
-        "\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
-        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
-        "\\format\\skins\\stock.skin.toml",
-        "\\..\\format\\skins\\stock.skin.toml",
-        "\\..\\..\\format\\skins\\stock.skin.toml",
-        "\\skins\\stock.skin.toml"};
+        "\\format\\skins\\milk-redux\\milk-redux.sap",
+        "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
+        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",
+        "\\format\\skins\\stock.sap",
+        "\\..\\format\\skins\\stock.sap",
+        "\\..\\..\\format\\skins\\stock.sap",
+        "\\skins\\stock.sap"};
     for (const char *c : cands) {
         std::string p = dir + c;
         DWORD a = GetFileAttributesA(p.c_str());
@@ -141,9 +141,9 @@ bool dialog_open_path(std::string &out) {
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
     ofn.lpstrFilter =
-        "Appearance (*.hap;*.skin.toml)\0*.hap;*.skin.toml\0"
+        "Appearance (*.hap;*.sap)\0*.hap;*.sap\0"
         "Haxial Appearance (*.hap)\0*.hap\0"
-        "SagradoKit Skin (*.skin.toml)\0*.skin.toml\0All\0*.*\0";
+        "Sagrado Appearance (*.sap)\0*.sap\0All\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -154,15 +154,15 @@ bool dialog_open_path(std::string &out) {
 }
 
 bool dialog_save_path(std::string &out) {
-    char file[MAX_PATH] = "untitled.skin.toml";
+    char file[MAX_PATH] = "untitled.sap";
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
-    ofn.lpstrFilter = "SagradoKit Skin (*.skin.toml)\0*.skin.toml\0All\0*.*\0";
+    ofn.lpstrFilter = "Sagrado Appearance (*.sap)\0*.sap\0All\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    ofn.lpstrDefExt = "toml";
+    ofn.lpstrDefExt = "sap";
     if (!GetSaveFileNameA(&ofn)) return false;
     out = file;
     return true;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract first-wave Hap image slots into a SagradoKit art skin (.skimg + .skin.toml)."""
+"""Extract first-wave Hap image slots into a SagradoKit art skin (.skimg + .sap)."""
 from __future__ import annotations
 import struct
 import zlib
@@ -524,7 +524,7 @@ def main():
 
     lines = [
         "# SagradoKit skin — Milk Redux + donor WonderLight/icons",
-        'format = "sagrado-skin"',
+        'format = "sap"',
         "version = 1",
         "",
         "[meta]",
@@ -563,7 +563,7 @@ def main():
         lines.append(f'"{key}" = "{fname}"')
     lines.append("")
 
-    toml_path = out_dir / "milk-redux.skin.toml"
+    toml_path = out_dir / "milk-redux.sap"
     toml_path.write_text("\n".join(lines) + "\n")
     print(f"wrote {toml_path} ({len(art_entries)} art, {len(icon_entries)} icons)")
 

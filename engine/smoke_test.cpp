@@ -7,7 +7,7 @@
 
 int main(int argc, char **argv) {
     Appearance ap;
-    std::string path = argc > 1 ? argv[1] : "format/skins/stock.skin.toml";
+    std::string path = argc > 1 ? argv[1] : "format/skins/stock.sap";
     if (!ap.load(path)) {
         std::fprintf(stderr, "load failed: %s\n", path.c_str());
         // Fall back to embedded stock
@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
         if (cv.data()[i]) ++lit;
     std::printf("painted %zu non-black pixels\n", lit);
 
-    std::string out = "build/smoke-roundtrip.skin.toml";
+    std::string out = "build/smoke-roundtrip.sap";
     if (!ap.save(out)) {
         std::fprintf(stderr, "save failed\n");
         return 1;

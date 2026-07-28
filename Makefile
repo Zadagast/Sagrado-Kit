@@ -22,8 +22,8 @@ $(EDITOR): editor/main.cpp engine/*.h | $(BUILD)
 # Copy example skins next to the binary for Load dialog convenience.
 skins: | $(BUILD)
 	mkdir -p $(BUILD)/format/skins
-	cp -f format/skins/*.skin.toml $(BUILD)/format/skins/ 2>/dev/null || true
-	# Art skins live in subfolders (images + .skin.toml)
+	cp -f format/skins/*.sap $(BUILD)/format/skins/ 2>/dev/null || true
+	# Art skins live in subfolders (images + .sap)
 	for d in format/skins/*/; do \
 	  [ -d "$$d" ] || continue; \
 	  name=$$(basename "$$d"); \
@@ -37,8 +37,8 @@ run: $(EDITOR) skins
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
 smoke: engine/smoke_test.cpp engine/*.h | $(BUILD)
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/smoke_test.cpp -o $(BUILD)/smoke_test
-	$(BUILD)/smoke_test format/skins/stock.skin.toml format/skins/slate.skin.toml
-	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.skin.toml
+	$(BUILD)/smoke_test format/skins/stock.sap format/skins/slate.sap
+	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.sap
 
 clean:
 	rm -rf $(BUILD)
