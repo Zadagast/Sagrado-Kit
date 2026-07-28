@@ -34,13 +34,16 @@ Authoring traps carried forward:
 ## Surfaces
 
 Each control has a shopping list: which colour groups, which art slots, which
-icons. Document the contract when you add a widget — see
+icons. The authoritative plug-in map (AppearanceEdit docs + probes) lives in
+[`haxial-surface-map.md`](haxial-surface-map.md). Kit contract:
 [`contract.md`](contract.md).
 
-- **Images (art)** = widget chrome (9-slice caps / travel positions later).
+- **Images (art)** = widget chrome. **Caps** = 9-slice; **Positions** = travel,
+  frame thickness, or placement — meaning is per slot (see the surface map).
 - **Icons** = sparse marks (file, folder, user) — a separate namespace.
 - Many real themes are colour-only; art coverage is uneven. Fallbacks are
   mandatory.
+- **Hilited** means pressed/active in Haxial, not modern hover.
 
 ## Editor practice
 

@@ -25,8 +25,9 @@ docs/            contract + lessons from HAP
 ```
 
 Read [`docs/contract.md`](docs/contract.md) for the system contract.
-Haxial reuse notes (ideas only — not the `.hap` binary):
-[`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
+Haxial surface map (how colours + images plug into controls — research before
+art paint): [`docs/haxial-surface-map.md`](docs/haxial-surface-map.md).
+Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 
 ## Stack
 

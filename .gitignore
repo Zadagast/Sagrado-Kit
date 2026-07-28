@@ -3,3 +3,10 @@
 .DS_Store
 *.swp
 *.skin.toml.bak
+
+# Research downloads (re-fetch; do not vendor binaries)
+/research/bin/
+/research/haps/
+*.hap
+*.exe
+*.zip

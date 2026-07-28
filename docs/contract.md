@@ -81,22 +81,31 @@ are still stock-white (Haxial authoring practice).
 
 ### Reserved art / icon slots
 
-| Namespace | Examples (reserved) |
+Named after AppearanceEdit Images / Icons panel entries. **Do not invent new
+slot names** — extend only from [`haxial-surface-map.md`](haxial-surface-map.md).
+Each art asset carries `caps` (9-slice) and `positions` (per-slot layout); see
+that map for what Positions mean on each control.
+
+| Namespace | Keys (first wave + reserved) |
 |---|---|
-| `art` | `window.frame.normal`, `window.frame.focus`, `button.push.normal`, `button.push.hilite`, `menu.popup`, `slider.indicator`, `scrollbar.v.arrows`, `scrollbar.v.indicator`, `column_header.normal`, `column_header.hilite` |
+| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.normal`, `default_button.hilited`, `default_button.disabled`, `popup.normal`, `popup.hilited`, `popup.disabled`, `popup.symbol.normal`, `popup.symbol.hilited`, `popup.symbol.disabled`, `popup_frame.normal`, `popup_frame.focus`, `menu.background`, `menu.item.normal`, `menu.item.hilited`, `menu.item.disabled`, `menu.separator`, `slider.h.bar.normal`, `slider.h.indicator.normal`, `slider.h.indicator.hilited`, `scrollbar.v.double_arrows`, `scrollbar.v.indicator.normal`, `scrollbar.v.indicator.hilited`, `scrollbar.v.grips.normal`, `scrollbar.h.double_arrows`, `scrollbar.h.indicator.normal`, `scrollbar.h.grips.normal`, `column_header.normal`, `column_header.hilited`, `window.frame.normal`, `window.frame.focus`, `window.close.normal`, `window.close.focus`, `window.close.hilited`, `window.minimize.*`, `window.maximize.*`, `window.menu.*`, `window.resize.normal`, `window.resize.focus` |
 | `icons` | `file.generic.16`, `file.generic.32`, `folder.16`, `folder.32`, `user.16`, `user.32` |
+
+Art painting is gated on the surface map (verified Hap index + caps/positions
+meaning). Colour fallbacks remain mandatory.
 
 ## Token resolution
 
 ```
 resolve(token):
-  if skin has art for this surface → art
+  if skin has art for this surface → art (9-slice / place via caps+positions)
   else if skin has colour role(s)  → colour plates
   else                             → stock defaults
 ```
 
 The engine never leaves a hole: every kit surface paints from stock when the
-skin is incomplete.
+skin is incomplete. How each art slot plugs in is defined in
+[`haxial-surface-map.md`](haxial-surface-map.md) — research before paint code.
 
 ## Kit surfaces
 
