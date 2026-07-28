@@ -50,4 +50,6 @@ icons. The authoritative plug-in map (AppearanceEdit docs + probes) lives in
 AppearanceEdit let authors edit colours (and art) against a live preview of
 kit controls. SagradoKit’s editor is the same job for `.sap`: load,
 tweak named roles, watch the gel / button / field / list / scrollbar preview,
-save.
+save. Load a `.hap` for live import; **Save** writes a `.sap` plus `.skimg`
+art beside it so the authored format can carry the same colours, caps,
+positions, and images the Hap provided.
