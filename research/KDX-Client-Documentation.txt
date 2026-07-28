@@ -1,0 +1,1213 @@
+--- Page 1 ---
+Haxial KDX 1.520 Documentation
+Haxial Software
+http://www.haxialsoftware.com/
+Description
+KDX is a "BBS"-style (Bulletin Board System) encrypted internet communications system that provides voice 
+chat, text chat, messaging, news, file transfer, trackers etc.  It uses strong encryption to protect your 
+communications for security and privacy.  It is very useful for groups that need to collaborate on a project via 
+the Internet.  KDX uses a client/server basis (NOT peer-to-peer).
+While KDX works very well over the Internet, it also works very well on a LAN (local area network).  KDX 
+does not require an Internet connection, and is thus suitable for use on an internal company LAN, and for home 
+or small business networking.
+Please note that a glossary  appears at the end of this document, so if you encounter any terms that you are 
+unfamiliar with, you can consult the glossary.
+How do I get started with KDX?
+Try the following to get you started: 
+(1) Open KDX Client.
+(2) Click "Connect".
+(3) Click "Tracker" to change the tick to "Tracker".
+(4) Where it says "Address", you need to type in the address of a KDX Tracker that you have obtained 
+yourself.
+(5) Leave the other boxes EMPTY.
+(6) Click Connect.
+(7) Wait a moment.
+(8) When you see "General" in the list, click it.
+(9) A list of servers appears in the bottom list after a moment. Click one to connect to it. 
+You can repeat this process with a different tracker address to find different servers. 
+The Importance Of Context Menus
+KDX uses Context Menus extensively.  Many commands are “hidden” in Context Menus, so if you do not 
+know how to use the Context Menus, you will miss many commands.  A Context Menu is a menu that appears 
+when you second-click on something.  The commands in the menu act upon the object that you clicked on, or 
+on the surrounding area in that window.  “Second-click” means clicking on something using the other mouse 
+button than you normally use (usually the right mouse button).   If your mouse has only 1 button, then hold 
+down the control key while you click to simulate the second button.
+Haxial KDX Documentation Page 1 of 32
+
+--- Page 2 ---
+In addition to Context Menus, KDX uses Window Menus.  A Window Menu is accessed by clicking the 
+ symbol that appears in the title bar of some windows, or alternatively by second-clicking in the title bar.
+Button Bar Window
+This is the main/base window in KDX.  It is your starting point for many of the commands.  Probably the first 
+button that you will want to use is the Connect button, which connects you to a server.  Then you can use the 
+other buttons.  KDX contains many commands and features, more than can be displayed on the button bar 
+window (only the most commonly used are displayed).  To see the full list of commands, connect to a server, 
+and then click the “Commands” button.  Note that the “Commands” button also shows a list of all the servers 
+(or clients or trackers) that you are connected to, and you can click on one to show a sub-menu of all the 
+commands for that server.
+You can see 2 numbers at the bottom.  The left one is the number of connections (places that you have 
+connected to).  The right one is the number of active file transfers (if you have started downloading or 
+uploading a file or folder).
+Connect Window
+Before you can interact with a KDX Server (such as chat with other people, or download files), you must 
+connect to it (like calling someone on the telephone).  The Connect window is thus used to connect to a server.  
+It can also connect to another client, or to a tracker.
+Haxial KDX Documentation Page 2 of 32
+
+--- Page 3 ---
+Type: Here you select what type of service you want to connect to.  For example, Server, Client, or 
+Tracker.  If you do not know, you can select “Auto-Detect”, which allows you to enter an address, 
+and KDX will try to connect to it and automatically determine what it is.
+Name: This is not your name.  It is a name to assign to this connection so that you can recognize it.  This 
+name will appear in the list of connections in the “Commands” menu.  Normally you can just 
+simply leave this empty, and KDX will handle the name automatically.
+Address: This is the most important part.  Here you type the Internet address of the computer that you want 
+to connect to.  If this is wrong, you will not be able to connect.  You can think of Internet 
+addresses like telephone numbers.  They are NOT telephone numbers, but the concept is similar.  
+Where do you find the correct address of a server on the Internet?  Usually a friend will tell you, or 
+you will find the information on a webpage.
+Login: A login and password combination is used to provide security and authentication.  It proves your 
+identity to the remote server/computer, and usually allows you greater access.  In order to have a 
+login and password, you must have an account on the server computer.  If you do not, then just 
+simply leave the login and password blank, and KDX will attempt to connect as a Guest user.
+Password: The password that is paired with the Login.
+User List Window
+This window shows a list of every person who is connected to a server, including their name, description, 
+icon, and class color bar.  The class color bar is that vertical bar of color to the left of the icon.  The actual 
+meaning of this bar depends on the server.  Ask the administrator of the server if you want to know.  By 
+default, black means the person is a Guest, blue means the person is a regular User, and red means the person 
+is an Administrator.  If you second-click on a user, you will see a context menu with these commands:
+Send Message: Shows a window which allows you to type a message which will be sent privately and 
+only to this user.
+Get Info: Shows a window with various information about the user.
+Copy Description: Copies the description text of the user (which appears after the name of the user) to the 
+clipboard.  You can then paste it somewhere else in the normal manner.
+Invite To New Chat: Invite the user to a new private chat “room”.  This allows you to have a private 
+conversation with the person.  Other people may also be invited to the same chat.
+Haxial KDX Documentation Page 3 of 32
+
+--- Page 4 ---
+Disconnect: This window allows you to disconnect and optionally ban a user.  See the topic 
+“Disconnect User Window” further ahead in this documentation.
+Chat Window
+Transcript box: This is the big scrolling text box. A transcript of the chat appears here.
+Input box: This is the small text box below the transcript text box.  Here you can type a message to 
+send to everyone in the chat.  Press the Return or Enter key when you are ready to send 
+the message.  Press the Escape key if you want to quickly clear the contents of this box.
+User list: A list of the users who are in this chat, and can see any text that is sent to this chat.  
+Note that you can second-click in this list, and use the “Invite Users To This Chat” 
+command, which sends an invitation to the other users of your choice who are not 
+currently in the chat.
+Topic: Click this button to set a topic for the chat.  A topic is simply text that appears at the 
+bottom of the window.  It may be a short description of what is currently being 
+discussed, or of the purpose of the chat, or an amusing anecdote or URL, etc.
+Window Menu commands:
+Show Files: Show the files for the same server as the chat.
+Show News: Show the news for the same server as the chat.
+Show User List: Show the user list for the same server as the chat.
+Invite Users To This Chat: If there are users who are connected to the server but not present in this chat, 
+then you can use this command to invite them to join this chat.
+Clear Text: Remove the contents of the transcript text box.  For example, you can use this 
+to remove sensitive information from the screen without leaving the chat.
+Save Window Location/Size: Saves the location/width/height of the window, and the size of the panes.  Any 
+chat windows created in future will use these settings.
+Last Chat: Shows the time at which the last chat text arrived (the bottom-most text in the 
+transcript window).
+Haxial KDX Documentation Page 4 of 32
+
+--- Page 5 ---
+Special Chat Commands
+Some special commands can be typed into the chat input box.  All commands must begin with a forward slash 
+(‘/’) or a backward slash (‘\’).
+/me <text> Sends your text to the chat using the “action” format.  For example, if your user 
+name is “Satan”, and you typed “I feel hungry”, then normally it would appear 
+like this:
+   <Satan> I feel hungry
+But if you instead type “/me feels hungry”, then it will appear like this:
+   *** Satan feels hungry
+/me's <text> This is the possessive version of the previous command.  For example, if you 
+type “/me's pants are on fire!”, then it will appear as:
+   *** Satan's pants are on fire!
+/name <new-name> Changes your name to the specified name.  This may be quicker than going to 
+Settings.
+/n <new-name> Same as the previous.
+/desc <new-description> Changes your description (the text that appears after your name in the user list).  
+This may be quicker than going to Settings.
+/d <new-description> Same as the previous.
+/away Causes a “Zzz” symbol to be displayed next to your name in the user list.
+/a Same as the previous.
+/back Removes the previously mentioned “Zzz” symbol.
+/b Same as the previous.
+/afk Causes an Away From Keyboard symbol to be displayed next to your name in the 
+Haxial KDX Documentation Page 5 of 32
+
+--- Page 6 ---
+user list.  Use the /back command to remove this when you are back at the 
+keyboard.
+News Window
+The news window is used to post semi-permanent messages that other people can read at their leisure, like a 
+bulletin board.  The window consists of 2 panes.  The top pane contains a list of the servers that you are 
+connected to, and if you click the “+” next to a server, you can see a list of the Newsgroups that are within that 
+server.  Then if you click on one of those newsgroups, in the bottom pane you can see the messages that are 
+inside that newsgroup.  You can post your own message using the “Post Message” button.
+You can also second-click a message for additional self-explanatory options.  Administrators can delete 
+messages this way.
+If you post a news message, and then immediately realize that you made a mistake, you can delete your own 
+message, even if you do not have the “Can Delete News Messages” access privilege.  This only works if your 
+message is still the most recent message in the newsgroup, and you are not logged in as guest.  The most recent 
+message is considered to be your own if the login stored with the message is the same as your own.
+Administrators can create or edit newsgroups on their server by second-clicking on their server or a newsgroup 
+in the top pane.  This will show the New/Edit Newsgroup window with these text boxes:
+Name: The name of the newsgroup.
+Description: A short description to appear with the name of the newsgroup.  For example, this can 
+describe the purpose of the newsgroup.
+Archive Size: KDX Server can automatically archive old news messages.  It puts them into a text file 
+inside the folder “News Archives” in the same folder as the KDX Server program, and 
+then removes them from the newsgroup.  So here you can select how many kilobytes 
+each archive file should be.  Note that KDX Server will wait until significant more news 
+than this accumulates in the newsgroup to avoid leaving the newsgroup empty.
+Access List: Here you can control which Account Classes can read and/or post to this newsgroup.  
+So for example, if the Class called “Guest” has Read Only access, then any accounts in 
+the “Guest” class can read this newsgroup, but not post to it.
+Files Window
+The Files window is where you can browse what files are on the server, as well as initiate file transfers.
+Back: Goes to the parent folder.
+Refresh: Retrieves the list of files/items from the server again (use this to see changes).
+Path Menu: Shows the path to the current folder (it’s location, or the parent folder, and its 
+parent, etc).  You can click one of the folders in this menu to go to that folder.
+Number: The number in [square brackets] is the number of items in the folder.
+Haxial KDX Documentation Page 6 of 32
+
+--- Page 7 ---
+Hierarchy List: This is the left pane.  It shows the folder hierarchy, not including any files, 
+allowing you to quickly navigate to the folder of your choice, without the 
+distraction of files.  Click a “+” to show the folders that are inside that folder (the 
+“children” of that folder).  When you are ready to see the files in your eventual 
+destination folder, click the folder name, and the contents will appear in the right 
+pane.
+File List: Displays the contents of the current folder.  You can contiguously select multiple 
+items using the Shift key while clicking, or discontiguously using the Control 
+(Command) key.  Second-click on an item to show a context menu with these 
+commands:
+Get Info: Show a window with general information about the item.
+Copy Name To Clipboard: Copy the name of the item to the clipboard, where it can then be pasted 
+somewhere else (saves you from retyping it).
+Download: Download the selected files/folders.  Note that this command is very useful to 
+download a whole folder.
+Launch Program: Launch the selected item on the server computer.  You can use this to remotely 
+run a program or script etc.
+Select for Move/Alias: When you want to move some files/items, or create aliases/shortcuts, you must 
+first use this command to choose which items you want to operate on (which 
+items you want to move).  Note that this command does work with multiple items 
+at once.  Next, navigate to your desired destination folder, and then use one of the 
+following commands.
+Move into “foldername”: The items that you chose/selected using the “Select for Move/Alias” command will 
+be moved into the specified folder.  Note that this command changes depending 
+on whether you clicked on a folder icon or not.  If you clicked on a folder icon, 
+then “foldername” is that folder, otherwise it is the current folder.
+Alias into “foldername”: An alias/shortcut for each of the items that you chose/selected using the “Select for 
+Move/Alias” command will be created in the specified folder.  Note that this 
+command changes depending on whether you clicked on a folder icon or not (as 
+above).
+Upload into “foldername”: Shows a window where you can choose a file or folder to upload into the 
+specified folder on the server.  Note that this command changes depending on 
+whether you clicked on a folder icon or not (as above).
+Refresh Folder: Retrieves the list of files/items from the server again (use this to see changes).
+Create Folder: Shows a window which allows you to create a new folder inside the current 
+folder.   See the topic “Create Folder Window” further ahead in this 
+documentation.
+Delete: Delete the selected items.  Note that this command does work with multiple items 
+at once.  Items are deleted on the server by moving them to the Recycle Bin (MS 
+Windows) or the Trash (MacOS).
+Window Menu:
+Refresh: Retrieves the list of files/items from the server again (use this to see changes).
+Upload: Shows a window where you can choose a file or folder to upload into the 
+current folder on the server.
+Create Folder: Shows a window which allows you to create a new folder inside the current 
+Haxial KDX Documentation Page 7 of 32
+
+--- Page 8 ---
+folder.   See the topic “Create Folder Window” further ahead in this 
+documentation.
+Search: Allows you to search for items on the server.  You can type in part of the file or 
+folder name, and it will show you a list of all items on the server that contain 
+that text in their name.  This feature is extremely fast because it does not search 
+the real files, instead it searches a catalog that has been generated from the files.
+Save Window Location/Size: Saves the location/width/height of the window, the size of the panes, the width 
+of the columns, the order of the columns, and which column is selected.  Any 
+Files windows created in future will use these settings.
+Create Folder Window
+This window is used to create a new folder inside another folder.
+Name: Type a name for the new folder.
+Inside: The parent folder in which the new folder will be created.
+Uploads Folder: If ticked, this will create a special “Uploads” folder.  Users are allowed to upload 
+files/folders to “Uploads” folders, but usually not elsewhere (depending on their access 
+privileges).  “Uploads” folder are also denoted in the file list with a different icon.
+NOTE:
+  It is NOT necessary to create Uploads folders inside Uploads folders.  Any 
+folders inside an Uploads folder automatically inherit the upload ability.
+Drop Box: If ticked, this will create a special “Drop Box” folder.  Users are allowed to upload 
+files/folders to “Drop Box” folders, but they cannot see or download the contents of the 
+folder, unless they have access.
+DB owner login: If this is empty, then the only people who can see inside the drop box are those who 
+have the “Can View All Drop Boxes” access privilege.  Alternatively, if you type the 
+login of an account here, then anyone using that account will be able to see inside this 
+drop box.
+Haxial KDX Documentation Page 8 of 32
+
+--- Page 9 ---
+Address Book Window
+This window provides you with an easy way to record all the information about the servers that you regularly 
+visit.  Each Address Book item (or “bookmark”) includes the name and address of a server, your login and 
+password, comments, and other details.  Second-click in the list to show a context menu with these commands:
+New: Shows a window where you can type in the information for a new Address Book item.
+Edit: Use this to edit/modify or just view the information in the selected Address Book item.
+Connect: Use this to connect to the selected server.  You can simply single click an item to 
+connect to it, but if you use this command, you can temporarily modify the information 
+before it connects.
+Delete: Remove the selected item from the Address Book.
+When you make a new Address Book item, or edit an existing one, you will see that there are also options to 
+shows various windows when you connect to that server.  There is also a “Connect At Startup” option, which 
+means that KDX Client will automatically attempt to connect to that server when KDX Client is opened.
+The “Encrypt File Transfers” option can be used to disable encryption for file transfers .  This is useful if your 
+computer has insufficient power to encrypt and transfer at the full speed of your high-speed LAN.  Obviously, 
+disabling encryption will decrease your security if other people have access to the LAN.  Note that only the 
+actual file data is unencrypted, everything else remains encrypted.
+Do NOT disable encryption for file transfers over the Internet.  Practically every computer (except real 
+dinosaurs) has power to encrypt at speeds well in excess of typical or even high Internet speeds.  The option to 
+disable encryption is ONLY useful for Local Area Network (LAN) transfers.  You must enable/disable 
+encryption BEFORE connecting.  After you connect, changing the setting has no effect (until you reconnect).  
+Also, you will not be allowed to disable encryption has you have the “Can Disable Encryption” access 
+privilege.
+You can type directly into the Address Book window in order to filter it.  A text box will appear, and then all 
+Address Book items will be hidden except for those that contain the word you typed.  This is very useful for 
+quickly finding an item amongst many.
+If you scroll right, you can see a “Connects” column, which shows the number of times you have connected to 
+that server.  If you click on this column to sort by it, then the servers you visit most often will be at the top.  
+There is also a “Last Connect” date/time column, which is useful for checking what servers you've been 
+neglecting.
+File Transfers Window
+This window lists all the files and folders that you are uploading or downloading (transferring), and their 
+progress and status.  Second-click an item to show a context menu with these commands:
+Start: Starts a transfer that has been stopped.  The transfer will automatically resume from the 
+point at where it stopped.  You can also execute this command by selecting an item and 
+hitting the Return or Enter key.
+Stop: Stops a transfer (but does not remove it from the list).  You can later start it again using 
+the Start command.  Transferred data is NOT lost when you stop a transfer.  You can 
+also execute this command by selecting an item and then hitting the Escape key or the 
+Period (‘.’) key.
+Re-queue: If a transfer is stopped, you can use this to “reactivate” it, but without actually starting it 
+Haxial KDX Documentation Page 9 of 32
+
+--- Page 10 ---
+immediately.  It will be queued, and will start automatically when the items prior to it in 
+the queue are done.
+Show Local File: Show the local copy of the file using Windows Explorer or the Finder (MacOS).  You 
+can also execute this command by double-clicking an item in the list.
+Open Local File: Open the local file as if you had opened it using Windows Explorer or the Finder 
+(MacOS).
+Move To Top (etc): Use these commands for reordering items in the queue.  You can also execute these 
+commands by selecting an item and hitting the Control (Command) key with the Up or 
+Down arrow keys.
+Remove Item: Remove the item from the list.  This does NOT delete the actual file on the disk, it only 
+removes it from this file transfers list.  You can also execute this command by selecting 
+an item and hitting the Delete key.
+Window Menu:
+Clear All Finished Transfers: Removes every finished transfer from the list.  This is very useful when you 
+have many items in the list.  You can also execute this command by hitting 
+Control-Delete (Command-Delete).
+Open Downloads Folder: Open the folder where downloaded items are stored using Windows Explorer 
+or the Finder (MacOS).
+Private Messages Window
+This window is used to conduct one-to-one private conversations with people (also known as “messaging”).  
+Within this one single window, you can have multiple conversations occurring simultaneously.  Messages you 
+send in this window are sent only to 1 person at a time (unlike Chat).  To use this window, you must first 
+initiate a private message session by clicking a user in a user list to show a “Send Message” window, or by 
+waiting until someone else sends you a message first.   Then the user will appear in the left pane of the 
+window.  Each person that you are talking to will appear in the left pane.  In the bottom text box, you can type 
+a message, and then hit the Return or Enter key to send it.  Note that you message will ONLY be sent to the 
+selected user, NOT to every user (unlike Chat).  The big text box contains a transcript of your incoming and 
+outgoing messages for the selected user.  If you wish to send a longer message to a user, you may prefer to 
+double-click the user in the left pane -- this will cause a “Send Message” window to appear.
+The WonderLight™ on the main Button Bar window will blink when you receive a message, if the Messages 
+window is hidden or not at the front.  You can click the button or send a message to stop it blinking.  Note that 
+the colored vertical bar to the left of each users icon has a DIFFERENT purpose in this window.  The bar 
+changes to RED when that user sends you a message, if that user is not already selected.  It changes back to 
+BLACK when you click on that user.  In this way, you can quickly see with a glance which users have sent 
+you messages that you have not read yet.
+A user (or rather the users messages) can be removed from this window by second-clicking the user, and then 
+Haxial KDX Documentation Page 10 of 32
+
+--- Page 11 ---
+choosing the “Delete Messages” command.
+User Info Window
+This window shows general information about a single user.
+Account Name: The name of the account that the user used when connecting to the server.
+Account Login: The login of the account that the user used when connecting to the server.
+Account Class: The class of the account that the user used when connecting to the server.
+Login time: The date and time at which the user logged into / connected to the server.  The time in 
+brackets is the duration of time from the displayed time until the time at which the 
+window was shown or last refreshed, in DD:HH:MM:SS format.
+Idle since: The date and time at which the user last did something at the server.  For example, 
+whenever the user sends a message or participates in chat, this time is reset to the 
+present.  The time in brackets is the duration of time from the displayed time until the 
+time at which the window was shown or last refreshed, in DD:HH:MM:SS format.
+Address: The address of the user, including port number.
+Scrolling list box: This contains a list of all the file transfers that the user is conducting.  Second-click a 
+transfer to show the path to that file (beginning at the users base folder).  From left to 
+right, the displayed numbers are the transfer speed, the size transferred, the total size of 
+the file, and the estimated time remaining (ETR) in DD:HH:MM:SS format.
+Refresh: Click this button to refresh the information in the window (retrieve the most recent 
+information from the server).
+Invite To Chat Window
+This windows allows you to send a chat invitation to other users.  A window appears on the screen of the other 
+users, inviting them to join the specified chat.  They can then accept or ignore the invitation.  You can include a 
+message with your invitation -- type this in the box provided.  Note that you can invite multiple users at once.  
+Simply click on each user that you wish to invite.  All of the selected users will be invited when you click the 
+“Invite” button.  Users who are already in the chat do not appear in the list.
+Disconnect User Window
+This window allows you to disconnect and optionally ban a user.  This will remove the user from the server.  
+If the user is additionally banned, the user will not be allowed to reconnect to the server.
+Message: Here you can type a message that will appear on the users screen with the notification 
+that they have been disconnected.  For example, you might type the reason why you are 
+disconnecting the user.  Note that this message will NOT appear if you use the “Force 
+Disconnect” command.
+Ban menu: Here you can select whether to ban the user, and for what duration of time.  When a 
+user is banned, he/she is prevented from connecting to the server again.  Please note 
+that due to the nature of the Internet, bans can sometimes be circumvented, however it 
+will still cause inconvenience to the person being banned.
+Disconnect: Sends your message to the user, and then disconnects the user.  There may be a short 
+Haxial KDX Documentation Page 11 of 32
+
+--- Page 12 ---
+delay while the message is being transmitted.  If this bothers you, you can use “Force 
+Disconnect” instead.
+Force Disconnect: Disconnects the user immediately, without attempting to send the message to the user.
+KDX Settings Window
+Identity Panel
+The options on this panel control your appearance in user lists.  You can set your name, and a description to 
+appear after your name.  “Foreground Color” controls the color that your text is drawn in, and “Background 
+Color” controls the color that is behind/around/surrounding your text.  You can also choose an icon to be 
+displayed next to your name.  This icon can be ANYTHING, you are not limited to a certain selection of icons.  
+You can simply copy ANY icon that you desire to the clipboard, and then paste it into this box (second-click it 
+to show a menu with the commands).  KDX user icons are always exactly 32x32 pixels.
+More detailed icon instructions for MS Windows users:  First you need to copy the icon you want to the 
+clipboard. Note if you simply select a file and hit control-C, Windows does not copy it's icon to the clipboard. 
+You have to open a .BMP or other graphics file in a graphics program such as "Paint", then copy from there. If 
+you want to copy something on the screen, you can hit the "Print Screen" key which causes Windows to copy 
+the whole screen to the clipboard. You can then paste it into Paint and select a smaller area to copy. Once you 
+have your icon on the clipboard, go into KDX, click Settings, click the box next to "Icon", then hit control-V to 
+paste. 
+General Settings Panel
+Sound List:
+KDX can play sounds when certain events occur.  These sounds are contained within “Sound List” files that 
+have been created using the KDXSoundListEdit program (available from the Haxial website).  You can either 
+create your own Sound List file, or you can download one that has already been made from the Haxial website, 
+or other places.  To use Sound List files with KDX, create a folder named "Sound Lists" in the same folder as 
+KDX Client (if it has not already been created), then put all your Sound List files into that folder. Then in 
+KDX, click Settings, and the contents of the folder should appear in the popup menu titled "Sound List".
+Sound Volume:
+Drag the slider to control the volume at which sounds in the Sound List are played.  Left is silent, right is 
+100%.
+Auto-Sort Downloads Folder:
+This option causes KDX to create sub-folders inside your Downloads folder with names such as “Images”, 
+“Archives”, “Audio”, etc.  Files are automatically sorted into these sub-folders according to their file type.
+Lists Require Double-Click:
+Haxial is opposed to the abuse of mice, and therefore Haxial desires to reduce the number of clicks that mice 
+are subjected to over the course of their lifetime.  Thus KDX allows you to simply click once in lists.  Why 
+click twice when once will suffice?  However, if you are sadistic and enjoy clicking twice despite it being 
+unnecessary, then you can enable this option.
+Show Messages When In Background (MacOS):
+Controls whether or not a window will popup to display messages when KDX is in the background.
+Flash When Messages Received (MS Windows):
+Haxial KDX Documentation Page 12 of 32
+
+--- Page 13 ---
+Controls whether the KDX item in the Start Bar will flash when messages are received when KDX is in the 
+background.
+Broadcasts Go To Messages Window:
+If a semi-administrator is annoying you by broadcasting inane messages every minute, causing a window to 
+popup on your screen every time, then you can enable this option which will cause the messages to be sent to 
+your Private Messages window instead.
+Regularly Ping Servers:
+Causes KDX to regularly “ping” the server.  A ping is a small amount of data that is sent to the other computer, 
+and the other computer acknowledges it by sending a “pong” in reply.  This is useful for resolving or testing 
+certain network problems.  Do not enable this option unless you really need to.
+Only One File Transfer Queue:
+Normally, KDX has multiple file transfer queues.  The client gives each server 2 queues, a download queue, 
+and an upload queue, both of which are independent of other servers.  However, analog/dial-up modem users 
+may not appreciate this behavior, in which case they can use this option to cause there to be only the one file 
+transfer queue across all servers.
+Auto-Clear Finished Transfers:
+If this option is on, when a transfer is finishes, it will be automatically removed from the File Transfers 
+window after a short period of time.
+Auto-Switch User List Window:
+Causes the User List Window to automatically switch to display a server when you connect to it, and when 
+someone joins a server (so you can easily see who it was who joined).
+Small Button Bar:
+Changes the button bar window to a smaller horizontal version, with only icons and no titles on the buttons.
+More Settings Panel
+Show Windows At Startup:
+Tick which windows you would like to be automatically opened whenever you start/open KDX.
+Enable DCC On Port:
+DCC is Direct Client Connection.  If this is ticked, other people on the Internet can connect to you in order to 
+communicate with you directly (without the need to use a server).  You can also change the port number, but 
+do not change it unless you are an advanced user and you know what you are doing.
+Configure UPnP Router for DCC:
+If you are using a router to share your Internet access between multiple computers, then your router will 
+probably need to be configure before people can connect to you for DCC.  KDX can do this automatically, but 
+only if your router supports UPnP (Universal Plug and Play).  You can see the results of the attempted 
+configuration by clicking the “UPnP Journal” button at any time.
+Start KDX Hidden:
+This option is useful if you have your computer configured to automatically start KDX when the computer 
+starts (because you want KDX running all the time).
+MS Windows: If this option is ticked, KDX will minimize itself immediately after being opened/started.  
+You can restore it by clicking the KDX icon in the system tray (in the right bottom of the 
+screen).
+MacOS: If this option is ticked, KDX will hide itself immediately after being opened/started.  You can 
+show it by bringing KDX to the front, as you would normally do for any Mac application.
+Haxial KDX Documentation Page 13 of 32
+
+--- Page 14 ---
+Appearance Panel
+Appearance:
+This lets you change the appearance of KDX to something that is more aesthetically pleasing to you.  Please 
+note that more appearance options are available than shown in this menu — you can download more 
+Appearance files (“.hap” files) from the Haxial website or other sources.  Place your “.hap” files into a folder 
+named “Appearances” in the same folder as the KDX Client program, and then show the Settings window in 
+KDX, and the contents of the Appearances menu will be replaced with the contents of the folder.  For more 
+information, please visit this website:
+http://www.haxialsoftware.com/appearance/
+Use Small Icons In File Lists:
+Controls whether small (16x16) or normal (32x32) sized icons are used in file lists.
+Use Small Icons In User Lists:
+Controls whether small (16x16) or normal (32x32) sized icons are used in user lists.
+Save button: Applies all your changes, saves them, and closes the window.
+Apply button: Applies all your changes, saves them, but does not close the window.  For example, you 
+might use this to see how you look in the user list if you anticipate wanting to tweak it again 
+immediately.
+Cancel: Discards your changes and closes the window.
+Voice Settings Panel
+Input Device:
+If you want to use the Voice Chat feature of KDX, you will need to select an input device, which is usually a 
+microphone.  The input device listens to you speaking, and carries the sound into the computer for processing.  
+If the menu is disabled, that means your computer has no input devices configured.
+Output Device:
+Use this to select where voice will be played.  Output devices are usually speakers.  Normally you should leave 
+this on Default.
+Transmit Only When Key Is Down:
+If you tick this, and type a key into the box, then voice will only be transmitted to other people (they will only 
+be able to hear you) when you are holding down that key.  When you release the key, they cannot hear you 
+anymore, until you press it again.  This should work regardless of whether KDX is currently the frontmost 
+program on your computer, although if other programs use the same key, you might have to choose a different 
+key.  Note that you can second-click on the box to select more advanced key options.
+Allow Volume Overdrive Up To 400%:
+This option allows you to increase the volume of a person in a Voice Chat up to 400% (see notes on the Voice 
+Information window), but 400% is very high and could be very loud, so you must be careful that you do not 
+damage your speakers by setting the volume too high.  Also, overdriving the volume (increasing above 100%) 
+may cause crunchy distortions.  Use at your own risk!
+Haxial KDX Documentation Page 14 of 32
+
+--- Page 15 ---
+Get Server Info Window
+Shows general information about the server.  The name and description that are shown can be changed using 
+the “Server Settings” command.  Note that this window shows more information for administrators than it does 
+for normal users.
+Voice Controls Window
+This window is used for controlling a voice chat/conversation that you have with other people.  You can think 
+of it as an Internet telephone, where you can literally speak and listen to other people on the Internet.  
+Obviously you will need a working microphone plugged into your computer if you wish to speak.  There is a 
+list in the window which shows who you are voice chatting with.  First you need to connect to someone using 
+DCC (Direct Client Connection).  Then you click the “Commands” button the main button bar window, then 
+the person you connected to, then “Voice Chat”.  They should then appear in the Voice Controls window, and 
+you can click “Start Microphone” and talk.
+Voice Recording Light
+Next to the Start/Stop Microphone button you can see the ubiquitous WonderLight™ which changes colors.
+When it is gray, the microphone is off.
+When it is red, the microphone is on/active, but it is detecting silence, so it is not sending the 
+sound to other people.
+When it is green, the microphone is on/active and it is has detected sound and it will send that 
+sound to everyone who is listed in your Voice Controls window.  (If you have the transmit key 
+option on, then it will only transmit if the key is held down, regardless of the green status.)
+“Rate” Menu
+This menu allows you to select at what quality KDX records and sends sound.  The higher the rate, the better 
+the sound quality.  However, as you would expect, higher quality consumes more bandwidth, which your net 
+connection may or may not be able to handle.   Each menu item has the amount of bandwidth it consumes in 
+brackets after the rate.
+For example, if you are on a regular 56K modem, then you will probably want to use 5512 Hz or 6000 Hz 
+because the higher rates are more data than your modem can send.  If you are on a cable modem, the higher 
+rates are of course fine.  Note this rate only affects how YOUR sound is recorded and sent to other people, it 
+has no affect on how sound is received from other people.
+“Latency” Menu
+This is how many milliseconds KDX records for before it sends the data.  When using KDX to talk, ideally 
+you want this value to be low.  However, your net connection may not be able to handle the lowest setting, 
+causing your sound to break-up when it is received, making you difficult to understand.   If this happens, then 
+you have to increase your latency and/or decrease your rate.
+Note if someone starts talking while you are talking, please do NOT assume that they are being impolite and 
+interrupting you.  The Internet has delays (also known as lag), and thus depending on network conditions and 
+the quality of the connection between yourself and other people, there will be anywhere from a very small to a 
+very large delay before what you say is received/heard by other people.
+Haxial KDX Documentation Page 15 of 32
+
+--- Page 16 ---
+Thus if someone starts talking while you are talking, it is probably because they could not hear you talking 
+when they started talking.  ie they did not purposely interrupt you.  This is an irritating fact of Internet 
+communications — KDX is only as good as the net connection between yourself and the other person, and 
+there is not much KDX can do to improve that connection.
+Note when you change the Latency, it is like the rate — it only affects how YOUR sound is recorded and sent 
+to other people, it has no affect on how sound is received from other people.
+“Sensitivity” Menu
+If the recording light is constantly green even when you are not talking, that is very bad, because it means that 
+KDX is sending data constantly, whereas for better performance, it should stop sending when you stop 
+talking.  It is important that KDX stops transmitting audio when you stop talking because otherwise 
+insignificant Internet delays will accumulate into multi-second delays.
+What is "silence" depends on how much background noise there is in your room.  It is never completely silent, 
+for example the computer generates some noise, or there may be noises outside.  Thus KDX allows you to 
+adjust how sensitive it is to silence using the "Sensitivity" menu.   Higher numbers mean louder sounds will be 
+treated as silence.
+For example, 25 requires only little noise before it starts sending.   600 requires a much louder noise before it 
+will send the sound, and anything quieter than a rating of 600 will be ignored.  You will know when KDX is 
+sending because the recording light will change to green.
+If the recording light is constantly green while you are not talking, try increasing the Sensitivity until it changes 
+to red.  If you set it to the maximum and it is still green, then the amount of background noise is too loud.   Try 
+decreasing the noise in the room, or moving the microphone further away from noise sources such as the 
+computer, or getting a better quality microphone.
+Your operating system may also have an option for configuring the "gain" on the microphone in one of its 
+control panels.  You can try turning the gain down if the microphone is picking up too much noise.
+Some cheap and nasty microphones (for example, a $5 or $10 microphone) record so much static and 
+background noise that they cannot be used with the silence sensitivity option — even when you increase the 
+silence sensitivity to very high levels, the recording light still flashes green even when you are not talking.  In 
+this case, if you are not prepared to get a better microphone, you will probably have to resort to setting silence 
+sensitivity to the minimum, and then pressing a key on the keyboard when you want to talk.  Tapping the 
+spacebar on the keyboard is equivalent to clicking on the Start/Stop Microphone button, so you can use this 
+when you wish to speak.  There is also a “Transmit Key” option in Settings that works even KDX is not at the 
+front.
+Voice Information Window
+Click once on someone in the list at the bottom of the main KDX window to show a window like this:
+Haxial KDX Documentation Page 16 of 32
+
+--- Page 17 ---
+Name: The name of the person as entered in their Settings window.
+Address: The IP Address of the computer including the port number.  This is selectable so you can 
+copy it to the clipboard.
+Login: If the person connected to you, this is the login that they used.  You should be able to find 
+this in your Address Book.
+Rate: What rate the person is using to send sound.
+Latency: What latency the person is using to send sound.
+Data Sent: The number of bytes of sound data you have sent to this person.
+Received: The number of bytes of sound data you have received from this person.
+Volume: Drag the slider (or click a point in it) to change how loud this person’s sound is played.  Drag 
+left to decrease the volume, or right to increase the volume.  100% means full volume (no 
+change is applied to loudness of the sound).  The volume can be overdriven (set greater than 
+100%) which is useful to boost a person who is talking too quietly or who is too far away 
+from their microphone
+Disconnect: Click this to disconnect the person.  They will be removed from the list in the main window 
+and will not be able to hear what you say or talk to you anymore.  This is like hanging up the 
+telephone.
+Close: Click this to close the window.
+Microphones
+KDX works better if you have a good microphone.  When KDX is recording and it detects silence or near-
+silence, it stops sending data, which improves performance.   However, some really cheap microphones record 
+a lot of background noise, which sounds like a constant hiss or hum even when no-one is talking.   If this 
+background noise is too loud, KDX will not be able to distinguish it from normal talking, in which case it will 
+be constantly sending all the time, which will degrade your performance.
+Haxial KDX Documentation Page 17 of 32
+
+--- Page 18 ---
+Microphones that are built-in to the computer will work with KDX, but they are not very good because they 
+pick up the noise of the computers internals.  A proper external microphone is better.
+For best results, use headphones when using KDX.  If you hear yourself echoing, it is because your voice is 
+being sent to the other person, being played on their computer speakers, then their microphone is hearing the 
+speakers, recording your voice and sending it back to you.  The solution is to use headphones which stops 
+your microphone from hearing and recording the other persons voice (so if you are echoing, the OTHER 
+person needs to wear headphones).
+Voice Conference Calls
+KDX allows you to have a 3-way (or more) conversation.  You are not limited to talking to one person at a 
+time, you can connect to multiple people and have a conference call.  You can connect to as many people as you 
+like provided that you have the bandwidth to support it.
+The list at the bottom of the KDX window shows who you are connected to.  If you do not see someone in that 
+list, then you cannot talk or listen to that person.   For example, if you hear Joe talking to Fred but you cannot 
+hear what Fred says, it is probably because you are not connected to Fred (but Joe is).
+So in order for everyone in the conversation to hear everyone else, they must connect to everyone else.  It is 
+not sufficient to connect to only 1 member of the conversation.
+Voice Troubleshooting
+I’m speaking but the other person cannot hear me.
+Check that your microphone is working by using another program.  On Windows, you can use the program 
+“Sound Recorder” that comes with Windows (look in the Start menu under “Accessories” then 
+"Entertainment").  On Mac, you can use SimpleText, which has a “Record” command under its “Sound” menu.  
+If you cannot record sound in that program, then of course you are not going to be able to record your voice in 
+KDX either.
+Check that you have clicked “Start Microphone”, and that you have selected the correct recording device in the 
+“Input Device” menu (if you do not know which, try each one until you find the one that works).  If KDX 
+detects sound, the light next to the “Start Microphone” button will change to green.  If it is red, it is detecting 
+silence.
+I can’t hear the other person properly because the sound is breaking up.
+The internet connection is not fast enough.  Ask the other person to reduce
+ his/her rate, and/or increase his/her 
+latency (in the “Rate” and “Latency” menus).
+The longer I talk with someone, the more the delay increases before I hear the other person
+Check the “Sensitivity” setting (see the “Sensitivity” section in this documentation).  It is important that the 
+Sensitivity be set correctly because if a person is transmitting constantly, the delay will accumulate over time, 
+making the connection worse and worse.  For best performance, every person in the conversation should check 
+that their recording light is changing to red when they stop talking.
+There is a delay before the other person hears what I said.
+First check the “Sensitivity” setting (see the “Sensitivity” section in this documentation).  It is important that the 
+Haxial KDX Documentation Page 18 of 32
+
+--- Page 19 ---
+Sensitivity be set correctly, otherwise delays will be increased.  If fixing your Sensitivity setting does not 
+eliminate the delay, then your internet connection is not fast enough.  You can try reducing the Latency, which 
+will also reduce the delay.  Although if you reduce it too much, your internet connection might not be able to 
+handle it and the sound will break up.  You have to find a balance.
+I can hear myself echoing.
+For best results, use headphones when using KDX.  If you hear yourself echoing, it is because your voice is 
+being sent to the other person, being played on their computer speakers, then their microphone is hearing the 
+speakers, recording your voice and sending it back to you.  The solution is to use headphones which stops 
+your microphone from hearing and recording the other persons voice (so if you are echoing, the OTHER 
+person needs to wear headphones).
+I can hear someone talking to someone else that I can’t hear.
+The list at the bottom of the KDX window shows who you are connected to.  If you do not see someone in that 
+list, then you cannot talk or listen to that person.   For example, if you hear Joe talking to Fred but you cannot 
+hear what Fred says, it is probably because you are not connected to Fred (but Joe is).  So in order for 
+everyone in the conversation to hear everyone else, they must connect to everyone else.  It is not sufficient to 
+connect to only 1 member of the conversation.
+I can hear background noise / hiss / hum / buzzing.
+Please see the section “Microphones” above in this documentation.
+Accounts Window
+This window shows a list of all the Accounts that are on your server.  An Account is a piece of information 
+stored at a server that specifies the name, login, password, access privileges and other details of a person who 
+is permitted to connect to the server.  The most important function of an Account is to control who can do what 
+on your server -- access control.  For example, you probably do not want everyone on your server being able 
+to delete files.  Thus you would use Accounts to control who can delete files and who cannot by turning on or 
+off the “Can Delete Files/Folders” access privilege in certain Accounts.
+KDX also has the concept of “Account Classes”.  It is important to understand what Account Classes are.  
+First, let us consider what life would be like WITHOUT Account Classes.  Say after some time, you have 
+created 250 accounts on your server.  One day, you decide that you are sick of people bothering you with silly 
+little messages, and so you want to take away the “Can Send Messages” access privilege from 150 of your 
+users.  This means you have to manually and individually open each one of those 150 accounts, and turn off 
+the “Can Send Messages” access privilege.  HOWEVER, with Account Classes, this problem goes away!  
+Account Classes allow you to make broad sweeping changes to whole classes of users all in one foul swoop.  
+If those 150 users are in an Account Class called “Potentially Bothersome Users”, then you need only open this 
+class, turn on or off the desired privileges for this class, and the change is applied to EVERY account that uses 
+that class.
+This is how it works:  Each Account must belong to a certain Class.   Each Class has a set of access privilege 
+settings, and so does each Account. By default, the access privileges in an Account are ignored, and the 
+privileges in the Class are used instead.  But if you want an Account to be slightly different to a Class, then you 
+can specify that certain privileges in that Account OVERRIDE the same privileges in the Class.  So for 
+example, you might say that Account “John” has the same privileges as Class “Users”, except with the addition 
+(or subtraction) of the “Can Move Files/Folders” privilege.
+Haxial KDX Documentation Page 19 of 32
+
+--- Page 20 ---
+When you click the “Create Account” button, or click an existing account to edit it, you can switch to the 
+“Access Privileges” panel in the window that appears.  Notice there is a big list of everything that the account 
+can or cannot do.  Notice that there are 2 sets of tick boxes.  The disabled right set of tick boxes is a copy of the 
+ticks for the Class that this Account belongs to (just for your reference — it shows you what privileges are 
+on/off in the Class).  The enabled left set of tick boxes is for this Account only.
+These tick boxes have 3 states:  On (Ticked), Off (Blank), and No Change (Dash).   On and Off are self-
+explanatory.   No Change (Dash) means that this privilege should use whatever is set in the Class.  The final 
+resulting ACTUAL access for the account is indicated by the color of the text (normal meaning the end result is 
+that the privilege will be ON, and dimmed meaning the end result is that the privilege will be OFF).
+When looking at the list of accounts, you can see at a glance which accounts have more or less access than the 
+Haxial KDX Documentation Page 20 of 32
+
+--- Page 21 ---
+class they belong to (thanks to the SpifferrificOverridesIndicator™ feature).  If you see a “+” in front of the 
+class name for an account, it means that the account has MORE access than the class.  “-” means the account 
+has LESS access than the class.  “+/-” means the account has both enabled and disabled privileges which 
+override the class.
+Folder Access
+KDX Server includes a Folder Access feature which allows you to set access privileges on an individual per-
+folder basis.  Find it in “Commands” -> Your Server -> “Folder Access”.  The way it works is that you create 
+Folder Access Items, where each item contains a set of access privileges (can be different for each Account 
+Class).  You can then link any folder(s) with a Folder Access Item, and then any attempts to access that 
+folder(s) will be restricted according to what is specified in the linked Folder Access item.
+To link a folder with a Folder Access Item, you put the name of the item in square brackets at the end of the 
+folder name.  For example, if a folder is named “My Folder [blah]”, then it uses the Folder Access Item named 
+“blah”.  Although if you are creating a folder using the “Create Folder” command in KDX, it shows a popup 
+menu where you can simply select which Folder Access Item to use (if any), and then there is no need to type 
+the [] yourself.
+You can have many folders all linked to the 1 Folder Access Item, and then if you change that item, it is 
+automatically and instantly applied to every folder that uses it.  This avoids the need for micro-management and 
+makes it much easier to administer the privileges for a large number of folders.
+Folder Access can also be used to hide a folder from certain classes of users, as well as making it inaccessible.  
+Thus you can use the Folder Access feature to simplify your file hierarchy -- you might use it instead of 
+multiple base folders and aliases/shortcuts (which potentially increase the size of your catalog and create 
+troublesome loops).
+When you make a new KDX Server, it creates a few default Folder Access Items, which you can leave as they 
+are or modify:
+“[Default]”: If a folder specifies no Folder Access Item, then it uses whichever the parent folder uses (or 
+the parents parent etc), but if none of the parents specify a Folder Access Item, then it uses 
+this Default Folder Access Item.  Unless you change it, this is configured to only allow the 
+administrator full access, and everyone else is read-only.
+“UL”: Makes an “Uploads” folder into which anyone can upload files, and download, but only the 
+administrator can delete files.
+“DB”: Makes a “Dropbox” folder into which anyone can upload files, but NOT download or see 
+the contents.  Only the administrator or owner of the dropbox can download and see what is 
+inside, or delete files.  When you create a folder using KDX, you are given the option to 
+choose a user who is to be the owner of the dropbox (you might create a dropbox for each 
+of your users, thus giving them a way to receive files privately without making them 
+available to everyone on the server).
+If you think you have set all the access privileges correctly but your users keep seeing an “Access Denied. (ID 
+1/20)” error when they try to do something file-related, then check the access privileges in:
+(a) their Account Class,
+(b) their Account, and
+(c) whichever Folder Access Item is being used for the folder that the users are trying to access.
+You will notice that Accounts and Classes have file-related access privileges which seem to duplicate those in 
+Folder Access.  The privileges in Accounts and Classes act as “master switches”.  For example, if you turn off 
+Haxial KDX Documentation Page 21 of 32
+
+--- Page 22 ---
+“Can Delete Files/Folders” in the Account, then the user cannot delete files/folders ANYWHERE, regardless of 
+the “Can Delete Items” privilege in any Folder Access Items.  In other words, if EITHER privilege is off (in the 
+Account or in the Folder Access) then access will be denied (access is only allowed when they are BOTH on).
+Flood Protection
+KDX Server includes protection against “flooding” attacks.  “Flooding” is where an attacker bombards the 
+server with a constant stream of commands in an attempt to make it slow it to a crawl and become unusable.  
+Provided that flood protection is enabled, if the server notices a user requesting an excessive number of 
+commands, it will warn the user to stop, and if the user persists, the server will automatically disconnect and 
+ban the user.
+It is impossible to detect flooding with 100% accuracy.  Sometimes legitimate activity can look like flooding, 
+which is why the user is warned first.  Flood protection can be configured for each Account Class -- open an 
+Account Class and you will see the “Flood Protection” menu where you can choose how strict or relaxed the 
+flood protection will be.  You probably should not set it to “Very Strict” for all users because if you do that, a 
+legitimate user might be mistakenly identified as attacking the server.  Generally speaking, the less you trust a 
+user, the more strict the flood protection should be.
+KDX Server also protects against connection flooding attacks, where the attacker bombards the server with a 
+constant steam of attempts to connect to the server (as opposed to requests after establishing a connection).  
+This sort of attack is sometimes called “Denial of Service” but that terminology is often used inaccurately.  If an 
+IP address is observed to be connecting with excessive frequency, KDX Server bans it.
+Editing/Creating Chat “Rooms”
+KDX Server supports multiple chats (chat “rooms”).  To edit or create chats, click the Chat button, then 
+second-click in the Chat List to show the Context Menu.  The options are as follows:
+Name
+: The name of the chat room, appears in the Chat List.
+Description: A short descriptive comment about the chat, appears in the Chat List.
+Voice Chat: If you tick this, then the chat becomes a voice-enabled chat, meaning if you join that 
+chat, KDX will automatically try to DCC connect you to everyone else in the chat, 
+and add them to your Voice Controls window.  The chat can still continue to be used 
+for text chat as well as voice.
+Interview Mode
+: If ticked, then join, leave, disconnect, and name change messages will not be shown 
+in that chat.  Good for special moderated chat events.
+Make IRC Gateway: IRC (Internet Relay Chat) is a type of text chat service available on the Internet.  
+This feature allows a KDX chat room to become a gateway/portal to an IRC chat 
+room, allowing KDX and IRC users to communicate.  To use this feature, you must 
+supply BOTH the address of an IRC server and an IRC channel, the contents of 
+which will appear in the KDX chat.
+Access
+: Controls which Account Classes can see the chat room and which can send text to 
+the chat room, etc.
+Temporary private chats can also be created from the Context Menu in the Chat List.  You can use this if you 
+want to have a quick 3-way (or more) conversation.  The chat room will automatically disappear when it is 
+empty.
+Haxial KDX Documentation Page 22 of 32
+
+--- Page 23 ---
+Server History Window
+This window chronologically records what events have occurred on your server.  Every time something 
+happens on the server, a line is added to this history.  The window updates automatically (no need to refresh).   
+Note that you can scroll horizontally to see more information/columns.  This information can optionally be 
+recorded to journal/log files.  You can enable this in the Server Settings window.
+Connection Monitor Window
+This window lists all the connections on your server, and their status.  For example, you can use this to see all 
+file transfers at once.  The window does not update automatically, but it does have an option to automatically 
+refresh every X seconds (see the Window Menu).  A user can appear multiple times in this window if the user 
+has multiple connections to the server (the window lists connections, not users, not transfers, but connections).   
+For example, if a user is connected, downloading a file, and viewing the display, then you will see 3 
+connections for that user.
+Process Monitor Window
+This window lists the processes (running programs) that are running on the server computer.  You can also 
+exit/terminate/restart processes by second-clicking to show the Context Menu.  Exiting a process means that 
+KDX Server politely asks that process to exit (giving it a chance to save any data etc).   Terminate means that 
+KDX Server attempts to very nastily assassinate the target process, without giving it an opportunity to do 
+anything further (useful for forcing errant processes to die).  Terminating may cause unsaved data to be lost, so 
+use it only has a last resort.
+Windows 95/98/ME:
+The "Used Memory" and "Launch Time" columns are empty.  This information is not available on Windows 
+95/98/ME.  It does work correctly in Windows XP/NT5.  Also, the list of processes does not update 
+automatically — use the Refresh command instead.
+Windows NT4:
+The Processes list may be empty because NT4 does not properly support this feature.  It does work correctly in 
+Windows XP/NT5.  Also, the list of processes does not update automatically — use the Refresh command 
+instead.
+Haxial KDX Documentation Page 23 of 32
+
+--- Page 24 ---
+Windows XP/NT5:
+Everything should work, although the list of processes does not update automatically — use the Refresh 
+command instead.
+MacOS 9.x:
+The "Terminate Process" command only requests the process to exit (same as the "Exit Process" command) 
+because MacOS 9 does not provide a method for a program (KDX Server) to force a process to terminate.
+The list of processes updates automatically, there is no need to use the Refresh command.
+MacOS 10.x:
+The "Terminate Process" command only requests the process to exit (same as the "Exit Process" command) 
+because Haxial does not know of any way to make MacOS X terminate a process.  Also, the memory 
+information may be missing.  MacOS 9 does supply this information, but unfortunately MacOS X fails to do 
+so.
+The list of processes updates automatically, there is no need to use the Refresh command.
+ 
+View/Control Display Window
+This shows you an automatically updating copy of what is on the display/screen/monitor of the server 
+computer.   You can also click and type in it to remotely control the server computer.
+MacOS:
+  If you are using a MacOS client to remote-control a MS Windows server, and your Mac has only 1 
+mouse button, then you can emulate the second mouse button by holding when the Command key when 
+clicking.
+Server Settings Window
+Note that the Server Settings window is actually accessed via the CLIENT.  This is so that you can remotely 
+change the servers settings.
+General Settings Panel
+Server Name:
+The name of your server.  This will appear in Trackers (if you register your server with Trackers), and in the 
+“Get Server Info” window, and in the “Add To Address Book” command.
+Description:
+A short description of your server.  This will appear in the same places as the server name.
+Address:
+Here you can type the DNS address of your server, if you server has one.   If you server does not have a DNS 
+address, leave this box empty.  Any address you type here will show in the “Get Server Info” command, and 
+in the “Add To Address Book” command.  This is useful for making sure that users save the DNS address of 
+your server into their Address Book, rather than a temporary or dynamic IP/numeric address that may become 
+invalid after a while.
+If you configured your server to use a non-standard port number, you will need to include it in the address 
+here.  For example, if your DNS address is mydnsaddress.com and the port number is 1234, then in this box 
+you would type:   mydnsaddress.com:1234
+Haxial KDX Documentation Page 24 of 32
+
+--- Page 25 ---
+Server Icon:
+Here you can paste a Server Icon that will be displayed at the top of the main Button Bar window when you 
+server is selected.  It must be no more than 152x40 pixels.  Second-click to show a menu with commands.
+Total Outgoing Speed Limit:
+If enabled, this option will cause file downloads to be speed limited.  For example, if you put 100 KB/sec here, 
+then if 4 people are downloading, they will be limited to 25 KB/sec each (100 divided by 4 is 25).
+Greeting Panel
+Here you can type a greeting message that will shown to everyone when they connect to the server (unless they 
+have the “Don’t Show Greeting” access privilege).
+Port Numbers Panel
+Port Number:
+The main port number of your server.  Port numbers are generally used to distinguish between the different 
+services/programs that may be running on a computer. You can think of this like a block of apartments/units 
+which all have the same street address, so in order to distinguish between the different apartments, you write an 
+address like: Apartment 5, 12 Main Street.  Every program on the computer that uses a port number must be 
+given a unique port number.  For example, if you wanted to run 2 copies of KDX Server on the 1 computer for 
+some reason, you would have to change the port on one of them.  Or if another program on the computer 
+happened to use the same number as KDX Server, again you would have to change one of them.
+The default/standard port number for KDX Server is 10700.  Please note that if you change this, you and your 
+users will have to use a slightly modified address to connect to your server.  If you were connecting with the 
+address “1.2.3.4” before, but you changed the port to 8888, now you will have to connect using 
+“1.2.3.4:8888”.  Actually, every address requires a port number, but in some cases you can omit it, and then 
+the default is used.
+Alternate Port Number:
+Normally, you should leave this empty, but you might want to use it in some special circumstances.  An 
+alternate port number means that the server will listen for incoming connections on BOTH port numbers 
+(people can connect to the server using either port number).  This is useful if certain users of your server have 
+problems with certain port numbers due to faults or restrictions at the ISP, or if you have decided to change the 
+port number of your server and you would like the old port to remain functional for a period of time until 
+everyone has switched to the new.
+File Transfer Port Number:
+Normally, you should leave this empty, and then file transfers (downloads and uploads) are conducted on the 
+same port as above (the main “Port Number” box).  In some special circumstances, you might want to use a 
+different port number for file transfers.  For example, if you are using a net speed limiting program and you 
+want to limit only the file transfers, without making chat and everything else slow (so you can configure your 
+speed limiting program to limit the file transfers port, but not the main port).
+Allow/Deny Addresses Panel
+You can use this panel to prevent certain IP addresses or ranges of IP addresses from connecting to your 
+server.  For example, if you want to stop anyone from 123.200.300.XXX (where XXX is anything) from 
+connecting to your server, then add a new Deny address of “123.200.300.*”.  The asterisk (*) is a wildcard, it 
+means match anything in that place.
+Haxial KDX Documentation Page 25 of 32
+
+--- Page 26 ---
+You can also do more complicated things.  For example, if you wanted to deny all of 123.200.300.* except for 
+123.200.300.15, then you can create an Allow address of 123.200.300.15 FOLLOWED by a Deny address of 
+123.200.300.* because the rules are applied from top to bottom, and the first rule that matches is the one that is 
+used.  Second-click on an item if you want to reorder it.
+Items can also be set to automatically expire.  When an item expires, it is removed from the list.  When you use 
+the Disconnect User window, and you select a ban duration, the ban will be added to this panel with an expiry 
+time.  There is often no point in banning an address forever because the ISPs that people use change addresses 
+from time to time, or sometimes they change the address of their customers every time they connect to the 
+Internet.
+Server History Panel
+This panel gives you the option of recording the Server History (as in the Server History window) to disk in 
+the form of journal/log files.  These files are created in the folder “History” in the same folder as the KDX 
+Server program.  They are in tabbed text file format, which means that you can open them in a spreadsheet 
+program such as Excel.
+Trackers Panel
+Use this panel if you want to register your server with a KDX Tracker.  Trackers help users find your server.  
+They are like a directory or a phone book.  When you click the “Add Tracker” button, you will see a window 
+with a number of text boxes:
+Name: The name of the tracker.  This is only for your own information.
+Comments: Any comments for your own information.
+Address: The address of the tracker.
+Login: Leave blank unless you have an account on the tracker.
+Password: Leave blank unless you have an account on the tracker.
+Groups: Trackers organize servers into groups.   Here you can choose which groups you would like 
+your server to be included in.  Type the name of each group (EXACTLY), with ONE group 
+PER LINE (press return/enter at the end of each group).  You can type up to 6 groups.
+Broadcast Message Window
+Use this if you wish to send an important message to EVERYONE on the server.  This can be somewhat 
+obnoxious if it is overused, so only use it judiciously.
+Catalog Generation
+The Files window in KDX has a Search command which provides extremely fast searching of the items on the 
+server.  This feature is extremely fast because it does not search the real files, instead it searches a catalog that 
+has been generated from the files.  The Administrator of the server must use the Administration -> “Generate 
+Catalog” command before the Search feature will work.  The Administrator must also regularly generate the 
+catalog again in order to keep it up to date.
+Please note that catalog generation will fail if your files contain any alias/shortcut loops.  An alias loop is where 
+if you keep following the folders, you will go around in circles forever. For example, folder A contains a 
+folder B, which contains an alias/shortcut C that points to folder A.
+Haxial KDX Documentation Page 26 of 32
+
+--- Page 27 ---
+Shutdown Server Window
+This window allows you to remotely shutdown the server.  You can also type a message that will be sent to 
+everyone before the server is shutdown (for example, to explain the reason why you are shutting down the 
+server).  You can simply cause the KDX Server program to exit, or you can restart or shutdown the whole 
+computer.
+Upgrade Server Software
+To upgrade the server software remotely:
+1. Switch on the "Can See All Bases" access privilege in your account.
+2. Upload the new server program to the Bases folder.
+3. Both the currently running copy AND the new copy of the server program MUST be named EXACTLY 
+"KDXServer.exe" (MS Windows) or "KDXServer" (MacOS).
+4. The "KDXUpgradeHelper" program MUST be present in the same folder as the currently running copy of 
+the server program.
+5. Click the Upgrade button here and wait 5 seconds, and then it should be done and you can reconnect to 
+your server.
+6. Use the "Get Server Info" command to verify the version number.
+7. The old server program will have been deleted and the new one moved in to replace it.
+Setting up KDX Server
+Run the server program, and the first time you run it, it will ask you for a login and password to use for your 
+administrator account. Enter the login and password that you would like to use, then click OK. The server is 
+now running. Put the files that you want to share into the folder "Default" inside the folder "Bases" which is in 
+Haxial KDX Documentation Page 27 of 32
+
+--- Page 28 ---
+the same folder as the KDX Server program. Now open KDX Client, click Connect, enter the address of your 
+server (you can enter an address of 0 to connect to a server on the same computer), as well as the login and 
+password that you chose previously. You are now connected to your server using the administrator account 
+which has full access. Other people should be able to connect to your server using guest access by leaving the 
+login and password blank (unless you disabled guest access). Or you can create accounts by going to 
+"Administration" then "Accounts" in KDX Client. 
+Note that nearly all configuration of KDX Server is done using KDX Client.  The reason for this is so that 
+KDX Server can be configured remotely.  The Server does have a few options which can be configured 
+locally, but nearly everything must be done by connecting to your server using KDX Client.
+Tips and Tricks
+Multiple Connections
+KDX Client has the ability to be connected to multiple servers simultaneously.  This happens automatically if 
+you connect to another server without disconnecting from the first.  When you are connected to multiple 
+servers, you will need to look at the user interface to determine which server your actions will affect (for 
+example, the server name may be displayed in the title bar of the window, or somewhere inside that window).
+Times
+Unless specified otherwise, all dates and times shown in KDX are converted to your local time (the local time 
+of the computer that is running KDX Client).  KDX automatically takes into account the time zone of each 
+person or server and makes adjustments accordingly.
+Resizing Panes
+A number of windows in KDX are divided into “panes” (as in window panes :).  This panes can be resized by 
+dragging the horizontal or vertical bar that separates them.
+Resizing/Reordering Columns
+If you are using a list with columns, you can click and drag the line between the column headers (at the top) to 
+resize the width of the column that appears to the left.  You can also second-click a column to show a menu 
+which allows you to reorder the column.  Clicking normally on a column header causes the list to be sorted 
+according to the information in that column.
+Save Window Location/Size
+This command appears in the Window Menu of a number of windows in KDX.  Move the window to your 
+desired location, and resize it to your desired size, then use this command, then in future, the window will 
+appear at that location at with that size.  Depending on the window, it may also save other settings such as the 
+size of panels, or the configuration of columns in lists.
+Copying Non-Selectable Text
+In many windows, you can second-click on a non-editable non-selectable text item, and a context menu will 
+appear, giving you the option to copy that text to the clipboard.
+Window Switcher
+Hit the F1 key or control-shift-W (command-shift-W) to show a popup menu with a list of all windows in the 
+program.  Click a window to bring it to the front.  Or use the arrow keys and then return/enter.
+Any questions/suggestions/feedback?
+Your feedback and suggestions are welcomed.  Feel free to send a message to Haxial using the form on this 
+webpage:
+Haxial KDX Documentation Page 28 of 32
+
+--- Page 29 ---
+http://www.haxialsoftware.com/contact/
+Please support the development of KDX
+Please support the further development of KDX by purchasing a license.  As you can see by the full version 
+history on the website (http://www.haxial.com/products/kdx/kdx-vh.html), an enormous amount of effort has 
+gone into creating KDX.  Hopefully enough people will appreciate this effort and purchase a license for KDX 
+to help fund further development.   You can purchase a KDX license at:
+http://www.haxialsoftware.com/shop/
+Thank you!
+Glossary
+Access Privilege
+The right to obtain or make use of or take advantage of something, or the right to enter. In the case of 
+computers, it is the operation of reading or writing stored information from one place to another. A server 
+granting an account to a client user is giving that user access privileges to the server.
+Account
+A piece of information stored at a server that specifies the name, login, password, access privileges and other 
+details of a person who is permitted to connect to the server.
+Account Class
+A specific grouping of users into "classes." May be customized or standard. Examples are: Administrator, 
+User, Member, and Guest.
+Different privileges may be assigned to each class, and standardized so that the making of accounts becomes a 
+simple matter of assigning the user to a "class."
+Address
+1. DNS Address - Domain Name System Address - The registered name of a particular address on the Internet. 
+Many are known as world wide web addresses, but some are also used in the place of dynamic and static IP 
+addresses or IP numbers. Instead of using the IP address (example: 255.55.xx.xx), a DNS address used for 
+KDX might be: somebody.server.haxial.org - which is much easier to remember and type into a bookmark 
+than an IP number.
+2. Email Address - A  system of world-wide electronic communication in which a computer user can compose 
+a message at one computer terminal that is generated at the recipient's terminal when he logs in.
+3. IP Address - a series of numbers used as individual computer or server addresses, and recognized on the 
+world wide web as such, and quickly routes one computer to another via the IP (Internet protocol) address. An 
+example of an internal network address is 192.168.42.02. An example of a www IP address is: 127.34.00.00.
+Administrator
+An "Administrator" of a server is a person who has complete access or more access than usual to the server.  
+For example, the owner of the server is usually the primary Administrator, unless the owner employs someone 
+else to administrate his/her server.  There may be multiple Administrators per server.  The job of an 
+Administrator is generally to maintain and/or moderate the server.
+Haxial KDX Documentation Page 29 of 32
+
+--- Page 30 ---
+Alias
+A/K/A Shortcut (by Windows users), aliased folders are empty copies of folders that are located elsewhere, but 
+aliased in order to create a file path to the originating folder,  so that the client may click the alias, view the 
+contents, and either download from it, or upload to it.
+Ban
+A prohibition or or forbidding of something or someone. A server may ban a KDX client user from entry, even 
+though access privileges had been granted before. Users are banned from servers for numerous reasons, 
+including excessively pinging the server, multiple connections, multiple transfers, or for simply misbehaving 
+or breaking rules on the server; also, users may be banned as punishment or to eliminate a security risk.
+Bandwidth
+A data transmission rate; the maximum amount of information (bits/second) that can be transmitted along a 
+channel. Different types of Internet connections have different bandwidths.
+Base Folder
+A folder contained on a server which holds the "user base" for the clients who connect to it. Different users and 
+user classes may have different base folders, which may mean that the server appears different to some users 
+than it does to others. Base folders are assigned by the server administrator through the account creation 
+process.
+Bookmark
+The address of a server that is saved in the client software, in the address book menu. Usually, bookmarks 
+contain the server name, it's DNS or IP address, a login and a password (if they are necessary for access to the 
+server).
+Client
+A computer program that requests a service from another computer which is running the corresponding server 
+program.  Servers and clients are paired, meaning that if a client is to successfully communicate with a server, 
+it must be the same type of client (for example, KDX), or at least compatible.
+Clipboard
+Also known as copy & paste. The clipboard is a place in your computer system where you can copy things to, 
+such as text, pictures, etc. Once you have copied something to the clipboard, you can then "paste" it 
+somewhere, and the copied material appears where you pasted it. The clipboard is very useful for transferring 
+information from one program to another, or from one document to another. 
+Connect
+To establish a connection, between a client and server. In order to use a KDX client, it must connect to a 
+server. Connections are made by clicking the connect button and typing in the information, clicking on a server 
+listing in a tracker, or by clicking a bookmark. When the connection is established, the client shows the server 
+name and usually a banner or graphic at the top of the KDX menu.
+Disconnect
+To terminate a client / server connection. This may be accomplished by clicking the disconnect button in the 
+KDX menu, or by using the exit button. Some disconnects are unintentional and the connection must be 
+reestablished in order for transfers to complete.
+Download
+If you download a file, it means that you are copying/transfering that file from a computer on the Internet (or 
+other network) to your computer.  See also Upload, which is the reverse operation.
+Drop Box
+A KDX folder type. Drop boxes have several functions. They create a secure, private environment for users to 
+store private files. Most drop boxes are login protected, which means that the contents can only be viewed by 
+Haxial KDX Documentation Page 30 of 32
+
+--- Page 31 ---
+the user with a login that matches the drop box login (and by the server administrator).  They also provide a 
+secure method of communicating with the server administrator.
+Dynamic IP Address
+The Internet address of either a client or server that is changed by the Internet Service Provider (ISP) each time 
+that the computer establishes a connection to the Internet. 
+Encryption
+The conversion from plain text into code or the encoding of a file into a seemingly nonsensical code, usually 
+done by an algorithm. All KDX file transfers are encrypted for security purposes. Partially transferred files are 
+unusable until the transfer is complete.
+File Transfer
+ 
+The electronic transfer (either download or upload) of a file from one location to another.
+Firewall
+A software or hardware device that prohibits incoming connections on chosen ports. If a server's computer is 
+using a firewall, the server operator has opened a specific port (or two) for clients to use to connect.
+Guest
+A common account class known on KDX as an "anonymous" account. The client user does not need to have an 
+account to connect to the server, usually the login and password may be left blank. Most public servers listed in 
+the KDX trackers have guest accounts.
+Intranet
+A privately owned network where access is usually restricted to members or employees of the organization that 
+owns it.
+Internet
+An international worldwide computer network. Formed from the words "International Network."
+ISP
+Internet Service Providers are the companies providing our connections to the Internet, whether it is via dialup 
+connection, cable, DSL or satellite.
+LAN
+Local Area Network.  A type of network which is geographically limited to a small area (for example, to within 
+a one kilometer radius, or within a home, office, or building).  A LAN may also be connected to a bigger 
+network, such as the Internet.
+Login
+A user login is usually assigned by a server administrator for entry into the server. Generally this is assigned 
+when an account is made for the user, and most of the time (but not always) it is the screen name or nickname 
+of that user. Most users are known to server administrators by their login name, since sometimes clients change 
+their screen nicknames. 
+Path
+A file/folder path is the method by which you access certain files or folders on a server. Clients open a base 
+folder, then one or two more inner folders (sometimes more) to reach the location of the file they are seeking to 
+download. To upload, clients usually look for a dedicated "uploads" folder within the base folder.
+Private Chat
+A method of communication between two or more individuals who are connected to the same server. A private 
+chat may be created by a user or administrator with the privilege to do so, and he/she may invite other users 
+into the chat at any time. Private chat is not accessible by other users unless they are specifically invited.
+Haxial KDX Documentation Page 31 of 32
+
+--- Page 32 ---
+Port Number
+Every computer and network has a very wide range of ports in which to choose from. These ports are used by 
+both the client and the server. The server uses a port number in it's address, for the client to connect (default 
+port is 10700), and the client software will use random port numbers for each connection to the server. 
+Incoming ports must be opened if a firewall is running on the computer or network, outgoing ports do not need 
+to be opened by the client user.
+Protocol
+A procedure for controlling the communication between two programs on different computers on a network.  
+In some ways, it is similar to a language.  For example, if two programs do not "speak" the same protocol, 
+then they cannot communicate with each other.
+Public Chat
+A method of communication by client users connected to a server. Public chat is accessible by clicking the 
+Public Chat button on the KDX menu. Public chat is open to anyone on the server, although permission to join 
+and to speak may be given or taken by the server administrator. Some servers require users to be present in 
+public chat at all times.
+Refresh
+ 
+A refresh button (usually at the top of a KDX file window) will request fresh information to be fetched again 
+from the server. This is sometimes necessary if you have been connected to a server for a long time, or to see if 
+a file transfer has been completed.
+Server
+A "Server" is a computer program which provides some service to other programs which are known as clients. 
+Servers usually run continuously 24 hours a day, 7 days a week. The service is provided via a network such as 
+the Internet or an Ethernet LAN, using a special network protocol that is tailored to the specific services being 
+provided. Servers are often passive entities, doing little or nothing until a client connects and requests service.  
+"Server" is also used to refer to the computer which is running the server program.
+Static IP Address
+The Internet address of either a client or server that is always the same, and not changed by the Internet Service 
+Provider (ISP) each time that the computer establishes a connection to the Internet. Usually cable connections 
+are static, as they maintain a connection all the time.
+Transfer Speed
+ 
+The measurement of bandwidth usage (as in 20 K/sec) is the speed in which file transfer rates are taking place 
+between the client and server. The transfer speed is indicated in the "File Transfers" box, which pops up when 
+a transfers begin, and also in the connection monitor, which is accessible through the administration menu.
+User
+A "User" is a person who is using a computer or a program (as opposed to a programmer, who actually creates 
+the program in the first place).  A user may also be a person who has an account at a server, but is not an 
+administrator.
+Upload
+If you upload a file, it means that you are copying/transfering a file on your computer to another computer on 
+the Internet (or other network).  Upload also means sending data.  See also Download, which is the reverse 
+operation.
+URL
+Uniform Resource Locator.  A standard way of specifying the location of an object, typically a web page, on 
+the Internet.  Example:   http://www.haxial.com/faq/   It is in this format:   protocol://address/path/
+Haxial KDX Documentation Page 32 of 32

@@ -6,7 +6,11 @@ Sources, in priority order:
 1. **Haxial AppearanceEdit 1.200 Documentation.pdf** (bundled with AppearanceEdit 1.24)
 2. **AppearanceEdit.exe** Images / Colors panel name tables (string extract)
 3. **Probed `.hap` files** + Sagrado’s verified slot indices (`native/src/hap.h`)
-4. Sagrado traps (`hap-first.md`, `hap-color-table.md`, `hap-surfaces.md`)
+4. **KDX Client Documentation.pdf** (host meaning — WonderLight, Appearances folder, FT)
+5. Sagrado traps (`hap-first.md`, `hap-color-table.md`, `hap-surfaces.md`)
+
+Internet source catalog + tiered gaps:
+[`research/haxial-docs-gap-inventory.md`](../research/haxial-docs-gap-inventory.md).
 
 This is the map SagradoKit must follow before painting art. We do **not** invent
 a parallel PNG grammar.
@@ -48,15 +52,41 @@ Meaning depends on the image. Common patterns:
 
 | Use | Positions mean |
 |---|---|
-| Window / popup frames | Frame thickness on each side (must be **even**: 2,4,6…) |
+| Window / popup frames | Frame thickness on each side (must be **even**: 2,4,6…). **Caps may exceed** thickness |
 | Window title buttons | Placement in the title bar (left **or** right; top) |
 | Scroll / slider bars | Indicator **travel limits** inset from each end |
 | Slider indicators | Offset of thumb relative to the bar |
-| Popup button symbol | Placement of the arrow glyph on the button |
-| Progress fill | Inset of the fill inside the empty bar |
+| Popup button symbol | L if set else R; T if set else B; B=0 → vertical centre. Ignored on No Title (centred) |
+| Progress fill | L/R begin/end insets; T/B vertical clamp inside the empty bar |
 | Scroll arrow hilite overlays | Where to stamp the pressed-arrow glyph |
 
 If Positions are disabled for a slot, they are unused.
+
+**Scrollbar Disabled** is one shared image for double and single arrow styles.
+**Too Small** replaces the bar when it is too small for Single Arrows **per its
+caps**. Transparent Color **cannot** cut a non-rectangular Window Frame.
+
+### Compositing / layer stacks (AppearanceEdit)
+
+Menu Bar (bottom → top), when art is supplied:
+
+1. **Menu Bar Pattern** (tiled)
+2. **Menu Bar** (9-slice; transparent middle reveals pattern)
+3. Per-title **Title Pattern** (obliterates 1–2 in that title’s rect)
+4. Per-title **Title** Normal/Hilited/Disabled (obliterates below except transparent)
+
+Open menu (same idea):
+
+1. **Menu Background Pattern** → **Menu Background**
+2. Per-item **Item Pattern** → **Item** chrome
+3. **Menu Separator** centred in its gap (≤4 px)
+
+**Framed Raised Box** is a placard over an edge-to-edge scrolling area: that
+scroll region has **no focus box** — the window itself indicates focus.
+
+**WonderLight:** Off/Pause/Ready/Go/Finished = activity (e.g. file transfers).
+Flash Off/On1/On2 = attention (KDX Button Bar blinks for unread messages);
+On1/On2 alternate — period undocumented.
 
 ### States
 
@@ -148,10 +178,10 @@ face + 3 px on each side (`kDefaultButtonPad`).
 |---|---|---|
 | Small Plus / Minus | **81** / **85** | `disclosure.plus.small`, `disclosure.minus.small` |
 | Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
-| Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
-| Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
-| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — 16×16 status lamp |
-| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp |
+| Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` (placard over edge-to-edge scroll; no focus box) |
+| Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` — Continuous stretch; KDX FT tiles Fill as LEDs |
+| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — **must** 16×16 activity lamps |
+| WonderLight Flash Off/On1/On2 | **256**–**258** | Attention flash (e.g. messages); On1/On2 alternate |
 
 ### Menu (open list)
 
@@ -213,7 +243,7 @@ this many pixels from the end”).
 |---|---|---|
 | Icon Button Normal/Hilited/Disabled | **49** / **50** / **51** | `icon_button.*`; icon + optional title |
 | Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers; disabled often donor-filled |
-| Menu Bar Pattern / Menu Bar / Titles | rarely authored | Colour path `paint_menu_bar`; optional `menu_bar.*` art (no Hap occupancy in probed themes) |
+| Menu Bar Pattern / Menu Bar / Titles | rarely authored | Colour path `paint_menu_bar`; optional `menu_bar.*` art. Draw order: **Compositing** above |
 
 ### Column header / gel (related)
 
@@ -261,10 +291,15 @@ Before painting art for a control in `engine/`:
 | Column header | 150 / 151 | `column_header.*` + Primary Label |
 | Window gel frame + title boxes (close / **Window Menu** / min / max) | 220+ | `window.frame.*`, `window.close.*`, `window.menu.*`, `window.minimize.*`, `window.maximize.*` + Primary Label |
 
-**Needs index probe before art paint:**
+**Still open / deferred** — full tiered list in
+[`research/haxial-docs-gap-inventory.md`](../research/haxial-docs-gap-inventory.md).
 
-Menu bar Hap indices (empty across probed themes), popup window frame (rare),
-full Hap icon catalog beyond file/folder/user.
+| Tier | Item | Status |
+|---|---|---|
+| A (docs) | Menu Bar / menu compositing, scroll Disabled/Too Small, Progress Positions, frame caps, Popup Symbol fall-through, Framed Raised placard, WonderLight host meaning | Recorded above |
+| B (editor) | Menu Bar Hap indices (empty in themes); `menu.item.disabled` Hap index; decimal/CSV colour import; image paste context menu; Hap write | Colour paths work; Hap write out of scope |
+| C (first app) | `Appearances/` host folder; Button Bar Flash timing; live FT queue; column resize/reorder | Not kit chrome |
+| D | Marketing “mouse icons”; Sound List Editor | Ignore / N/A |
 
 ---
 
@@ -272,9 +307,12 @@ full Hap icon catalog beyond file/folder/user.
 
 | Path | What |
 |---|---|
-| `research/AppearanceEdit-Documentation.txt` | Extracted official PDF |
+| `research/AppearanceEdit-Documentation.txt` | Extracted AppearanceEdit 1.200 PDF |
+| `research/KDX-Client-Documentation.txt` | Extracted KDX Client Documentation.pdf (Client 1.600 zip) |
+| `research/haxial-docs-gap-inventory.md` | Internet sources + tiered gap inventory |
 | `research/probe_haps.py` | Slot occupancy / geometry probe |
 | `research/probe-report.txt` | Last probe run |
 | AppearanceEdit 1.24 zip | https://kdx.technowiki.info/downloads/AppearanceEdit1240-Win.zip |
+| KDX Client 1.600 zip | https://kdx.technowiki.info/downloads/KDXClient1600-Win.zip |
 
-Do not commit the `.exe` / `.hap` binaries; re-download when probing.
+Do not commit `.exe` / zip downloads (`research/bin/`); re-download when probing.
