@@ -256,58 +256,135 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
 
 // --- Controls ------------------------------------------------------------
 
-// Soft Haxial round: 2px chamfer corners (reads as a curve on 24px buttons).
-// Stronger than Sagrado's 1px punch; cleaner than a broken rad-3 arc.
+// Simple chamfer frame for small plates (checkbox, slider thumb).
 inline void rounded_frame(Canvas &cv, Rect r, Color frame, Color bg) {
     if (r.w < 6 || r.h < 6) {
         cv.frame(r, frame);
         return;
     }
-    // Straight edges, inset 2 so corners can curve
     cv.hline(r.x + 2, r.right() - 2, r.y, frame);
     cv.hline(r.x + 2, r.right() - 2, r.bottom() - 1, frame);
     cv.vline(r.x, r.y + 2, r.bottom() - 2, frame);
     cv.vline(r.right() - 1, r.y + 2, r.bottom() - 2, frame);
-    // Diagonal frame pixels (the "curve")
     cv.put(r.x + 1, r.y + 1, pack(frame));
     cv.put(r.right() - 2, r.y + 1, pack(frame));
     cv.put(r.x + 1, r.bottom() - 2, pack(frame));
     cv.put(r.right() - 2, r.bottom() - 2, pack(frame));
-    // Punch outer corner stubs to workspace
     auto punch = [&](int x, int y) { cv.put(x, y, pack(bg)); };
-    punch(r.x, r.y);
-    punch(r.x + 1, r.y);
-    punch(r.x, r.y + 1);
-    punch(r.right() - 1, r.y);
-    punch(r.right() - 2, r.y);
-    punch(r.right() - 1, r.y + 1);
-    punch(r.x, r.bottom() - 1);
-    punch(r.x + 1, r.bottom() - 1);
-    punch(r.x, r.bottom() - 2);
-    punch(r.right() - 1, r.bottom() - 1);
-    punch(r.right() - 2, r.bottom() - 1);
+    punch(r.x, r.y); punch(r.x + 1, r.y); punch(r.x, r.y + 1);
+    punch(r.right() - 1, r.y); punch(r.right() - 2, r.y); punch(r.right() - 1, r.y + 1);
+    punch(r.x, r.bottom() - 1); punch(r.x + 1, r.bottom() - 1); punch(r.x, r.bottom() - 2);
+    punch(r.right() - 1, r.bottom() - 1); punch(r.right() - 2, r.bottom() - 1);
     punch(r.right() - 1, r.bottom() - 2);
 }
 
-// 2px raised bevel (Sagrado/Haxial). `pressed` inverts light/shadow.
-inline void button_bevel(Canvas &cv, Rect r, Color l2, Color l1, Color d1,
-                         Color d2, bool pressed) {
-    if (pressed) {
-        Color t;
-        t = l2; l2 = d2; d2 = t;
-        t = l1; l1 = d1; d1 = t;
-    }
-    cv.hline(r.x + 1, r.right() - 1, r.y + 1, l2);
-    cv.hline(r.x + 2, r.right() - 2, r.y + 2, l1);
-    cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, l2);
-    cv.vline(r.x + 2, r.y + 2, r.bottom() - 2, l1);
-    cv.hline(r.x + 2, r.right() - 2, r.bottom() - 3, d1);
-    cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, d2);
-    cv.vline(r.right() - 3, r.y + 2, r.bottom() - 2, d1);
-    cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, d2);
+inline Color lerp_color(Color a, Color b, int num, int den) {
+    if (den <= 0) return a;
+    return {uint8_t(a.r + (int(b.r) - a.r) * num / den),
+            uint8_t(a.g + (int(b.g) - a.g) * num / den),
+            uint8_t(a.b + (int(b.b) - a.b) * num / den)};
 }
 
-// Shared face for push buttons and popup buttons.
+// Soft radius like Milk Redux / KDX Settings (~⅓ height → almost-pill).
+inline int soft_button_rad(Rect r) {
+    int rad = std::min(r.w, r.h) / 3;
+    if (rad < 5) rad = std::min(5, std::min(r.w, r.h) / 2);
+    if (rad > 10) rad = 10;
+    return std::max(1, rad);
+}
+
+inline bool in_round_rect(int px, int py, Rect r, int rad) {
+    if (px < r.x || py < r.y || px >= r.right() || py >= r.bottom()) return false;
+    int lx = px - r.x, ly = py - r.y;
+    int rx = r.w - 1 - lx, ry = r.h - 1 - ly;
+    auto corner_ok = [&](int cx, int cy) {
+        int dx = cx - rad, dy = cy - rad;
+        return dx * dx + dy * dy <= rad * rad;
+    };
+    if (lx < rad && ly < rad) return corner_ok(lx, ly);
+    if (rx < rad && ly < rad) return corner_ok(rx, ly);
+    if (lx < rad && ry < rad) return corner_ok(lx, ry);
+    if (rx < rad && ry < rad) return corner_ok(rx, ry);
+    return true;
+}
+
+// KDX Settings soft plate: bright top → dark bottom, big round corners.
+inline void paint_soft_plate(Canvas &cv, Rect r, Color workspace, Color face,
+                             Color light, Color dark, Color frame, bool pressed) {
+    int rad = soft_button_rad(r);
+    Color mid = face;
+    Color hi = pressed ? dark
+                       : Color{uint8_t(std::min(255, int(light.r) + 50)),
+                               uint8_t(std::min(255, int(light.g) + 50)),
+                               uint8_t(std::min(255, int(light.b) + 50))};
+    Color lo = pressed ? light : dark;
+
+    for (int y = 0; y < r.h; ++y) {
+        Color row;
+        if (!pressed) {
+            // Convex: bright headband, mid body, dark foot
+            if (y * 4 < r.h)
+                row = lerp_color(hi, mid, y * 4, std::max(1, r.h));
+            else if (y * 4 < r.h * 3)
+                row = mid;
+            else
+                row = lerp_color(mid, lo, y * 4 - r.h * 3, std::max(1, r.h));
+        } else {
+            row = lerp_color(lo, mid, y, std::max(1, r.h - 1));
+        }
+
+        for (int x = 0; x < r.w; ++x) {
+            int px = r.x + x, py = r.y + y;
+            if (!in_round_rect(px, py, r, rad)) {
+                cv.put(px, py, pack(workspace));
+                continue;
+            }
+            // Black outline following the round
+            Rect inset{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
+            int ir = std::max(1, rad - 1);
+            if (!in_round_rect(px, py, inset, ir)) {
+                cv.put(px, py, pack(frame));
+                continue;
+            }
+            // Bright top rim / dark bottom rim just inside the frame
+            Rect inner{r.x + 2, r.y + 2, r.w - 4, r.h - 4};
+            int jr = std::max(1, rad - 2);
+            bool on_rim = (inner.w > 2 && inner.h > 2)
+                              ? !in_round_rect(px, py, inner, jr)
+                              : false;
+            if (on_rim) {
+                if (y <= 1 + r.h / 5)
+                    cv.put(px, py, pack(pressed ? lo : hi));
+                else if (y >= r.h - 2 - r.h / 5)
+                    cv.put(px, py, pack(pressed ? hi : lo));
+                else if (x <= 1 + r.w / 8)
+                    cv.put(px, py, pack(pressed ? lo : light));
+                else if (x >= r.w - 2 - r.w / 8)
+                    cv.put(px, py, pack(pressed ? light : lo));
+                else
+                    cv.put(px, py, pack(row));
+                continue;
+            }
+            cv.put(px, py, pack(row));
+        }
+    }
+}
+
+inline void paint_round_ring(Canvas &cv, Rect r, Color ring, int thickness = 1) {
+    int rad = soft_button_rad(r);
+    for (int y = 0; y < r.h; ++y) {
+        for (int x = 0; x < r.w; ++x) {
+            int px = r.x + x, py = r.y + y;
+            if (!in_round_rect(px, py, r, rad)) continue;
+            Rect hole{r.x + thickness, r.y + thickness, r.w - 2 * thickness,
+                      r.h - 2 * thickness};
+            int hr = std::max(1, rad - thickness);
+            if (hole.w <= 0 || hole.h <= 0 || !in_round_rect(px, py, hole, hr))
+                cv.put(px, py, pack(ring));
+        }
+    }
+}
+
 inline void paint_button_face(Canvas &cv, const Appearance &ap, Rect r,
                               bool pressed, bool disabled = false) {
     Color workspace = ap.c("primary.background");
@@ -317,26 +394,32 @@ inline void paint_button_face(Canvas &cv, const Appearance &ap, Rect r,
         std::snprintf(buf, sizeof(buf), "%s.%s", grp, s);
         return ap.c(buf);
     };
-    cv.fill(r, bc("face"));
-    rounded_frame(cv, r, bc("frame"), workspace);
-    button_bevel(cv, r, bc("light2"), bc("light1"), bc("dark1"), bc("dark2"),
-                 pressed);
+    paint_soft_plate(cv, r, workspace, bc("face"), bc("light2"), bc("dark2"),
+                     bc("frame"), pressed);
 }
 
-// `r` is the outer hit/layout rect. Default buttons use a slightly taller
-// outer (measured Find = 26) with a 3px ring inset to the face.
+// Default = soft red ring following the round contour, 1px gap, then face.
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default) {
     Color workspace = ap.c("primary.background");
     if (is_default) {
-        rounded_frame(cv, r, ap.c("default_button.frame"), workspace);
-        // Soft red rings follow the same chamfer
-        Rect r1{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
-        Rect r2{r.x + 2, r.y + 2, r.w - 4, r.h - 4};
-        rounded_frame(cv, r1, ap.c("default_button.light"), workspace);
-        rounded_frame(cv, r2, ap.c("default_button.face"), workspace);
-        r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
-             r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
+        paint_round_ring(cv, r, ap.c("default_button.frame"), 1);
+        Rect red{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
+        paint_round_ring(cv, red, ap.c("default_button.light"), 1);
+        // Face inset with a 1px workspace gap (reads as separation)
+        Rect face{r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
+                  r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
+        Rect gap{face.x - 1, face.y - 1, face.w + 2, face.h + 2};
+        int grad = soft_button_rad(gap);
+        int frad = soft_button_rad(face);
+        for (int y = 0; y < gap.h; ++y)
+            for (int x = 0; x < gap.w; ++x) {
+                int px = gap.x + x, py = gap.y + y;
+                if (in_round_rect(px, py, gap, grad) &&
+                    !in_round_rect(px, py, face, frad))
+                    cv.put(px, py, pack(workspace));
+            }
+        r = face;
     }
     paint_button_face(cv, ap, r, pressed, false);
     int tw = cv.text_width(label);
