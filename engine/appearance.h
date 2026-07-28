@@ -263,12 +263,19 @@ inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page) 
     s.bar = bar;
     s.up = {bar.x, bar.y, bar.w, bar.w};
     s.down = {bar.x, bar.bottom() - bar.w, bar.w, bar.w};
-    s.track = {bar.x, s.up.bottom(), bar.w, s.down.y - s.up.bottom()};
-    int range = std::max(1, max_value);
-    int thumb_h = std::max(bar.w, s.track.h * page / (range + page));
+    int track_h = s.down.y - s.up.bottom();
+    if (track_h < 0) track_h = 0;
+    s.track = {bar.x, s.up.bottom(), bar.w, track_h};
+    if (page < 1) page = 1;
+    if (max_value < 0) max_value = 0;
+    int thumb_h = max_value == 0
+                      ? s.track.h
+                      : std::max(bar.w, s.track.h * page / (max_value + page));
     if (thumb_h > s.track.h) thumb_h = s.track.h;
     int travel = s.track.h - thumb_h;
-    int ty = s.track.y + (range ? travel * value / range : 0);
+    int ty = s.track.y;
+    if (max_value > 0 && travel > 0)
+        ty += travel * std::clamp(value, 0, max_value) / max_value;
     s.thumb = {bar.x, ty, bar.w, thumb_h};
     return s;
 }
@@ -319,9 +326,25 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
 }
 
+struct KitPreviewLayout {
+    Rect bounds{};
+    Rect btn_ok{}, btn_cancel{}, btn_press{};
+    Rect field{};
+    Rect list{};
+    Rect sbar{};
+    int page_rows = 1;
+    int row_count = 8;
+};
+
 // Full kit preview panel inside a gel client rect.
-inline void paint_kit_preview(Canvas &cv, const Appearance &ap, Rect client,
-                              bool caret_on, int list_sel, int scroll_val) {
+// `pressed_btn`: 0 none, 1 OK, 2 Cancel, 3 Pressed demo.
+inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
+                                          Rect client, bool caret_on,
+                                          int list_sel, int scroll_val,
+                                          int pressed_btn = 0,
+                                          bool thumb_hot = false) {
+    KitPreviewLayout lay;
+    lay.bounds = client;
     int pad = 10;
     int x = client.x + pad;
     int y = client.y + pad;
@@ -338,21 +361,53 @@ inline void paint_kit_preview(Canvas &cv, const Appearance &ap, Rect client,
     y = gel.bottom() + 12;
 
     // Buttons + field
-    paint_button(cv, ap, {x, y, 90, 24}, "OK", false, true);
-    paint_button(cv, ap, {x + 100, y, 90, 24}, "Cancel", false, false);
-    paint_button(cv, ap, {x + 200, y, 90, 24}, "Pressed", true, false);
+    lay.btn_ok = {x, y, 90, 24};
+    lay.btn_cancel = {x + 100, y, 90, 24};
+    lay.btn_press = {x + 200, y, 90, 24};
+    paint_button(cv, ap, lay.btn_ok, "OK", pressed_btn == 1, true);
+    paint_button(cv, ap, lay.btn_cancel, "Cancel", pressed_btn == 2, false);
+    // Sample always reads as depressed; holding it keeps the same look.
+    paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
     y += 34;
-    paint_field(cv, ap, {x, y, std::min(w, 290), 24}, "Edit colour roles...", true, caret_on);
+    lay.field = {x, y, std::min(w, 290), 24};
+    paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
     y += 34;
 
-    // List + header + scrollbar
-    int list_h = client.bottom() - y - pad;
-    if (list_h < 80) list_h = 80;
-    Rect list{x, y, std::min(w, 320), list_h};
+    // List + header + scrollbar (scroll_val is first visible row)
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
-    paint_list(cv, ap, list, rows, 8, list_sel, "Name");
-    Rect sbar{list.right() - kScrollbarW, list.y + kHeaderH, kScrollbarW,
-              list.h - kHeaderH};
-    paint_scrollbar(cv, ap, sbar, scroll_val, 8, 4, false);
+    lay.row_count = 8;
+    int list_h = client.bottom() - y - pad;
+    if (list_h < 80) list_h = 80;
+    lay.list = {x, y, std::min(w, 320), list_h};
+    lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
+    int max_scroll = std::max(0, lay.row_count - lay.page_rows);
+    if (scroll_val < 0) scroll_val = 0;
+    if (scroll_val > max_scroll) scroll_val = max_scroll;
+
+    // Paint header + scrolled body
+    Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, kHeaderH};
+    paint_column_header(cv, ap, hdr, "Name", true);
+    Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW,
+              lay.list.h - kHeaderH};
+    cv.fill(body, ap.c("list.background"));
+    cv.frame(body, ap.c("primary.frame"));
+    for (int i = 0; i < lay.page_rows; ++i) {
+        int idx = scroll_val + i;
+        Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+        bool sel = (idx == list_sel);
+        if (sel)
+            cv.fill(row, ap.c("list.hilite_background"));
+        else if (i % 2)
+            cv.fill(row, ap.c("list.sort_column_background"));
+        if (idx >= 0 && idx < lay.row_count) {
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
+        }
+        cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
+    }
+    lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
+                lay.list.h - kHeaderH};
+    paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows, thumb_hot);
+    return lay;
 }
