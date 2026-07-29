@@ -35,7 +35,7 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 | Piece | Choice |
 |---|---|
 | Language | C++17 |
-| Host | Win32 (native Windows, or Wine on Linux/macOS) |
+| Host | Win32 (native Windows, or Wine / `wine64` on Linux/macOS) |
 | Drawing | Software framebuffer → `SetDIBitsToDevice` |
 | Skin | Named `.skin.toml` (schema in `format/schema.json`) |
 
@@ -45,13 +45,13 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 
 ```sh
 # Debian/Ubuntu
-sudo apt install g++-mingw-w64-i686 wine
+sudo apt install g++-mingw-w64-i686 wine64   # or wine — hosts that only ship wine64 are fine
 
 # Draft PR waves live on feature branches (main is behind):
 #   git fetch origin && git checkout cursor/haxial-p2-polish-9daa
 
 make          # → build/SagradoKitEditor.exe + copied example skins
-make run      # launch under Wine (defaults to Milk Redux when present)
+make run      # launch under wine64 (override: make run WINE=wine)
 ```
 
 ### Windows

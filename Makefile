@@ -5,6 +5,8 @@
 CXX      := i686-w64-mingw32-g++
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Iengine -static -static-libgcc -static-libstdc++
 LDFLAGS  := -mwindows -lgdi32 -luser32 -lcomdlg32 -lcomctl32
+# Diablo / modern Wine hosts often only ship `wine64` (override: make run WINE=wine).
+WINE     ?= wine64
 
 BUILD    := build
 EDITOR   := $(BUILD)/SagradoKitEditor.exe
@@ -32,7 +34,7 @@ skins: | $(BUILD)
 	done
 
 run: $(EDITOR) skins
-	wine $(EDITOR)
+	$(WINE) $(EDITOR)
 
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
 smoke: engine/smoke_test.cpp engine/*.h | $(BUILD)
