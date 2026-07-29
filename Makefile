@@ -35,10 +35,13 @@ run: $(EDITOR) skins
 	wine $(EDITOR)
 
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
-smoke: engine/smoke_test.cpp engine/*.h | $(BUILD)
+# HAPS=<dir> also runs the .hap checks over a directory of real themes.
+smoke: engine/smoke_test.cpp engine/hap_test.cpp engine/*.h | $(BUILD)
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/smoke_test.cpp -o $(BUILD)/smoke_test
 	$(BUILD)/smoke_test format/skins/stock.skin.toml format/skins/slate.skin.toml
 	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.skin.toml
+	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/hap_test.cpp -o $(BUILD)/hap_test
+	$(BUILD)/hap_test $(HAPS)
 
 clean:
 	rm -rf $(BUILD)

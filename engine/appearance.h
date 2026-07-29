@@ -309,6 +309,20 @@ inline void gel_diagonal_hatch(Canvas &cv, Rect r, Color c) {
             }
 }
 
+// Window interior: primary.background colour, with the Primary Background
+// Pattern (Hap slot 17) tiled over it when the theme authors one.
+inline void paint_primary_background(Canvas &cv, const Appearance &ap, Rect r) {
+    if (r.w <= 0 || r.h <= 0) return;
+    cv.fill(r, ap.c("primary.background"));
+    const SkinImage *pat = ap.art("primary.background_pattern");
+    if (!pat || pat->empty()) return;
+    Rect prev = cv.push_clip(r);
+    for (int py = r.y; py < r.bottom(); py += pat->h)
+        for (int px = r.x; px < r.right(); px += pat->w)
+            cv.blit_image(*pat, px, py);
+    cv.pop_clip(prev);
+}
+
 // Grow box — art resize slot, else Sagrado paint_grip colour path.
 inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focused) {
     if (g.w <= 0 || g.h <= 0) return;
@@ -406,7 +420,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                                    tc);
             }
         }
-        cv.fill(lay.client, ap.c("primary.background"));
+        paint_primary_background(cv, ap, lay.client);
         return;
     }
 
@@ -455,7 +469,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     // Single client hole outline (no parallel deep/bright tracks around it).
     cv.frame(win, frame_c);
     cv.frame(client, frame_c);
-    cv.fill(client, ap.c("primary.background"));
+    paint_primary_background(cv, ap, client);
 
     // Soft inset: one pixel inside the hole, top/left deep, bottom/right bright.
     if (client.w > 2 && client.h > 2) {

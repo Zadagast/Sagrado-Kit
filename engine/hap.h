@@ -8,13 +8,21 @@
 //           2: colors  (204 x u32 0x00RRGGBB)
 //           3: icons
 //
-// Image record:
+// Image record (20-byte header):
 //   u16 width, u16 height
 //   u16 flags_bpp  (high byte: bit0 = transparency active; low byte bpp 1/2/4/8)
 //   u8 max_palette_index, u8 transparent_palette_index
 //   u32 transparent color, u8[4] caps (l,t,r,b), u8[4] positions (l,t,r,b)
 //   u32[max_palette_index+1] palette
 //   rows of packed indices, each row padded to a 4-byte boundary
+//
+// Icon record (8-byte header): same first 8 bytes, then straight to the
+// palette — icons carry no transparent colour, no caps and no positions.
+// Verified by record packing over the 111 real themes: all 1696 icon records
+// tile their section exactly with 8 + 4*palette + stride*height (and every one
+// of them overruns the following record with a 20-byte header), while all 4101
+// image records tile exactly with the 20-byte header. Reading icons with the
+// image header shifts the palette and yields noise.
 #pragma once
 #include <cstdint>
 #include <fstream>
@@ -178,27 +186,32 @@ inline uint32_t rd32(const std::vector<uint8_t> &d, size_t o) {
            uint32_t(d[o + 2]) << 8 | d[o + 3];
 }
 
-inline bool parse_image(const std::vector<uint8_t> &d, size_t o,
-                        ThemeImage &out) {
+// header_len is 20 for image records, 8 for icon records. end bounds the
+// record to its own section, so a bogus offset cannot read a neighbour.
+inline bool parse_image(const std::vector<uint8_t> &d, size_t o, size_t end,
+                        ThemeImage &out, size_t header_len = 20) {
+    if (end > d.size()) end = d.size();
+    if (o + header_len > end) return false;
     int w = rd16(d, o), h = rd16(d, o + 2);
     if (w <= 0 || h <= 0 || w > 2048 || h > 2048) return false;
     uint16_t flags_bpp = rd16(d, o + 4);
     bool transparent_active = (flags_bpp & 0x0100) != 0;
     int bpp = flags_bpp & 0xff;
     if (bpp != 1 && bpp != 2 && bpp != 4 && bpp != 8) return false;
-    if (o + 20 > d.size()) return false;
     int palette_len = d[o + 6] + 1;
     int transparent_index = d[o + 7];
-    for (int i = 0; i < 4; ++i) {
-        out.caps[i] = d[o + 12 + i];
-        out.positions[i] = d[o + 16 + i];
+    if (header_len >= 20) {
+        for (int i = 0; i < 4; ++i) {
+            out.caps[i] = d[o + 12 + i];
+            out.positions[i] = d[o + 16 + i];
+        }
     }
+    size_t pixels_off = o + header_len + 4 * size_t(palette_len);
+    size_t stride = (size_t(w) * bpp + 31) / 32 * 4;
+    if (pixels_off > end || pixels_off + stride * h > end) return false;
     std::vector<uint32_t> palette(palette_len);
     for (int i = 0; i < palette_len; ++i)
-        palette[i] = rd32(d, o + 20 + 4 * i) & 0x00ffffff;
-    size_t pixels_off = o + 20 + 4 * palette_len;
-    size_t stride = (size_t(w) * bpp + 31) / 32 * 4;
-    if (pixels_off + stride * h > d.size()) return false;
+        palette[i] = rd32(d, o + header_len + 4 * i) & 0x00ffffff;
 
     out.w = w;
     out.h = h;
@@ -247,48 +260,52 @@ inline bool load_hap(const std::string &path, Theme &theme) {
             theme.name.assign(reinterpret_cast<const char *>(&d[s]), l);
     }
 
+    // Older themes ship no Info metadata at all — Haxial falls back to the
+    // file name, so the editor shows "classic" rather than a generic label.
+    if (theme.name.empty()) {
+        size_t slash = path.find_last_of("/\\");
+        std::string stem =
+            slash == std::string::npos ? path : path.substr(slash + 1);
+        size_t dot = stem.rfind('.');
+        if (dot != std::string::npos && dot > 0) stem.resize(dot);
+        theme.name = stem;
+    }
+
     size_t n = col_len / 4;
+    size_t col_avail = col_off <= d.size() ? (d.size() - col_off) / 4 : 0;
+    if (n > col_avail) n = col_avail;
     if (n > kColorTableLen) n = kColorTableLen;
     for (size_t i = 0; i < n; ++i)
         theme.colors[i] = rd32(d, col_off + 4 * i) & 0x00ffffff;
     theme.has_colors = n > 0;
 
-    if (img_len > 0) {
-        // Offset table (relative to section start) runs to the first record.
+    // Both record sections start with a u32 offset table (relative to the
+    // section start) which runs up to the first record it points at.
+    auto load_section = [&d](size_t off, size_t len, size_t max_slots,
+                             size_t header_len,
+                             std::map<int, ThemeImage> &out) {
+        if (len == 0 || off + 4 > d.size()) return;
+        size_t end = off + len;
+        if (end > d.size()) end = d.size();
         size_t first_record = SIZE_MAX;
         std::vector<size_t> offsets;
         for (size_t i = 0; 4 * i < first_record; ++i) {
-            if (first_record == SIZE_MAX && i > 4096) return false;
-            size_t v = rd32(d, img_off + 4 * i);
+            if (first_record == SIZE_MAX && i > max_slots) break;
+            if (off + 4 * i + 4 > end) break;
+            size_t v = rd32(d, off + 4 * i);
             if (v != 0 && v < first_record) first_record = v;
             offsets.push_back(v);
         }
         for (size_t slot = 0; slot < offsets.size(); ++slot) {
-            if (offsets[slot] == 0) continue;
+            if (offsets[slot] == 0 || offsets[slot] >= len) continue;
             ThemeImage img;
-            if (parse_image(d, img_off + offsets[slot], img))
-                theme.images[int(slot)] = std::move(img);
+            if (parse_image(d, off + offsets[slot], end, img, header_len))
+                out[int(slot)] = std::move(img);
         }
-    }
+    };
 
-    // Icons section (same image records as the images table).
+    load_section(img_off, img_len, 4096, 20, theme.images);
     size_t ico_off = rd32(d, 0x44), ico_len = rd32(d, 0x48);
-    if (ico_len > 0 && ico_off + 4 <= d.size()) {
-        size_t first_record = SIZE_MAX;
-        std::vector<size_t> offsets;
-        for (size_t i = 0; 4 * i < first_record; ++i) {
-            if (first_record == SIZE_MAX && i > 512) break;
-            if (ico_off + 4 * i + 4 > d.size()) break;
-            size_t v = rd32(d, ico_off + 4 * i);
-            if (v != 0 && v < first_record) first_record = v;
-            offsets.push_back(v);
-        }
-        for (size_t slot = 0; slot < offsets.size(); ++slot) {
-            if (offsets[slot] == 0) continue;
-            ThemeImage img;
-            if (parse_image(d, ico_off + offsets[slot], img))
-                theme.icons[int(slot)] = std::move(img);
-        }
-    }
+    load_section(ico_off, ico_len, 512, 8, theme.icons);
     return true;
 }
