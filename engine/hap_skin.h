@@ -14,6 +14,7 @@ struct HapColorMap { int index; const char *role; };
 
 
 static const HapArtMap kHapArtMap[] = {
+    {17, "primary.background_pattern"},
     {25, "button.normal"},
     {26, "button.hilited"},
     {27, "button.disabled"},
@@ -52,6 +53,9 @@ static const HapArtMap kHapArtMap[] = {
     {97, "popup.symbol.normal"},
     {98, "popup.symbol.hilited"},
     {99, "popup.symbol.disabled"},
+    {101, "focus_box.normal"},
+    {102, "focus_box.hilited"},
+    {103, "focus_box.disabled"},
     {105, "separator.h"},
     {106, "separator.v"},
     {107, "box"},
@@ -109,24 +113,35 @@ static const HapArtMap kHapArtMap[] = {
     {196, "scrollbar.v.arrow_hilite.single_down"},
     {200, "menu.background_pattern"},
     {201, "menu.background"},
-    {206, "menu.item.normal"},
-    {207, "menu.item.hilited"},
+    {202, "menu.item_pattern.normal"},
+    {203, "menu.item_pattern.hilited"},
+    {204, "menu.item_pattern.disabled"},
+    {205, "menu.item.normal"},
+    {206, "menu.item.hilited"},
+    {207, "menu.item.disabled"},
     {208, "menu.separator"},
     {220, "window.frame.normal"},
     {221, "window.frame.focus"},
     {223, "window.close.normal"},
     {224, "window.close.focus"},
     {225, "window.close.hilited"},
+    {226, "window.close.disabled"},
     {228, "window.minimize.normal"},
     {229, "window.minimize.focus"},
     {230, "window.minimize.hilited"},
+    {231, "window.minimize.disabled"},
     {233, "window.maximize.normal"},
     {234, "window.maximize.focus"},
     {235, "window.maximize.hilited"},
+    {236, "window.maximize.disabled"},
     {238, "window.menu.normal"},
     {239, "window.menu.focus"},
+    {240, "window.menu.hilited"},
+    {241, "window.menu.disabled"},
     {243, "window.resize.normal"},
     {244, "window.resize.focus"},
+    {248, "popup_frame.normal"},
+    {249, "popup_frame.focus"},
     {251, "wonderlight.off"},
     {252, "wonderlight.pause"},
     {253, "wonderlight.ready"},
@@ -135,8 +150,10 @@ static const HapArtMap kHapArtMap[] = {
     {256, "wonderlight.flash_off"},
     {257, "wonderlight.flash_on1"},
     {258, "wonderlight.flash_on2"},
+    {263, "disclosure.plus.medium"},
+    {267, "disclosure.minus.medium"},
 };
-static constexpr int kHapArtMapN = 121;
+static constexpr int kHapArtMapN = int(sizeof(kHapArtMap) / sizeof(kHapArtMap[0]));
 
 static const HapColorMap kHapColorMap[] = {
     {1, "primary.light"},
@@ -263,15 +280,58 @@ static const HapColorMap kHapColorMap[] = {
     {197, "file_label.14"},
     {198, "file_label.15"},
 };
-static constexpr int kHapColorMapN = 123;
+static constexpr int kHapColorMapN =
+    int(sizeof(kHapColorMap) / sizeof(kHapColorMap[0]));
 
+// Icon slots come in 16/32 px pairs (slot, slot+1). Slots 4/8/12/16 are the
+// four alert icons in AppearanceEdit's Icons panel order; the rest were
+// identified by decoding the same slot across the theme corpus (see
+// research/dump_hap.py contact sheets) — the artwork is unambiguous even where
+// the panel row order does not follow the slot numbering.
 static const HapArtMap kHapIconMap[] = {
-    {4, "file.generic.16"},
-    {5, "file.generic.32"},
-    {8, "folder.16"},
-    {9, "folder.32"},
+    {4, "alert.stop.16"},
+    {5, "alert.stop.32"},
+    {8, "alert.note.16"},
+    {9, "alert.note.32"},
+    {12, "alert.caution.16"},
+    {13, "alert.caution.32"},
+    {16, "alert.question.16"},
+    {17, "alert.question.32"},
+    {68, "file.generic.16"},
+    {69, "file.generic.32"},
+    {160, "folder.16"},
+    {161, "folder.32"},
+    {240, "server.16"},
+    {241, "server.32"},
+    {248, "data_transfer.16"},
+    {249, "data_transfer.32"},
+    {300, "help.16"},
+    {301, "help.32"},
+    {308, "information.16"},
+    {309, "information.32"},
+    {312, "message.16"},
+    {313, "message.32"},
+    {324, "launch.16"},
+    {325, "launch.32"},
+    {336, "connect.16"},
+    {337, "connect.32"},
+    {340, "disconnect.16"},
+    {341, "disconnect.32"},
+    {348, "news.16"},
+    {349, "news.32"},
+    {352, "chat.16"},
+    {353, "chat.32"},
+    {360, "users.16"},
+    {361, "users.32"},
+    {372, "files.16"},
+    {373, "files.32"},
+    {376, "document_saved.16"},
+    {377, "document_saved.32"},
+    {380, "document_unsaved.16"},
+    {381, "document_unsaved.32"},
 };
-static constexpr int kHapIconMapN = 4;
+static constexpr int kHapIconMapN =
+    int(sizeof(kHapIconMap) / sizeof(kHapIconMap[0]));
 
 inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     SkinImage s;

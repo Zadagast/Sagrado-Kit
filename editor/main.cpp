@@ -321,7 +321,7 @@ void paint() {
     paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
 
     // Live kit preview — clip so tall samples cannot paint through the gel frame.
-    cv.fill(g.preview, ap.c("primary.background"));
+    paint_primary_background(cv, ap, g.preview);
     cv.frame(g.preview, ap.c("focus.box"));
     g.preview_st.pressed_btn = (g.drag == DragPreviewBtn || g.drag == DragDropdown)
                                    ? g.drag_btn

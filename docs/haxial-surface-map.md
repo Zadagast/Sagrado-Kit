@@ -72,6 +72,21 @@ If Positions are disabled for a slot, they are unused.
 - **Images** = widget chrome (buttons, frames, scrollbars, menus…).
 - **Icons** = sparse 16×16 / 32×32 marks (files, folders, users). Separate section.
 
+The two sections use **different record headers** — verified over the 111-theme
+corpus, where all 4101 image records tile their section exactly with a 20-byte
+header and all 1696 icon records tile exactly with an 8-byte one (each icon
+record overruns its successor if read as an image):
+
+| Record | Header | Contents |
+|---|---|---|
+| Image | 20 bytes | w, h, flags/bpp, palette len, transparent index, transparent colour, caps[4], positions[4] |
+| Icon | 8 bytes | w, h, flags/bpp, palette len, transparent index — **no** transparent colour, caps or positions |
+
+Icon slots come in (16 px, 32 px) pairs at `slot`, `slot + 1`.
+AppearanceEdit exposes icons across **four** panels — Icons, File Icons and
+Mouse Icons in addition to Images — which is why the icon section holds ~100
+authored records in art-heavy themes.
+
 ---
 
 ## Colours (verified)
@@ -146,7 +161,10 @@ face + 3 px on each side (`kDefaultButtonPad`).
 
 | AppearanceEdit name | Hap slot | SagradoKit |
 |---|---|---|
+| Primary Background Pattern | **17** | `primary.background_pattern` — tiled behind window interiors (24/111 themes, up to 280×1600) |
 | Small Plus / Minus | **81** / **85** | `disclosure.plus.small`, `disclosure.minus.small` |
+| Medium Plus / Minus | **263** / **267** | `disclosure.plus.medium`, `disclosure.minus.medium` — same 26 themes as 81/85, larger glyphs |
+| Focus Box Normal/Hilited/Disabled | **101** / **102** / **103** | `focus_box.*` — 7×7-ish frame, caps 3 on all sides |
 | Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
 | Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
 | Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
@@ -159,9 +177,17 @@ face + 3 px on each side (`kDefaultButtonPad`).
 |---|---|---|
 | Menu Background Pattern | **200** | Optional tiled pattern (else Menu Background colour) |
 | Menu Background | **201** | 9-slice over item area; may use transparency over pattern |
-| Menu Item Pattern/Normal/Hilited/Disabled | **206** / **207** / TBD | Per-row chrome above background |
+| Menu Item Pattern Normal/Hilited/Disabled | **202** / **203** / **204** | Optional per-row tile under the item chrome |
+| Menu Item Normal/Hilited/Disabled | **205** / **206** / **207** | Per-row chrome above background |
 | Menu Separator | **208** | Horizontal rule; L/R caps; vertically centred |
-| Popup Window Frame Normal/Focus | rarely authored | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
+| Popup Window Frame Normal/Focus | **248** / **249** | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
+
+The menu group is numbered **densely** (200…208, unlike the 4-slot blocks used
+by buttons), so the item states are 205/206/207 — the kit previously read
+206/207 as normal/hilited, i.e. it painted the hilite art on idle rows.
+Occupancy backs the dense reading: 203 and 206 (the *hilited* pattern and item)
+are the most authored rows, while normals are usually left to colours.
+Menu **Bar** art (a Mac-only surface) has no occupancy in any corpus theme.
 
 Colours always apply for label / hilite / disable ink even when art is present.
 
@@ -207,6 +233,29 @@ this many pixels from the end”).
 `scrollbar.v.disabled`, `scrollbar.v.too_small`, `scrollbar.v.indicator.*`,
 `scrollbar.v.grips.*`, `scrollbar.v.arrow_hilite.*`, and `scrollbar.h.*`.
 
+### Icons (Icons section, 8-byte records)
+
+Slots verified by decoding the section across the corpus (contact sheets from
+`research/dump_hap.py`) — the four alert icons match AppearanceEdit's Icons
+panel row order, the rest are identified by artwork that is identical in every
+theme that authors them. Each entry is a 16 px / 32 px pair.
+
+| Icon | Hap slots | SagradoKit |
+|---|---|---|
+| Stop / Note / Caution / Question | **4**, **8**, **12**, **16** (+1 = 32 px) | `alert.stop.*`, `alert.note.*`, `alert.caution.*`, `alert.question.*` |
+| Generic file / Folder | **68** / **160** | `file.generic.*`, `folder.*` |
+| Server / Data Transfer | **240** / **248** | `server.*`, `data_transfer.*` |
+| Help / Information | **300** / **308** | `help.*`, `information.*` |
+| Message / Launch | **312** / **324** | `message.*`, `launch.*` |
+| Connect / Disconnect | **336** / **340** | `connect.*`, `disconnect.*` |
+| News / Chat / Users / Files | **348** / **352** / **360** / **372** | `news.*`, `chat.*`, `users.*`, `files.*` |
+| Document Saved / Unsaved | **376** / **380** | `document_saved.*`, `document_unsaved.*` |
+
+Icon slot **ids are not the panel row order** beyond the four alerts (e.g. row
+17 "Download" is not slot 68), so no further names are claimed here. The
+remaining occupied ranges are the file-type and label-coloured folder icons
+(164–213) and the Mouse Icons set.
+
 ### Icon Button / Menu Bar / Column header
 
 | AppearanceEdit name | Hap slot | Notes |
@@ -221,8 +270,19 @@ this many pixels from the end”).
 |---|---|---|
 | Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers + often tabs |
 | Window Frame Normal/Focus | **220** / **221** | Positions = frame thickness; centre transparent |
-| Window Close/Min/Max/Menu … | **223+** | Positions place buttons; Disabled optional (else hide) |
+| Window Close/Min/Max/Menu … | **223+** | Groups of 5: Normal, Focus, Hilited, **Disabled**, (spare) |
+| Window Close Normal/Focus/Hilited/Disabled | **223**–**226** | `window.close.*` |
+| Window Minimize … | **228**–**231** | `window.minimize.*` |
+| Window Maximize … | **233**–**236** | `window.maximize.*` |
+| Window Menu Normal/Focus/Hilited/Disabled | **238**–**241** | Hilited (240) is AppearanceEdit 1.4-only; unauthored in corpus themes |
 | Window Resize Normal/Focus | **243** / **244** | Bottom-right; no transparent colour |
+
+The Disabled variants share their group's Positions exactly (same glyph
+placement as Normal/Focus/Hilited) across all corpus themes that author them —
+that is how 226/231/236/241 were identified.
+
+**Still unresolved** (occupied but unnamed): slot 271 (32×32, 5 themes) and
+272/277/278/279 (6×21 with caps, 1–2 themes). Left unmapped rather than guessed.
 
 ---
 
