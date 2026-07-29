@@ -200,6 +200,61 @@ struct Appearance {
     }
 };
 
+// Hap button plates are often taller than AppearanceEdit's "usual 20"
+// (Milk Redux is 23). Prefer authored height so kit samples are not squashed.
+inline int kit_button_height(const Appearance &ap) {
+    if (const SkinImage *b = ap.art("button.normal"))
+        if (b->h > 0) return b->h;
+    return kKitButtonH;
+}
+
+inline int kit_popup_height(const Appearance &ap) {
+    if (const SkinImage *p = ap.art("popup.normal"))
+        if (p->h > 0) return p->h;
+    return kKitButtonH;
+}
+
+inline int kit_header_height(const Appearance &ap) {
+    if (const SkinImage *h = ap.art("column_header.normal"))
+        if (h->h > 0) return h->h;
+    return kHeaderH;
+}
+
+inline int kit_row_height(const Appearance &ap) {
+    // Keep rows a hair under headers; never shorter than a 16px icon + sep.
+    int hdr = kit_header_height(ap);
+    int row = hdr - 2;
+    if (row < 16) row = 16;
+    if (row > hdr) row = hdr;
+    return row;
+}
+
+// Default outer sized from Hap art when present (avoids stretching a 23px
+// default plate into a hard-coded 26px band beside shorter neighbours).
+inline Rect default_button_rect(const Appearance &ap, int x, int y, int face_w) {
+    int face_h = kit_button_height(ap);
+    if (const SkinImage *d = ap.art("default_button.normal")) {
+        if (d->h > 0) {
+            if (d->h <= face_h + 2 * kDefaultButtonPad)
+                return {x, y, face_w + 2 * kDefaultButtonPad, face_h};
+            return {x, y, std::max(face_w + 2 * kDefaultButtonPad, d->w), d->h};
+        }
+    }
+    return {x, y, face_w + 2 * kDefaultButtonPad,
+            face_h + 2 * kDefaultButtonPad};
+}
+
+// Vertical origin so glyph ink is centred in r (bitmap fonts rarely fill
+// the full kFontHeight box — geometric (h-16)/2 reads as top- or bottom-heavy).
+inline int label_y_centered(const Canvas &cv, Rect r, const char *s,
+                            int press_off = 0) {
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (!s || !*s || !cv.text_ink(s, x0, y0, x1, y1))
+        return r.y + (r.h - kFontHeight) / 2 + press_off;
+    int ih = y1 - y0 + 1;
+    return r.y + (r.h - ih) / 2 - y0 + press_off;
+}
+
 struct GelLayout {
     Rect window;
     Rect client;
@@ -529,8 +584,9 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         Color tc = frame->has_text_color ? plate_text_color(frame)
                                          : ap.title_label(focused);
         int tw = cv.text_width(title);
+        Rect title_band{win.x, win.y, win.w, lay.title_h};
         cv.text(win.x + (win.w - tw) / 2,
-                win.y + (lay.title_h - kFontHeight) / 2, title, tc);
+                label_y_centered(cv, title_band, title), title, tc);
         auto paint_btn = [&](Rect r, int box_id, const char *normal,
                              const char *focus, const char *hilited,
                              const char *disabled_slot,
@@ -642,8 +698,9 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     }
 
     int tw = cv.text_width(title);
+    Rect title_band{win.x, win.y, win.w, lay.title_h};
     cv.text(win.x + (win.w - tw) / 2,
-            win.y + (lay.title_h - kFontHeight) / 2, title, label);
+            label_y_centered(cv, title_band, title), title, label);
 
     if (lay.close_box.w > 0) {
         gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame_c);
@@ -772,11 +829,9 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
         used_art = plate != nullptr;
         paint_button_face(cv, ap, r, pressed, disabled);
     }
-    int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
     Color ink = button_label_ink(ap, disabled, used_art, plate);
-    cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
-            label, ink);
+    cv.text_centered(r, label, ink, off);
 }
 
 inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
@@ -795,10 +850,17 @@ inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
         cv.frame(r, ap.c("primary.frame"));
     }
     int tx = r.x + 5;
-    int ty = r.y + (r.h - kFontHeight) / 2;
+    int ty = label_y_centered(cv, {r.x, r.y, r.w, r.h}, text);
     int end = cv.text(tx, ty, text, ap.c("text.foreground"));
-    if (focused && caret_on)
-        cv.vline(end + 1, r.y + 3, r.bottom() - 3, ap.c("text.insertion_point"));
+    if (focused && caret_on) {
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        int caret_top = r.y + 3, caret_bot = r.bottom() - 3;
+        if (cv.text_ink(text, x0, y0, x1, y1)) {
+            caret_top = ty + y0;
+            caret_bot = ty + y1 + 1;
+        }
+        cv.vline(end + 1, caret_top, caret_bot, ap.c("text.insertion_point"));
+    }
 }
 
 // Tick mark enum lives early so Find chrome can call paint_tick (defined later).
@@ -827,8 +889,10 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     if (fw < 40) fw = 40;
     Rect find_field{fx, cl.y + 10, fw, kFieldH};
     Rect repl_field{fx, cl.y + 40, fw, kFieldH};
-    cv.text(lx, find_field.y + 6, "Find:", ap.c("primary.label"));
-    cv.text(lx, repl_field.y + 6, "Replace:", ap.c("primary.label"));
+    cv.text(lx, label_y_centered(cv, find_field, "Find:"), "Find:",
+            ap.c("primary.label"));
+    cv.text(lx, label_y_centered(cv, repl_field, "Replace:"), "Replace:",
+            ap.c("primary.label"));
     paint_field(cv, ap, find_field, "needle", true, caret_on);
     paint_field(cv, ap, repl_field, "replacement", false, false);
 
@@ -885,7 +949,7 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
 
     if (img) {
         cv.nine_slice(*img, r);
-        cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
+        cv.text(r.x + 6, label_y_centered(cv, r, label), label, ink);
         return;
     }
 
@@ -903,7 +967,7 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, light);
     cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, dark);
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, dark);
-    cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
+    cv.text(r.x + 6, label_y_centered(cv, r, label), label, ink);
 }
 
 inline Color file_label_color(const Appearance &ap, int index) {
@@ -937,7 +1001,7 @@ inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
             cv.fill(row, ap.c("list.sort_column_background"));
         if (i < n_rows) {
             Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
-            cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[i], ink);
+        cv.text(row.x + 6, label_y_centered(cv, row, rows[i]), rows[i], ink);
         }
         cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
     }
@@ -1400,6 +1464,10 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
                             int value, int max_value, int page, bool hilite_thumb,
                             bool single = false, bool disabled = false,
                             ScrollArrowHot arrow_hot = ScrollArrowHot::None) {
+    // Fill the full trough first. Hap art is often 15-wide in a 16 trough;
+    // without this fill the host background shows as a white seam.
+    cv.fill(bar, ap.c("scrollbar.face"));
+
     // Too-small: shorter than single-arrows caps → stamp too_small art.
     const SkinImage *single_art = ap.art("scrollbar.v.single_arrows");
     int min_h = single_art ? (single_art->caps[1] + single_art->caps[3])
@@ -1491,6 +1559,7 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
                               bool hilite_thumb, bool single = false,
                               bool disabled = false,
                               ScrollArrowHot arrow_hot = ScrollArrowHot::None) {
+    cv.fill(bar, ap.c("scrollbar.face"));
     const SkinImage *single_art = ap.art("scrollbar.h.single_arrows");
     int min_w = single_art ? (single_art->caps[0] + single_art->caps[2])
                            : (2 * bar.h);
@@ -1844,7 +1913,7 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
         if (no_title || !label || !*label) return;
         Color ink = button_label_ink(ap, disabled, true, plate);
         int tx = r.x + 8 + (down ? 1 : 0);
-        int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
+        int ty = label_y_centered(cv, r, label, down ? 1 : 0);
         int max_w = (sym ? (sym->positions[2] > 0 ? r.w - sym->positions[2] - sym->w
                                                   : r.w - sym->w - 8)
                          : r.w - 20) -
@@ -1885,7 +1954,7 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
 
     if (no_title || !label || !*label) return;
     int tx = r.x + 8 + (down ? 1 : 0);
-    int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
+    int ty = label_y_centered(cv, r, label, down ? 1 : 0);
     int max_w = div_x - tx - 4;
     if (max_w < 8) max_w = 8;
     if (cv.text_width(label) <= max_w)
@@ -2266,11 +2335,15 @@ inline void paint_mutex_dot(Canvas &cv, Rect b, Color ink) {
 // Place Tick/Mutex art: Hap marks are ≤18 and must not smear via nine_slice
 // into kTickBox. Centre-blit natural size when close to the dest.
 inline void place_tick_art(Canvas &cv, const SkinImage &img, Rect &b) {
+    Rect slot = b;
     auto adiff = [](int a, int b) { return a > b ? a - b : b - a; };
-    if (img.w <= 18 && img.h <= 18 && adiff(img.w, b.w) <= 6 &&
-        adiff(img.h, b.h) <= 6) {
+    if (img.w <= 18 && img.h <= 18 && adiff(img.w, slot.w) <= 6 &&
+        adiff(img.h, slot.h) <= 6) {
         b.w = img.w;
         b.h = img.h;
+        // Keep left edge for label layout; centre vertically in the slot.
+        b.x = slot.x;
+        b.y = slot.y + std::max(0, (slot.h - img.h) / 2);
         cv.blit_image(img, b.x, b.y);
         return;
     }
@@ -2284,7 +2357,8 @@ inline void place_tick_art(Canvas &cv, const SkinImage &img, Rect &b) {
 inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
                        TickMark mark, const char *label, bool pressed,
                        bool disabled) {
-    Rect b{x, y, kTickBox, kTickBox};
+    Rect slot{x, y, kTickBox, kTickBox};
+    Rect b = slot;
     const SkinImage *img = ap.art(tick_art_slot(mark, pressed, disabled));
     if (!img && pressed) img = ap.art(tick_art_slot(mark, false, disabled));
     if (!img && mark != TickMark::Blank)
@@ -2310,7 +2384,10 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
     }
     if (label && *label) {
         Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
-        cv.text(b.right() + 6, b.y + (b.h - kFontHeight) / 2, label, ink);
+        int top = std::min(slot.y, b.y);
+        int bot = std::max(slot.bottom(), b.bottom());
+        Rect band{b.right() + 6, top, 8, bot - top};
+        cv.text(band.x, label_y_centered(cv, band, label), label, ink);
     }
     return b;
 }
@@ -2319,7 +2396,8 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
 inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
                         TickMark mark, const char *label, bool pressed = false,
                         bool disabled = false) {
-    Rect b{x, y, kTickBox, kTickBox};
+    Rect slot{x, y, kTickBox, kTickBox};
+    Rect b = slot;
     const SkinImage *img = ap.art(mutex_art_slot(mark, pressed, disabled));
     if (!img && pressed) img = ap.art(mutex_art_slot(mark, false, disabled));
     if (!img && mark != TickMark::Blank)
@@ -2346,7 +2424,10 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
     }
     if (label && *label) {
         Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
-        cv.text(b.right() + 6, b.y + (b.h - kFontHeight) / 2, label, ink);
+        int top = std::min(slot.y, b.y);
+        int bot = std::max(slot.bottom(), b.bottom());
+        Rect band{b.right() + 6, top, 8, bot - top};
+        cv.text(band.x, label_y_centered(cv, band, label), label, ink);
     }
     return b;
 }
@@ -2664,7 +2745,7 @@ inline void paint_icon_button(Canvas &cv, const Appearance &ap, Rect r,
         int iy = r.y + (r.h - icon_sz) / 2 + off;
         if (draw_icon) paint_icon(cv, ap, ix, iy, islot, icon_sz);
         Color ink = button_label_ink(ap, disabled, img != nullptr, img);
-        cv.text(ix + icon_part + gap, r.y + (r.h - kFontHeight) / 2 + off, title,
+        cv.text(ix + icon_part + gap, label_y_centered(cv, r, title, off), title,
                 ink);
     } else if (draw_icon) {
         int ix = r.x + (r.w - icon_sz) / 2 + off;
@@ -2711,7 +2792,9 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
     if (selected)
         cv.fill(row, ap.c("list.hilite_background"));
     Color ink = selected ? ap.c("list.hilite_foreground") : ap.c("list.label");
-    int ty = row.y + (row.h - kFontHeight) / 2;
+    // Keep content above the separator line for optical mid.
+    Rect content{row.x, row.y, row.w, std::max(1, row.h - 1)};
+    int ty = label_y_centered(cv, content, name && *name ? name : "Ag");
     int x = row.x;
     for (int i = 0; i < ncols; ++i) {
         Rect cell{x, row.y, cols[i].w, row.h};
@@ -2721,12 +2804,12 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
         if (max_w < 4) max_w = 4;
         if (std::strcmp(key, "") == 0 || std::strcmp(key, " ") == 0) {
             // Lamp column — WonderLight only.
-            int ly = row.y + (row.h - kWonderLight) / 2;
+            int ly = content.y + (content.h - kWonderLight) / 2;
             tr.light = paint_wonderlight(cv, ap, cell.x + (cell.w - kWonderLight) / 2,
                                          ly, light);
         } else if (std::strcmp(key, "Name") == 0) {
             int ix = cell.x + 2;
-            int iy = row.y + (row.h - 16) / 2;
+            int iy = content.y + (content.h - 16) / 2;
             paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16", 16);
             int text_x = ix + 18;
             int name_w = cell.right() - text_x - 2;
@@ -2738,7 +2821,7 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
             int ph = progress_art_height(ap.art("progress.bar"), ap.art("progress.fill"));
             int pw = cell.w - 6;
             if (pw < 20) pw = std::max(8, cell.w - 2);
-            tr.progress = {cell.x + 3, row.y + (row.h - ph) / 2, pw, ph};
+            tr.progress = {cell.x + 3, content.y + (content.h - ph) / 2, pw, ph};
             // Hap path: tile progress.fill art (theme owns LED colour).
             // Colour path: tint LED body from WonderLight state.
             Color tint = wonderlight_color(light);
@@ -2773,12 +2856,15 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     CanvasClip clip(cv, ft.gel.client);
     Rect cl = ft.gel.client;
     constexpr int kPad = 6;
-    constexpr int kFootH = kButtonH + 8;
-    int list_h = cl.h - 2 * kPad - kFootH;
+    int hdr_h = kit_header_height(ap);
+    int row_h = kit_row_height(ap);
+    int btn_h = kit_button_height(ap);
+    int foot_h = btn_h + 8;
+    int list_h = cl.h - 2 * kPad - foot_h;
     if (list_h < 0) list_h = 0;
     // Never force the list taller than the gel client — that spills past the frame.
-    if (list_h < kHeaderH + kRowH && cl.h >= kHeaderH + kRowH + 2 * kPad + kFootH)
-        list_h = kHeaderH + kRowH;
+    if (list_h < hdr_h + row_h && cl.h >= hdr_h + row_h + 2 * kPad + foot_h)
+        list_h = hdr_h + row_h;
     ft.list = {cl.x + kPad, cl.y + kPad, std::max(0, cl.w - 2 * kPad), list_h};
 
     // Column widths: Status/Rate wide enough for sample strings; Name absorbs rest.
@@ -2817,14 +2903,14 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     // Header plates per column (KDX list).
     int hx = ft.list.x;
     for (int i = 0; i < 6; ++i) {
-        Rect hdr{hx, ft.list.y, cols[i].w, kHeaderH};
+        Rect hdr{hx, ft.list.y, cols[i].w, hdr_h};
         const char *lab = cols[i].title;
         if (!lab || !*lab) lab = " ";
         paint_column_header(cv, ap, hdr, lab, i == 3); // Progress sorted
         hx += cols[i].w;
     }
 
-    Rect body{ft.list.x, ft.list.y + kHeaderH, ft.list.w, ft.list.h - kHeaderH};
+    Rect body{ft.list.x, ft.list.y + hdr_h, ft.list.w, ft.list.h - hdr_h};
     cv.fill(body, ap.c("list.background"));
     cv.frame(body, ap.c("primary.frame"));
 
@@ -2846,10 +2932,10 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
         {"alice", "—", "Awaiting", "—", WonderLightState::Pause, 10, false, "user.16"},
     };
     constexpr int kSamples = 3;
-    int visible = body.h / kRowH;
+    int visible = body.h / row_h;
     if (visible > kSamples) visible = kSamples;
     for (int i = 0; i < visible; ++i) {
-        Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+        Rect row{body.x + 1, body.y + 1 + i * row_h, body.w - 2, row_h};
         if (!samples[i].sel && i % 2)
             cv.fill(row, ap.c("list.sort_column_background"));
         paint_transfer_list_row(cv, ap, row, cols, 6, samples[i].name, samples[i].size,
@@ -2858,22 +2944,22 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     }
 
     // Footer buttons — Close / Stop All / Clear Finished
-    int by = cl.bottom() - kPad - kButtonH;
+    int by = cl.bottom() - kPad - btn_h;
     if (by < ft.list.bottom() + 2) by = ft.list.bottom() + 2;
-    if (by + kButtonH > cl.bottom() - 2) by = cl.bottom() - 2 - kButtonH;
+    if (by + btn_h > cl.bottom() - 2) by = cl.bottom() - 2 - btn_h;
     if (by < cl.y) by = cl.y;
     int bw = 88;
     int gap = 8;
     int bx = cl.x + kPad;
-    ft.btn_close = {bx, by, bw, kButtonH};
-    ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
-    ft.btn_clear = {bx + 2 * (bw + gap), by, 110, kButtonH};
+    ft.btn_close = {bx, by, bw, btn_h};
+    ft.btn_stop = {bx + bw + gap, by, bw, btn_h};
+    ft.btn_clear = {bx + 2 * (bw + gap), by, 110, btn_h};
     if (ft.btn_clear.right() > cl.right() - kPad) {
         int avail = cl.w - 2 * kPad - 2 * gap;
         bw = avail / 3;
-        ft.btn_close = {bx, by, bw, kButtonH};
-        ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
-        ft.btn_clear = {bx + 2 * (bw + gap), by, bw, kButtonH};
+        ft.btn_close = {bx, by, bw, btn_h};
+        ft.btn_stop = {bx + bw + gap, by, bw, btn_h};
+        ft.btn_clear = {bx + 2 * (bw + gap), by, bw, btn_h};
     }
     paint_button(cv, ap, ft.btn_close, "Close", false, false);
     paint_button(cv, ap, ft.btn_stop, "Stop All", false, false);
@@ -2934,10 +3020,23 @@ inline void paint_box(Canvas &cv, const Appearance &ap, Rect r, const char *titl
         cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("primary.dark"));
     }
     if (title && *title) {
-        int tw = cv.text_width(title);
-        int tx = r.x + 8;
-        cv.fill({tx - 2, r.y, tw + 4, kFontHeight}, ap.c("primary.background"));
-        cv.text(tx, r.y - kFontHeight / 2 + 1, title, ap.c("primary.label"));
+        // Straddle the top edge on ink bounds so the label is not clipped
+        // into the frame (old path used kFontHeight/2 which rode too high).
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        Color ink = ap.c("primary.label");
+        Color bg = ap.c("primary.background");
+        if (!cv.text_ink(title, x0, y0, x1, y1)) {
+            cv.text(r.x + 8, r.y - kFontHeight / 2 + 1, title, ink);
+            return;
+        }
+        int iw = x1 - x0 + 1;
+        int ih = y1 - y0 + 1;
+        int tx = r.x + 8 - x0;
+        int ty = r.y - ih / 2 - y0;
+        // Notch the top border behind the title.
+        cv.fill({tx + x0 - 2, r.y, iw + 4, 1}, bg);
+        if (img) cv.fill({tx + x0 - 2, r.y + 1, iw + 4, 1}, bg);
+        cv.text(tx, ty, title, ink);
     }
 }
 
@@ -3139,14 +3238,15 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
         y += kFindDlgH + 10;
     }
 
-    // Push buttons — AppearanceEdit usual 20px; default OK is +3px ring (26 outer).
-    if (fits(kDefaultButtonH)) {
+    // Push buttons — Hap art height when present (Milk is 23, not 20).
+    if (fits(std::max(kDefaultButtonH, kit_button_height(ap)))) {
         constexpr int kBtnW = 72;
         constexpr int kBtnGap = 10;
-        lay.btn_ok = default_button_rect(x, y, kBtnW);
-        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kKitButtonH};
-        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kKitButtonH};
-        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kKitButtonH};
+        int bh = kit_button_height(ap);
+        lay.btn_ok = default_button_rect(ap, x, y, kBtnW);
+        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, bh};
+        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, bh};
+        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, bh};
         paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
         if (lay.btn_cancel.right() <= right)
             paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
@@ -3154,7 +3254,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
             paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
         if (btn_dis.right() <= right)
             paint_button(cv, ap, btn_dis, "Disabled", false, false, true);
-        y += kDefaultButtonH + 8;
+        y += std::max(lay.btn_ok.h, bh) + 8;
     }
 
     // Tick / mutex / disclosure
@@ -3233,15 +3333,16 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
     static const unsigned kMenuDisabled = 1u << 4;
     const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 4)];
     if (st.menu_sel == 2) drop_label = "Standard";
-    if (fits(kKitButtonH)) {
-        lay.dropdown = {x, y, std::min(w, 200), kKitButtonH};
+    int pop_h = kit_popup_height(ap);
+    if (fits(pop_h)) {
+        lay.dropdown = {x, y, std::min(w, 200), pop_h};
         paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
                        st.pressed_btn == 4, false);
         Rect drop_dis{lay.dropdown.right() + 10, y,
-                      std::min(120, right - (lay.dropdown.right() + 10)), kKitButtonH};
+                      std::min(120, right - (lay.dropdown.right() + 10)), pop_h};
         if (drop_dis.w > 60)
             paint_dropdown(cv, ap, drop_dis, "None", false, false, true);
-        y += kKitButtonH + 8;
+        y += pop_h + 8;
     }
 
     // One H slider + disabled + one pointed V — exercise fill/travel/disabled.
@@ -3253,8 +3354,10 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
             paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
         char sval[16];
         std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
-        if (lay.slider.right() + 28 <= right)
-            cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
+        int readout_x = lay.slider_lay.bar.right() + 8;
+        if (readout_x + 24 <= right)
+            cv.text(readout_x, label_y_centered(cv, lay.slider, sval), sval,
+                    ap.c("primary.label"));
         Rect dis_slide{lay.slider.right() + 40, y, std::min(80, right - (lay.slider.right() + 40)),
                        22};
         if (dis_slide.w >= 40)
@@ -3272,27 +3375,29 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
         "file.generic.16", "folder.16", "user.16", "document.text.16",
         "folder.uploads.16", "message.16", "hard_disk.16", "files.16"};
     lay.row_count = 8;
+    int hdr_h = kit_header_height(ap);
+    int row_h = kit_row_height(ap);
     int list_h = client.bottom() - y - pad;
-    if (list_h >= kHeaderH + kRowH + kScrollbarW) {
+    if (list_h >= hdr_h + row_h + kScrollbarW) {
         lay.list = {x, y, std::min(w, 320), list_h};
-        int body_h = lay.list.h - kHeaderH - kScrollbarW;
-        lay.page_rows = std::max(1, body_h / kRowH);
+        int body_h = lay.list.h - hdr_h - kScrollbarW;
+        lay.page_rows = std::max(1, body_h / row_h);
         int max_scroll = std::max(0, lay.row_count - lay.page_rows);
         if (scroll_val < 0) scroll_val = 0;
         if (scroll_val > max_scroll) scroll_val = max_scroll;
 
-        Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, kHeaderH};
+        Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, hdr_h};
         int split = hdr.w * 2 / 3;
         paint_column_header(cv, ap, {hdr.x, hdr.y, split, hdr.h}, "Name", true);
         paint_column_header(cv, ap,
                             {hdr.x + split, hdr.y, hdr.w - split, hdr.h}, "Off",
                             false, true);
-        Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW, body_h};
+        Rect body{lay.list.x, lay.list.y + hdr_h, lay.list.w - kScrollbarW, body_h};
         cv.fill(body, ap.c("list.background"));
         cv.frame(body, ap.c("primary.frame"));
         for (int i = 0; i < lay.page_rows; ++i) {
             int idx = scroll_val + i;
-            Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+            Rect row{body.x + 1, body.y + 1 + i * row_h, body.w - 2, row_h};
             bool sel = (idx == list_sel);
             if (sel)
                 cv.fill(row, ap.c("list.hilite_background"));
@@ -3301,9 +3406,11 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
             if (idx >= 0 && idx < lay.row_count) {
                 Color ink = sel ? ap.c("list.hilite_foreground")
                                 : file_label_color(ap, idx % 16);
-                int iy = row.y + (kRowH - 16) / 2;
+                Rect content{row.x, row.y, row.w, std::max(1, row.h - 1)};
+                int iy = content.y + (content.h - 16) / 2;
                 paint_icon(cv, ap, row.x + 4, iy, row_icons[idx], 16);
-                cv.text(row.x + 24, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
+                cv.text(row.x + 24, label_y_centered(cv, content, rows[idx]), rows[idx],
+                        ink);
             }
             cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
         }
