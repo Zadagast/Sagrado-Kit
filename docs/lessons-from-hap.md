@@ -75,11 +75,14 @@ Primary Background or window frames). Incomplete themes still resolve
 
 After import, the Kit applies a small **soft-completion** pack
 (`format/skins/completion/`) that fills **empty** art/icon keys only
-(icons, WonderLight, menu plates, focus box). Authored Hap art is never
-overwritten. Scroll **grips** are not soft-filled — themes that omit them
+(icons, WonderLight, focus box, popup frames when missing). Authored Hap art is
+never overwritten. Scroll **grips** are not soft-filled — themes that omit them
 usually bake thumb chrome into the indicator (e.g. Aluminum Alloy). Soft-complete
-never invents `menu.background` / `menu.item.*` over an authored menu pattern
-or other menu chrome. Pure Hap without the pack is still a valid colour path.
+also never invents open-menu chrome (`menu.background`, `menu.background_pattern`,
+`menu.item.*`, `menu.separator`): many light themes (Milk Redux) leave those
+slots empty on purpose and paint menus from colours. Injecting dark Boilerplate
+plates there reads as two skins mixed together. Pure Hap without the pack is
+still a valid colour path.
 
 Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
 set, paint prefers that ink for button / header / menu / title labels on

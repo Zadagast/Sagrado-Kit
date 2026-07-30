@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
     Rect cl = gel.client;
     Rect menu_r{cl.x, cl.y, cl.w, kMenuBarH};
     static const char *titles[] = {"File", "Edit", "Find", "Appearance", "Help"};
-    paint_menu_bar(cv, ap, menu_r, titles, 5, 0);
+    paint_menu_bar(cv, ap, menu_r, titles, 5, 1);
 
     Rect status{cl.x, cl.bottom() - 20, cl.w, 20};
     Rect text{cl.x, menu_r.bottom(), cl.w - kScrollbarW,
@@ -43,6 +43,34 @@ int main(int argc, char **argv) {
     }
     paint_scrollbar(cv, ap, {text.right(), text.y, kScrollbarW, text.h}, 0, 10, 20,
                     false);
+
+    // Open Edit menu — Milk must stay on the colour path (no dark Boilerplate
+    // plates from soft-complete).
+    static const char *edit_items[] = {
+        "Undo", "-", "Cut", "Copy", "Paste", "Clear", "-", "Select All", "Sort Lines"};
+    MenuLayout open =
+        paint_menu(cv, ap, menu_r.x + 48, menu_r.bottom(), 140, edit_items, 9, 2);
+    if (path.find("Milk Redux") != std::string::npos ||
+        path.find("milk-redux") != std::string::npos) {
+        if (ap.art("menu.background") || ap.art("menu.item.normal")) {
+            std::fprintf(stderr, "Milk menu art leaked into TextEdit paint\n");
+            return 1;
+        }
+        Color expect = ap.c("menu.background");
+        int sx = open.items_bounds.x + open.items_bounds.w / 2;
+        int sy = open.items_bounds.y + 2;
+        uint32_t px = cv.data()[size_t(sy) * W + sx];
+        int pr = int((px >> 16) & 255), pg = int((px >> 8) & 255),
+            pb = int(px & 255);
+        int dr = pr - expect.r, dg = pg - expect.g, db = pb - expect.b;
+        if (dr * dr + dg * dg + db * db > 40 * 40) {
+            std::fprintf(stderr,
+                         "Milk open menu fill #%02x%02x%02x != colour #%02x%02x%02x\n",
+                         pr, pg, pb, expect.r, expect.g, expect.b);
+            return 1;
+        }
+        std::printf("Milk Edit menu colour-path OK at %d,%d\n", sx, sy);
+    }
 
     cv.fill(status, ap.c("primary.background"));
     cv.text(status.x + 8, status.y + (status.h - cv.line_height()) / 2,

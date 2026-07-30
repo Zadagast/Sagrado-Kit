@@ -49,6 +49,22 @@ int main(int argc, char **argv) {
             std::printf("slider.h.bar.disabled art %dx%d\n",
                         ap.art("slider.h.bar.disabled")->w,
                         ap.art("slider.h.bar.disabled")->h);
+        // Milk leaves open-menu plates empty (colour path). Soft-complete must
+        // not invent dark Boilerplate menu.background / menu.item.* — that
+        // reads as two themes mixed together. (Hap may still carry a junk
+        // menu.separator plate; paint ignores separators taller than 4px.)
+        if (path.find("Milk Redux") != std::string::npos ||
+            path.find("milk-redux") != std::string::npos) {
+            if (ap.art("menu.background") || ap.art("menu.background_pattern") ||
+                ap.art("menu.item.normal") || ap.art("menu.item.hilited") ||
+                ap.art("menu.item.pattern.normal") ||
+                ap.art("menu.item.pattern.hilited")) {
+                std::fprintf(stderr,
+                             "Milk open-menu art was soft-completed (mixed theme)\n");
+                return 1;
+            }
+            std::printf("Milk open menus: colour path (no invented menu art)\n");
+        }
     }
 
     Color bg = ap.c("primary.background");

@@ -592,20 +592,6 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
     std::string dir = parent_dir(pack_path);
     int filled = 0;
 
-    // If the Hap already authored a menu pattern or item/background plates,
-    // do not invent foreign menu.background / menu.item.* — dark Boilerplate
-    // plates clash on light patterned themes (Aluminum Alloy). A lone junk
-    // separator (Milk 28×36) does not count as menu chrome.
-    bool has_menu_chrome = false;
-    for (const auto &kv : ap.art_cache) {
-        if (kv.second.empty()) continue;
-        if (kv.first == "menu.background_pattern" || kv.first == "menu.background" ||
-            kv.first.rfind("menu.item.", 0) == 0) {
-            has_menu_chrome = true;
-            break;
-        }
-    }
-
     for (const auto &kv : pack.art) {
         if (kv.first == "primary.background" ||
             kv.first == "primary.background_pattern")
@@ -614,12 +600,15 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
         // Milk) either bake marks into the indicator or want a clean thumb.
         // Foreign grips read as a fake button on authored indicators.
         if (kv.first.find(".grips.") != std::string::npos) continue;
-        if (has_menu_chrome) {
-            if (kv.first == "menu.background" ||
-                kv.first.rfind("menu.item.", 0) == 0 ||
-                kv.first.rfind("menu.item.pattern.", 0) == 0)
-                continue;
-        }
+        // Never invent open-menu chrome from the completion pack. Milk and
+        // many light themes leave Menu Background / Item slots empty on
+        // purpose (colour path). Injecting dark Boilerplate plates makes the
+        // app look like two skins mixed together.
+        if (kv.first == "menu.background" ||
+            kv.first == "menu.background_pattern" ||
+            kv.first == "menu.separator" ||
+            kv.first.rfind("menu.item.", 0) == 0)
+            continue;
         if (ap.art_cache.count(kv.first) && !ap.art_cache[kv.first].empty())
             continue;
         SkinImage img;
@@ -628,8 +617,8 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
         if (kv.second.has_caps) std::memcpy(img.caps, kv.second.caps, 4);
         if (kv.second.has_positions)
             std::memcpy(img.positions, kv.second.positions, 4);
-        // Reject absurd separator geometry even from the pack.
-        if (kv.first == "menu.separator" && img.h > 4) continue;
+        // Tiny Hap popup stubs (Milk 3×3) are real; do not replace with pack
+        // plates, and do not invent a pack frame when the theme authored one.
         if (kv.first.rfind("popup_frame", 0) == 0 && img.w * img.h < 25) continue;
         ap.art_cache[kv.first] = std::move(img);
         ++filled;

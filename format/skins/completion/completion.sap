@@ -1,12 +1,14 @@
 # SagradoKit Hap soft-completion pack
 # Fills empty art/icon slots after live Hap import. Never Primary Background.
+# Open-menu plates below are kept for authoring reference only — soft_complete
+# skips menu.background / menu.item.* / menu.separator (colour path for Milk).
 format = "sap"
 version = 1
 
 [meta]
 name = "Hap Completion"
 creator = "SagradoKit"
-description = "Soft-fill icons, WonderLight, menu, focus box for incomplete Haps"
+description = "Soft-fill icons, WonderLight, focus box for incomplete Haps (not open menus)"
 
 [colors]
 
