@@ -341,6 +341,7 @@ int main(int argc, char **argv) {
         std::string cmd = "ls -1 \"" + dir + "\"";
         FILE *p = popen(cmd.c_str(), "r");
         int files = 0, ok = 0, with_art = 0, with_icons = 0, unnamed = 0;
+        int capped = 0, fat_middle = 0;
         char line[1024];
         while (p && std::fgets(line, sizeof(line), p)) {
             std::string f(line);
@@ -353,12 +354,33 @@ int main(int argc, char **argv) {
             if (!t.images.empty()) ++with_art;
             if (!t.icons.empty()) ++with_icons;
             if (t.name.empty()) ++unnamed;
+            // AppearanceEdit only accepts caps whose middle band is exactly one
+            // pixel, and the corpus obeys that without exception — which is why
+            // stretching the band in nine_slice is pixel-exact rather than an
+            // approximation of tiling. A decoder that shifted caps by a byte
+            // would break the invariant, so assert it.
+            for (const auto &kv : t.images) {
+                const ThemeImage &im = kv.second;
+                int cl = im.caps[0], ct = im.caps[1];
+                int cr = im.caps[2], cb = im.caps[3];
+                if (cl + cr > 0) {
+                    ++capped;
+                    if (im.w - cl - cr != 1) ++fat_middle;
+                }
+                if (ct + cb > 0) {
+                    ++capped;
+                    if (im.h - ct - cb != 1) ++fat_middle;
+                }
+            }
         }
         if (p) pclose(p);
         std::printf("corpus: %d files, decoded %d, art %d, icons %d, unnamed %d\n",
                     files, ok, with_art, with_icons, unnamed);
         check(files == 0 || ok == files, "every corpus theme decodes");
         check(unnamed == 0, "every corpus theme resolves a name");
+        std::printf("caps: %d capped axes, %d with a middle wider than 1px\n",
+                    capped, fat_middle);
+        check(fat_middle == 0, "every capped axis has a 1px middle");
     }
 
     if (failures) {

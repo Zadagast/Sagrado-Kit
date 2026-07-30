@@ -42,6 +42,14 @@ Every image has **Left / Top / Right / Bottom Cap** (0–255 px):
 Some controls only stretch on one axis (progress, many scroll pieces); the other
 caps are disabled in the editor.
 
+**AppearanceEdit only accepts caps that leave a one-pixel middle band, and the
+corpus obeys it without exception**: of 4227 art records in 111 real themes,
+every capped axis measures `w - left - right == 1` (1288 axes) or
+`h - top - bottom == 1` (1214 axes), and none is wider. So stretching that band
+is identical to tiling it, and a 9-slicer needs no tile/stretch decision to be
+pixel-exact — but caps shifted by even one byte would break the invariant, which
+is why `hap_test` asserts it over the corpus.
+
 ### Positions (per-image layout)
 
 Meaning depends on the image. Common patterns:
@@ -57,6 +65,12 @@ Meaning depends on the image. Common patterns:
 | Scroll arrow hilite overlays | Where to stamp the pressed-arrow glyph |
 
 If Positions are disabled for a slot, they are unused.
+
+The "must be even" rule is **specific to frame thickness**, not to Positions in
+general: in the corpus no frame slot (220/221 window, 248/249 popup) ever carries
+an odd Position, while 113 records on placement slots do — title buttons
+(223–244), slider bars/indicators (126–148), scrollbars (162–196) and the popup
+symbol (97–99). So a validator must not reject odd Positions outright.
 
 ### States
 
