@@ -370,7 +370,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
         Color tc = ap.title_label(focused);
         int tw = cv.text_width(title);
         cv.text(win.x + (win.w - tw) / 2,
-                win.y + (lay.title_h - kFontHeight) / 2, title, tc);
+                win.y + (lay.title_h - cv.line_height()) / 2, title, tc);
         auto paint_btn = [&](Rect r, const char *normal, const char *focus,
                              const char *hilited, bool pressed,
                              void (*glyph)(Canvas &, Rect, Color)) {
@@ -481,7 +481,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
 
     int tw = cv.text_width(title);
     cv.text(win.x + (win.w - tw) / 2,
-            win.y + (lay.title_h - kFontHeight) / 2, title, label);
+            win.y + (lay.title_h - cv.line_height()) / 2, title, label);
 
     if (lay.close_box.w > 0) {
         gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame_c);
@@ -621,7 +621,7 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
     int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
     Color ink = button_label_ink(ap, disabled, used_art);
-    cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - kFontHeight) / 2 + off,
+    cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - cv.line_height()) / 2 + off,
             label, ink);
 }
 
@@ -641,7 +641,7 @@ inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
         cv.frame(r, ap.c("primary.frame"));
     }
     int tx = r.x + 5;
-    int ty = r.y + (r.h - kFontHeight) / 2;
+    int ty = r.y + (r.h - cv.line_height()) / 2;
     int end = cv.text(tx, ty, text, ap.c("text.foreground"));
     if (focused && caret_on)
         cv.vline(end + 1, r.y + 3, r.bottom() - 3, ap.c("text.insertion_point"));
@@ -691,7 +691,7 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
                 cv.put(b.x + 5 + i, b.y + 10 - i, pack(ink));
             }
         }
-        cv.text(cx + 20, cy0 + (14 - kFontHeight) / 2, lab, ap.c("primary.label"));
+        cv.text(cx + 20, cy0 + (14 - cv.line_height()) / 2, lab, ap.c("primary.label"));
     };
     paint_check(lx, cy, true, "Case Sensitive");
     if (cl.w > 280) paint_check(cl.x + 190, cy, false, "Stop at End of File");
@@ -741,7 +741,7 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     if (!img && hilite) img = ap.art("column_header.normal");
     if (img) {
         cv.nine_slice(*img, r);
-        cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
+        cv.text(r.x + 6, r.y + (r.h - cv.line_height()) / 2, label, ink);
         return;
     }
 
@@ -759,7 +759,7 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, light);
     cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, dark);
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, dark);
-    cv.text(r.x + 6, r.y + (r.h - kFontHeight) / 2, label, ink);
+    cv.text(r.x + 6, r.y + (r.h - cv.line_height()) / 2, label, ink);
 }
 
 inline Color file_label_color(const Appearance &ap, int index) {
@@ -789,7 +789,7 @@ inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
             cv.fill(row, ap.c("list.sort_column_background"));
         if (i < n_rows) {
             Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
-            cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[i], ink);
+            cv.text(row.x + 6, row.y + (kRowH - cv.line_height()) / 2, rows[i], ink);
         }
         cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
     }
@@ -1314,7 +1314,7 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
 
         Color ink = dis ? ap.c("menu.disable_label")
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
-        cv.text(row.x + 8, row.y + (kMenuItemH - kFontHeight) / 2, items[i], ink);
+        cv.text(row.x + 8, row.y + (kMenuItemH - cv.line_height()) / 2, items[i], ink);
     }
     return lay;
 }
@@ -1381,7 +1381,7 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
 
         Color ink = dis ? ap.c("menu.disable_label")
                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
-        cv.text(item.x + 8, item.y + (item.h - kFontHeight) / 2, t, ink);
+        cv.text(item.x + 8, item.y + (item.h - cv.line_height()) / 2, t, ink);
         x += iw;
     }
     return lay;
@@ -1448,21 +1448,13 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
         if (no_title || !label || !*label) return;
         Color ink = button_label_ink(ap, disabled, plate != nullptr);
         int tx = r.x + 8 + (down ? 1 : 0);
-        int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
+        int ty = r.y + (r.h - cv.line_height()) / 2 + (down ? 1 : 0);
         int max_w = (sym ? (sym->positions[2] > 0 ? r.w - sym->positions[2] - sym->w
                                                   : r.w - sym->w - 8)
                          : r.w - 20) -
                     8;
         if (max_w < 8) max_w = 8;
-        if (cv.text_width(label) <= max_w)
-            cv.text(tx, ty, label, ink);
-        else {
-            std::string s(label);
-            while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w)
-                s.pop_back();
-            s += "..";
-            cv.text(tx, ty, s.c_str(), ink);
-        }
+        cv.text_elided(tx, ty, label, max_w, ink);
         return;
     }
 
@@ -1489,17 +1481,10 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
 
     if (no_title || !label || !*label) return;
     int tx = r.x + 8 + (down ? 1 : 0);
-    int ty = r.y + (r.h - kFontHeight) / 2 + (down ? 1 : 0);
+    int ty = r.y + (r.h - cv.line_height()) / 2 + (down ? 1 : 0);
     int max_w = div_x - tx - 4;
     if (max_w < 8) max_w = 8;
-    if (cv.text_width(label) <= max_w)
-        cv.text(tx, ty, label, ink);
-    else {
-        std::string s(label);
-        while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w) s.pop_back();
-        s += "..";
-        cv.text(tx, ty, s.c_str(), ink);
-    }
+    cv.text_elided(tx, ty, label, max_w, ink);
 }
 
 struct SliderLayout {
@@ -1833,7 +1818,7 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
     }
     if (label && *label) {
         Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
-        cv.text(b.right() + 6, b.y + (b.h - kFontHeight) / 2, label, ink);
+        cv.text(b.right() + 6, b.y + (b.h - cv.line_height()) / 2, label, ink);
     }
     return b;
 }
@@ -1872,7 +1857,7 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
     }
     if (label && *label) {
         Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
-        cv.text(b.right() + 6, b.y + (b.h - kFontHeight) / 2, label, ink);
+        cv.text(b.right() + 6, b.y + (b.h - cv.line_height()) / 2, label, ink);
     }
     return b;
 }
@@ -2173,7 +2158,7 @@ inline void paint_icon_button(Canvas &cv, const Appearance &ap, Rect r,
         paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16",
                    icon_sz);
         Color ink = button_label_ink(ap, disabled, img != nullptr);
-        cv.text(ix + icon_sz + gap, r.y + (r.h - kFontHeight) / 2 + off, title,
+        cv.text(ix + icon_sz + gap, r.y + (r.h - cv.line_height()) / 2 + off, title,
                 ink);
     } else {
         int ix = r.x + (r.w - icon_sz) / 2 + off;
@@ -2198,14 +2183,7 @@ struct TransferCol {
 inline void paint_cell_text(Canvas &cv, int x, int y, int max_w, const char *text,
                             Color ink) {
     if (!text || max_w <= 0) return;
-    if (cv.text_width(text) <= max_w) {
-        cv.text(x, y, text, ink);
-        return;
-    }
-    std::string s(text);
-    while (s.size() > 1 && cv.text_width((s + "..").c_str()) > max_w) s.pop_back();
-    s += "..";
-    cv.text(x, y, s.c_str(), ink);
+    cv.text_elided(x, y, text, max_w, ink);
 }
 
 // KDX File Transfers list row — single line, columns, LED meter in Progress.
@@ -2220,7 +2198,7 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
     if (selected)
         cv.fill(row, ap.c("list.hilite_background"));
     Color ink = selected ? ap.c("list.hilite_foreground") : ap.c("list.label");
-    int ty = row.y + (row.h - kFontHeight) / 2;
+    int ty = row.y + (row.h - cv.line_height()) / 2;
     int x = row.x;
     for (int i = 0; i < ncols; ++i) {
         Rect cell{x, row.y, cols[i].w, row.h};
@@ -2441,8 +2419,8 @@ inline void paint_box(Canvas &cv, const Appearance &ap, Rect r, const char *titl
     if (title && *title) {
         int tw = cv.text_width(title);
         int tx = r.x + 8;
-        cv.fill({tx - 2, r.y, tw + 4, kFontHeight}, ap.c("primary.background"));
-        cv.text(tx, r.y - kFontHeight / 2 + 1, title, ap.c("primary.label"));
+        cv.fill({tx - 2, r.y, tw + 4, cv.line_height()}, ap.c("primary.background"));
+        cv.text(tx, r.y - cv.line_height() / 2 + 1, title, ap.c("primary.label"));
     }
 }
 
@@ -2570,12 +2548,12 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     auto fits = [&](int need_h) { return y + need_h <= client.bottom() - pad; };
 
     cv.text(x, y, "Kit Preview", ap.c("primary.label"));
-    y += kFontHeight + 8;
+    y += cv.line_height() + 8;
 
     // P2 samples first so short editor panels still show them (Find gel is tall).
     if (fits(kButtonH + kMenuBarH + 16)) {
         cv.text(x, y, "P2  icon / menu / scroll", ap.c("important.label"));
-        y += kFontHeight + 4;
+        y += cv.line_height() + 4;
         Rect ib0{x, y, 28, kButtonH};
         Rect ib1{ib0.right() + 6, y, 28, kButtonH};
         Rect ib2{ib1.right() + 6, y, 72, kButtonH};
@@ -2820,7 +2798,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             if (idx >= 0 && idx < lay.row_count) {
                 Color ink = sel ? ap.c("list.hilite_foreground")
                                 : file_label_color(ap, idx % 16);
-                cv.text(row.x + 6, row.y + (kRowH - kFontHeight) / 2, rows[idx], ink);
+                cv.text(row.x + 6, row.y + (kRowH - cv.line_height()) / 2, rows[idx], ink);
             }
             cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
         }

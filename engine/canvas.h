@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "font.h"
@@ -97,10 +98,15 @@ struct Canvas {
         }
     }
 
+    // Faces are swappable like KDX's per-surface font settings; unset means the
+    // bundled stock face.
+    void set_font(const Font *f) { font_ = f ? f : &stock_font(); }
+    const Font &font() const { return *font_; }
+    int line_height() const { return font_->line_height; }
+
     int text_width(const char *s) const {
         int w = 0;
-        for (; *s; ++s)
-            if (*s >= 32 && *s < 127) w += kFont[*s - 32].advance;
+        while (*s) w += font_->advance(map_cp(s));
         return w;
     }
 
@@ -109,14 +115,13 @@ struct Canvas {
     bool text_ink(const char *s, int &x0, int &y0, int &x1, int &y1) const {
         bool any = false;
         int pen = 0;
-        for (; *s; ++s) {
-            if (*s < 32 || *s >= 127) continue;
-            const Glyph &g = kFont[*s - 32];
-            for (int row = 0; row < kFontHeight; ++row) {
-                uint16_t bits = g.rows[row];
-                for (int col = 0; bits; ++col, bits >>= 1) {
-                    if (!(bits & 1)) continue;
-                    int px = pen + col, py = row;
+        while (*s) {
+            unsigned cp = map_cp(s);
+            const FontGlyph &g = font_->glyphs[cp];
+            for (int row = 0; row < g.h; ++row)
+                for (int col = 0; col < g.w; ++col) {
+                    if (!font_->pixel(g, col, row)) continue;
+                    int px = pen + col, py = g.ytop + row;
                     if (!any) {
                         x0 = x1 = px;
                         y0 = y1 = py;
@@ -128,7 +133,6 @@ struct Canvas {
                         if (py > y1) y1 = py;
                     }
                 }
-            }
             pen += g.advance;
         }
         return any;
@@ -136,17 +140,31 @@ struct Canvas {
 
     int text(int x, int y, const char *s, Color c) {
         uint32_t p = pack(c);
-        for (; *s; ++s) {
-            if (*s < 32 || *s >= 127) continue;
-            const Glyph &g = kFont[*s - 32];
-            for (int row = 0; row < kFontHeight; ++row) {
-                uint16_t bits = g.rows[row];
-                for (int col = 0; bits; ++col, bits >>= 1)
-                    if (bits & 1) put(x + col, y + row, p);
-            }
+        while (*s) {
+            const FontGlyph &g = font_->glyphs[map_cp(s)];
+            for (int row = 0; row < g.h; ++row)
+                for (int col = 0; col < g.w; ++col)
+                    if (font_->pixel(g, col, row))
+                        put(x + col, y + g.ytop + row, p);
             x += g.advance;
         }
         return x;
+    }
+
+    // Haxial clips a label that will not fit and marks it with a trailing "...";
+    // returns the string to draw.
+    std::string text_elide(const char *s, int max_w) const {
+        if (max_w <= 0) return {};
+        if (text_width(s) <= max_w) return s;
+        std::string out = s;
+        while (!out.empty()) {
+            out.pop_back();
+            // Never cut a UTF-8 sequence in half.
+            while (!out.empty() && (uint8_t(out.back()) & 0xc0) == 0x80)
+                out.pop_back();
+            if (text_width((out + "...").c_str()) <= max_w) return out + "...";
+        }
+        return {};
     }
 
     // Draw label centred on the ink bounds inside r (not the advance box).
@@ -172,6 +190,12 @@ struct Canvas {
 
     // Place a symbol (popup arrow, etc.) — same as blit_image.
     void place(const SkinImage &img, int dx, int dy) { blit_image(img, dx, dy); }
+
+    // Draw a label into r's width, eliding it if it does not fit.
+    int text_elided(int x, int y, const char *s, int max_w, Color c) {
+        std::string t = text_elide(s, max_w);
+        return text(x, y, t.c_str(), c);
+    }
 
     Rect clip_rect() const { return clip_; }
 
@@ -256,6 +280,17 @@ struct Canvas {
     }
 
   private:
+    // Fold one input codepoint onto a glyph the face actually has.
+    unsigned map_cp(const char *&s) const {
+        unsigned cp = fontutil::next_cp(s);
+        if (font_->has(cp)) return cp;
+        unsigned char base = fontutil::fold_latin1(cp);
+        if (base && font_->has(base)) return base;
+        if (cp == 0x2026 && font_->has('.')) return '.'; // lone ellipsis
+        return font_->has('?') ? '?' : ' ';
+    }
+
+    const Font *font_ = &stock_font();
     int width_ = 0, height_ = 0;
     Rect clip_{0, 0, 0, 0};
     std::vector<uint32_t> pixels_;
