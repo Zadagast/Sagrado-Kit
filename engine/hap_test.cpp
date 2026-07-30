@@ -84,9 +84,10 @@ std::vector<uint8_t> build_hap(const std::string &name) {
     b.put32(0x2c, uint32_t(info_off));
     b.put32(0x30, uint32_t(b.size() - info_off));
 
-    // Images: offset table for slots 0..27 then three records.
+    // Images: offset table wide enough for the late Haxial slots (menu bar,
+    // colour chooser) that AppearanceEdit 1.4 added, then the records.
     size_t img_off = b.size();
-    const int table = 28;
+    const int table = 284;
     Buf img;
     for (int i = 0; i < table; ++i) img.u32(0);
     const uint8_t caps[4] = {3, 4, 5, 6};
@@ -105,6 +106,16 @@ std::vector<uint8_t> build_hap(const std::string &name) {
     img.put32(26 * 4, uint32_t(img.size()));
     record(img, 4, 1, 4, {0x111111, 0x222222, 0x333333, 0x444444},
            {3, 2, 1, 0}, false, 0, zero, zero, false);
+    // The slots AppearanceEdit's row checkmarks pinned down: progress non-fill
+    // and bitmap digits, menu first/last hilite, the menu bar block and the
+    // colour chooser. Each is a flat 2x2 so only the mapping is under test.
+    for (int slot : {113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124,
+                     209, 210, 271, 272, 273, 274, 275, 277, 278, 279,
+                     281, 282, 283}) {
+        img.put32(slot * 4, uint32_t(img.size()));
+        record(img, 2, 2, 1, {0x0a0b0c, 0x0a0b0c}, {0, 0, 0, 0}, false, 0, zero,
+               zero, false);
+    }
     b.d.insert(b.d.end(), img.d.begin(), img.d.end());
     b.put32(0x34, uint32_t(img_off));
     b.put32(0x38, uint32_t(b.size() - img_off));
@@ -116,13 +127,24 @@ std::vector<uint8_t> build_hap(const std::string &name) {
     b.put32(0x3c, uint32_t(col_off));
     b.put32(0x40, uint32_t(b.size() - col_off));
 
-    // Icons: 8-byte record header, no caps/positions. Slot 4 = 2x2 @ 2bpp.
+    // Icons: 8-byte record header, no caps/positions. Record 4 = 2x2 @ 2bpp.
+    // Icon n uses record 4n (16 px) / 4n+1 (32 px), so record 4 = icon 1 = Stop.
+    // Records 68/76/160 are the file icons data / image/ / folder/, each a solid
+    // colour so the taxonomy walk can be told apart pixel by pixel.
     size_t ico_off = b.size();
     Buf ico;
-    for (int i = 0; i < 8; ++i) ico.u32(0);
+    const int ico_table = 300;
+    for (int i = 0; i < ico_table; ++i) ico.u32(0);
     ico.put32(4 * 4, uint32_t(ico.size()));
     record(ico, 2, 2, 2, {0xaabbcc, 0xddeeff, 0x010203},
            {0, 1, 2, 1}, true, 2, zero, zero, true);
+    struct Solid { int rec; uint32_t rgb; };
+    for (const Solid &s : {Solid{68, 0x111100}, Solid{76, 0x222200},
+                           Solid{160, 0x333300}, Solid{292, 0x444400}}) {
+        ico.put32(s.rec * 4, uint32_t(ico.size()));
+        record(ico, 16, 16, 1, {s.rgb, s.rgb},
+               std::vector<uint8_t>(16 * 16, 0), false, 0, zero, zero, true);
+    }
     b.d.insert(b.d.end(), ico.d.begin(), ico.d.end());
     b.put32(0x44, uint32_t(ico_off));
     b.put32(0x48, uint32_t(b.size() - ico_off));
@@ -197,7 +219,52 @@ void synthetic_test() {
     check(ap.art("button.normal") != nullptr, "button.normal art mapped");
     check(ap.art("primary.background_pattern") != nullptr,
           "primary.background_pattern art mapped");
-    check(ap.icon("alert.stop.16") != nullptr, "icon slot 4 mapped");
+    check(ap.icon("alert.stop.16") != nullptr, "icon record 4 mapped");
+    // Icon names are the AppearanceEdit rows verified against v2 saves; the
+    // pre-#21 map read record 292 as help and 160/240 as folder/server.
+    check(ap.icon("tools.16") != nullptr, "icon record 292 is Tools");
+    check(ap.icon("help.16") == nullptr, "record 292 is not Help");
+    check(ap.icon("file_icon.data.16") != nullptr, "record 68 is file type data");
+    check(ap.icon("file.generic.16") != nullptr, "file.generic alias kept");
+    check(ap.icon("file_icon.image/.16") != nullptr, "record 76 is file type image/");
+    check(ap.icon("file_icon.folder/.16") != nullptr, "record 160 is file type folder/");
+    check(ap.icon("folder.16") != nullptr, "folder alias kept");
+
+    // Taxonomy walk: exact type → family → generic data.
+    Canvas cv;
+    cv.resize(32, 32);
+    struct Walk { const char *type; uint32_t rgb; };
+    for (const Walk &w : {Walk{"image/jpeg", 0x222200}, Walk{"image/", 0x222200},
+                          Walk{"folder/uploads", 0x333300},
+                          Walk{"text/plain", 0x111100}, Walk{"", 0x111100}}) {
+        cv.clear({0, 0, 0});
+        paint_file_icon(cv, ap, 0, 0, w.type, 16);
+        check((cv.data()[0] & 0xffffffu) == w.rgb,
+              w.type[0] ? w.type : "(no file type)");
+    }
+    // Slots read off AppearanceEdit 1.4's row checkmarks (see
+    // docs/haxial-surface-map.md); before this they were decoded but unnamed.
+    for (const char *role : {"progress.non_fill", "progress.digit.0",
+                             "progress.digit.9", "progress.digit.full",
+                             "menu.item.first_hilited", "menu.item.last_hilited",
+                             "menu_bar.pattern", "menu_bar.background",
+                             "menu_bar.title_pattern.normal",
+                             "menu_bar.title_pattern.disabled",
+                             "menu_bar.title.normal", "menu_bar.title.hilited",
+                             "menu_bar.title.disabled", "color_chooser.normal",
+                             "color_chooser.hilited", "color_chooser.disabled"})
+        check(ap.art(role) != nullptr, role);
+    // Slot 276 is the hole between the title pattern and title triples.
+    check(ap.art("menu_bar.title_pattern.hilited") != nullptr, "slot 274 mapped");
+
+    // Digits stamp the percentage: 100% prefers the single Digit 100% record.
+    cv.clear({0, 0, 0});
+    paint_progress(cv, ap, {0, 0, 32, 16}, 100);
+    int stamped = 0;
+    for (int i = 0; i < 32 * 16; ++i)
+        if ((cv.data()[i] & 0xffffffu) == 0x0a0b0cu) ++stamped;
+    check(stamped > 0, "progress digits paint from art");
+
     Color pb = ap.c("primary.background");
     check(pb.r == 2 && pb.g == 2 && pb.b == 2, "colour index 2 → primary.background");
 

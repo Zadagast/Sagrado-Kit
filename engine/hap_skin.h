@@ -62,6 +62,18 @@ static const HapArtMap kHapArtMap[] = {
     {108, "framed_raised"},
     {111, "progress.bar"},
     {112, "progress.fill"},
+    {113, "progress.non_fill"},
+    {114, "progress.digit.0"},
+    {115, "progress.digit.1"},
+    {116, "progress.digit.2"},
+    {117, "progress.digit.3"},
+    {118, "progress.digit.4"},
+    {119, "progress.digit.5"},
+    {120, "progress.digit.6"},
+    {121, "progress.digit.7"},
+    {122, "progress.digit.8"},
+    {123, "progress.digit.9"},
+    {124, "progress.digit.full"},
     {126, "slider.h.bar.normal"},
     {127, "slider.h.bar.hilited"},
     {128, "slider.h.bar.disabled"},
@@ -120,6 +132,8 @@ static const HapArtMap kHapArtMap[] = {
     {206, "menu.item.hilited"},
     {207, "menu.item.disabled"},
     {208, "menu.separator"},
+    {209, "menu.item.first_hilited"},
+    {210, "menu.item.last_hilited"},
     {220, "window.frame.normal"},
     {221, "window.frame.focus"},
     {223, "window.close.normal"},
@@ -152,6 +166,17 @@ static const HapArtMap kHapArtMap[] = {
     {258, "wonderlight.flash_on2"},
     {263, "disclosure.plus.medium"},
     {267, "disclosure.minus.medium"},
+    {271, "menu_bar.pattern"},
+    {272, "menu_bar.background"},
+    {273, "menu_bar.title_pattern.normal"},
+    {274, "menu_bar.title_pattern.hilited"},
+    {275, "menu_bar.title_pattern.disabled"},
+    {277, "menu_bar.title.normal"},
+    {278, "menu_bar.title.hilited"},
+    {279, "menu_bar.title.disabled"},
+    {281, "color_chooser.normal"},
+    {282, "color_chooser.hilited"},
+    {283, "color_chooser.disabled"},
 };
 static constexpr int kHapArtMapN = int(sizeof(kHapArtMap) / sizeof(kHapArtMap[0]));
 
@@ -283,11 +308,18 @@ static const HapColorMap kHapColorMap[] = {
 static constexpr int kHapColorMapN =
     int(sizeof(kHapColorMap) / sizeof(kHapColorMap[0]));
 
-// Icon slots come in 16/32 px pairs (slot, slot+1). Slots 4/8/12/16 are the
-// four alert icons in AppearanceEdit's Icons panel order; the rest were
-// identified by decoding the same slot across the theme corpus (see
-// research/dump_hap.py contact sheets) — the artwork is unambiguous even where
-// the panel row order does not follow the slot numbering.
+// Icons. Each icon n occupies record 4n (16 px) and 4n+1 (32 px) of the icon
+// section; AppearanceEdit's panel row order does not follow the numbering.
+//
+// The names below are ground truth, not inference: AppearanceEdit 1.4 saves a
+// version-2 .hap whose icon sections are row-indexed tables of named %IKN
+// records (file icons carry the literal type string, e.g. "folder/uploads").
+// Re-saving a v1 theme and matching the decoded artwork of every v2 record back
+// to the v1 record it came from yields the record number for each panel row.
+// Cross-checked over Blue Print / Ashen / WinXP, whose authored sets differ, and
+// confirmed independently by clearing single icons before saving. Rows whose art
+// is unauthored in all 111 corpus themes (Haxial, Help, Download, Upload)
+// stay unmapped rather than guessed. See docs/haxial-surface-map.md.
 static const HapArtMap kHapIconMap[] = {
     {4, "alert.stop.16"},
     {5, "alert.stop.32"},
@@ -297,32 +329,38 @@ static const HapArtMap kHapIconMap[] = {
     {13, "alert.caution.32"},
     {16, "alert.question.16"},
     {17, "alert.question.32"},
-    {68, "file.generic.16"},
-    {69, "file.generic.32"},
-    {160, "folder.16"},
-    {161, "folder.32"},
-    {240, "server.16"},
-    {241, "server.32"},
-    {248, "data_transfer.16"},
-    {249, "data_transfer.32"},
-    {300, "help.16"},
-    {301, "help.32"},
+    {288, "settings.16"},
+    {289, "settings.32"},
+    {292, "tools.16"},
+    {293, "tools.32"},
+    {296, "exit.16"},
+    {297, "exit.32"},
+    {300, "about.16"},
+    {301, "about.32"},
     {308, "information.16"},
     {309, "information.32"},
-    {312, "message.16"},
-    {313, "message.32"},
+    {312, "address_book.16"},
+    {313, "address_book.32"},
     {324, "launch.16"},
     {325, "launch.32"},
+    {328, "create_folder.16"},
+    {329, "create_folder.32"},
     {336, "connect.16"},
     {337, "connect.32"},
     {340, "disconnect.16"},
     {341, "disconnect.32"},
+    {344, "data_transfer.16"},
+    {345, "data_transfer.32"},
     {348, "news.16"},
     {349, "news.32"},
     {352, "chat.16"},
     {353, "chat.32"},
+    {356, "message.16"},
+    {357, "message.32"},
     {360, "users.16"},
     {361, "users.32"},
+    {368, "server.16"},
+    {369, "server.32"},
     {372, "files.16"},
     {373, "files.32"},
     {376, "document_saved.16"},
@@ -332,6 +370,74 @@ static const HapArtMap kHapIconMap[] = {
 };
 static constexpr int kHapIconMapN =
     int(sizeof(kHapIconMap) / sizeof(kHapIconMap[0]));
+
+// File icons: same 4n/4n+1 record pairing, keyed by Haxial's file-type strings
+// (the taxonomy is embedded in every Haxial app, e.g. Calculator's FTI table).
+// Names come from the v2 records, which store the type string verbatim.
+// "file_icon.data" is the generic file; "file.generic.NN" and "folder.NN" stay
+// as aliases because the painters already ask for them.
+static const HapArtMap kHapFileIconMap[] = {
+    {40, "file_icon.executable/program.16"},
+    {41, "file_icon.executable/program.32"},
+    {44, "file_icon.executable/plugin.16"},
+    {45, "file_icon.executable/plugin.32"},
+    {48, "file_icon.executable/library.16"},
+    {49, "file_icon.executable/library.32"},
+    {64, "file_icon.alias/unattached.16"},
+    {65, "file_icon.alias/unattached.32"},
+    {68, "file_icon.data.16"},
+    {69, "file_icon.data.32"},
+    {68, "file.generic.16"},
+    {69, "file.generic.32"},
+    {72, "file_icon.text/.16"},
+    {73, "file_icon.text/.32"},
+    {76, "file_icon.image/.16"},
+    {77, "file_icon.image/.32"},
+    {80, "file_icon.audio/.16"},
+    {81, "file_icon.audio/.32"},
+    {84, "file_icon.video/.16"},
+    {85, "file_icon.video/.32"},
+    {88, "file_icon.font/.16"},
+    {89, "file_icon.font/.32"},
+    {92, "file_icon.archive/.16"},
+    {93, "file_icon.archive/.32"},
+    {96, "file_icon.data/truncated.16"},
+    {97, "file_icon.data/truncated.32"},
+    {160, "file_icon.folder/.16"},
+    {161, "file_icon.folder/.32"},
+    {160, "folder.16"},
+    {161, "folder.32"},
+    {172, "file_icon.folder/uploads.16"},
+    {173, "file_icon.folder/uploads.32"},
+    {176, "file_icon.folder/dropbox.16"},
+    {177, "file_icon.folder/dropbox.32"},
+    {192, "file_icon.folder/programs.16"},
+    {193, "file_icon.folder/programs.32"},
+    {196, "file_icon.folder/programming.16"},
+    {197, "file_icon.folder/programming.32"},
+    {200, "file_icon.folder/games.16"},
+    {201, "file_icon.folder/games.32"},
+    {204, "file_icon.folder/internet.16"},
+    {205, "file_icon.folder/internet.32"},
+    {208, "file_icon.folder/images.16"},
+    {209, "file_icon.folder/images.32"},
+    {212, "file_icon.folder/audio.16"},
+    {213, "file_icon.folder/audio.32"},
+    {240, "file_icon.volume/ram.16"},
+    {241, "file_icon.volume/ram.32"},
+    {244, "file_icon.volume/hd.16"},
+    {245, "file_icon.volume/hd.32"},
+    {248, "file_icon.volume/net.16"},
+    {249, "file_icon.volume/net.32"},
+    {252, "file_icon.volume/cd.16"},
+    {253, "file_icon.volume/cd.32"},
+    {256, "file_icon.volume/dvd.16"},
+    {257, "file_icon.volume/dvd.32"},
+    {260, "file_icon.volume/cart.16"},
+    {261, "file_icon.volume/cart.32"},
+};
+static constexpr int kHapFileIconMapN =
+    int(sizeof(kHapFileIconMap) / sizeof(kHapFileIconMap[0]));
 
 inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     SkinImage s;
@@ -391,6 +497,11 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
         const ThemeImage *img = theme.icon(kHapIconMap[i].slot);
         if (!img || img->w <= 0) continue;
         ap.icon_cache[kHapIconMap[i].key] = theme_image_to_skin(*img);
+    }
+    for (int i = 0; i < kHapFileIconMapN; ++i) {
+        const ThemeImage *img = theme.icon(kHapFileIconMap[i].slot);
+        if (!img || img->w <= 0) continue;
+        ap.icon_cache[kHapFileIconMap[i].key] = theme_image_to_skin(*img);
     }
     return true;
 }

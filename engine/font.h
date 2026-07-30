@@ -1,9 +1,18 @@
-// Bitmap font rasterized from Pixel Operator Bold 16px (CC0).
+// Text is ours, like Haxial's: their apps import a single GDI entry point and
+// rasterise every glyph themselves from 1bpp bitmap faces (%FNT — KDX ships
+// Myoklonika, Tonik-klonik, Grand Mal and Panitaka, and lets the user pick a
+// different face per surface). So a Font here is a 1bpp glyph table with
+// per-glyph advance/ytop, the stock face below is one instance of it, and
+// hfnt.h loads real Haxial faces into the same struct.
 #pragma once
 #include <cstdint>
+#include <string>
+#include <vector>
 
 struct Glyph { uint8_t advance; uint16_t rows[16]; };
 
+// Stock face: rasterized from Pixel Operator Bold 16px (CC0), close in weight
+// and cap height to Haxial's default Myoklonika.
 inline const Glyph kFont[95] = {
     {4,{0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000}}, // ' '
     {6,{0x0000,0x0000,0x0000,0x0000,0x000C,0x000C,0x000C,0x000C,0x000C,0x000C,0x000C,0x0000,0x000C,0x0000,0x0000,0x0000}}, // '!'
@@ -103,3 +112,135 @@ inline const Glyph kFont[95] = {
 };
 
 constexpr int kFontHeight = 16;
+
+// One glyph of a loaded face. Rows are MSB-first, (w+7)/8 bytes each, drawn at
+// ytop below the text origin — the same shape Haxial's %FNT records use.
+struct FontGlyph {
+    uint32_t bit_off = 0;
+    uint8_t w = 0, h = 0, ytop = 0, advance = 0;
+};
+
+// A 1bpp face over Latin-1. Codepoints above 0xff are folded by the caller.
+struct Font {
+    std::string name;
+    int line_height = kFontHeight;
+    int ascent = kFontHeight;
+    FontGlyph glyphs[256];
+    std::vector<uint8_t> bits;
+
+    bool has(unsigned cp) const {
+        return cp < 256 && (glyphs[cp].w || glyphs[cp].advance);
+    }
+
+    int advance(unsigned cp) const { return cp < 256 ? glyphs[cp].advance : 0; }
+
+    // Set pixel test in glyph-local coordinates.
+    bool pixel(const FontGlyph &g, int x, int y) const {
+        size_t stride = (g.w + 7u) / 8u;
+        size_t i = g.bit_off + size_t(y) * stride + size_t(x) / 8;
+        if (i >= bits.size()) return false;
+        return (bits[i] >> (7 - (x % 8))) & 1;
+    }
+
+    void add(unsigned cp, int w, int h, int ytop, int adv,
+             const uint8_t *rows_msb) {
+        if (cp > 0xff) return;
+        FontGlyph &g = glyphs[cp];
+        g.w = uint8_t(w);
+        g.h = uint8_t(h);
+        g.ytop = uint8_t(ytop);
+        g.advance = uint8_t(adv);
+        g.bit_off = uint32_t(bits.size());
+        size_t stride = (size_t(w) + 7) / 8;
+        bits.insert(bits.end(), rows_msb, rows_msb + stride * size_t(h));
+    }
+};
+
+namespace fontutil {
+
+// Latin-1 letters the stock face has no art for fold to their ASCII base so a
+// theme name or server name stays readable instead of vanishing.
+inline unsigned char fold_latin1(unsigned cp) {
+    static const char *kFold =
+        // 0xc0..0xff
+        "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYPs"
+        "aaaaaaaceeeeiiiionooooo/ouuuuypy";
+    if (cp >= 0xc0 && cp <= 0xff) return uint8_t(kFold[cp - 0xc0]);
+    return 0;
+}
+
+// Decode one UTF-8 sequence (also accepts raw Latin-1 bytes, which the older
+// skins and .hap metadata still contain). Advances s past the sequence.
+inline unsigned next_cp(const char *&s) {
+    unsigned char c = uint8_t(*s++);
+    if (c < 0x80) return c;
+    auto cont = [&](int n) {
+        for (int i = 0; i < n; ++i)
+            if ((uint8_t(s[i]) & 0xc0) != 0x80) return false;
+        return true;
+    };
+    if ((c & 0xe0) == 0xc0 && cont(1)) {
+        unsigned cp = (unsigned(c & 0x1f) << 6) | (uint8_t(s[0]) & 0x3f);
+        s += 1;
+        return cp;
+    }
+    if ((c & 0xf0) == 0xe0 && cont(2)) {
+        unsigned cp = (unsigned(c & 0x0f) << 12) |
+                      (unsigned(uint8_t(s[0]) & 0x3f) << 6) |
+                      (uint8_t(s[1]) & 0x3f);
+        s += 2;
+        return cp;
+    }
+    if ((c & 0xf8) == 0xf0 && cont(3)) {
+        s += 3;
+        return 0xfffd;
+    }
+    return c; // lone high byte: treat as Latin-1
+}
+
+} // namespace fontutil
+
+// The bundled face, built once from the table above.
+inline const Font &stock_font() {
+    static const Font f = [] {
+        Font out;
+        out.name = "Stock";
+        out.line_height = kFontHeight;
+        out.ascent = 13;
+        for (unsigned i = 0; i < 95; ++i) {
+            const Glyph &g = kFont[i];
+            int top = kFontHeight, bot = -1, right = -1;
+            for (int r = 0; r < kFontHeight; ++r) {
+                if (!g.rows[r]) continue;
+                if (r < top) top = r;
+                bot = r;
+                for (int c = 15; c >= 0; --c)
+                    if ((g.rows[r] >> c) & 1) {
+                        if (c > right) right = c;
+                        break;
+                    }
+            }
+            if (bot < 0) { // blank (space)
+                uint8_t none = 0;
+                out.add(32 + i, 0, 0, 0, g.advance, &none);
+                continue;
+            }
+            int w = right + 1, h = bot - top + 1;
+            size_t stride = (size_t(w) + 7) / 8;
+            std::vector<uint8_t> rows(stride * size_t(h), 0);
+            for (int r = 0; r < h; ++r)
+                for (int c = 0; c < w; ++c)
+                    if ((g.rows[top + r] >> c) & 1)
+                        rows[size_t(r) * stride + c / 8] |= 0x80 >> (c % 8);
+            out.add(32 + i, w, h, top, g.advance, rows.data());
+        }
+        // Fold the Latin-1 letters onto their ASCII shapes.
+        for (unsigned cp = 0xc0; cp <= 0xff; ++cp) {
+            unsigned char base = fontutil::fold_latin1(cp);
+            if (base) out.glyphs[cp] = out.glyphs[base];
+        }
+        out.glyphs[0xa0] = out.glyphs[' ']; // nbsp
+        return out;
+    }();
+    return f;
+}

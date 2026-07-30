@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "../engine/appearance.h"
+#include "../engine/hfnt.h"
 
 namespace {
 
@@ -42,6 +43,7 @@ enum Drag : int {
 
 struct App {
     Canvas canvas;
+    Font font;             // a real Haxial %FNT face, when one was loaded
     Appearance ap;
     GelLayout gel{};
     KitPreviewLayout preview_lay{};
@@ -282,7 +284,7 @@ void paint() {
     paint_button(cv, ap, g.btn_stock, "Stock", stock_p, false);
 
     cv.text(g.btn_stock.right() + 16,
-            g.btn_load.y + (g.btn_load.h - kFontHeight) / 2, g.status.c_str(),
+            g.btn_load.y + (g.btn_load.h - cv.line_height()) / 2, g.status.c_str(),
             ap.c("primary.disable_label"));
 
     // Role list
@@ -308,7 +310,7 @@ void paint() {
         cv.fill(sw, col);
         cv.frame(sw, ap.c("primary.frame"));
         Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
-        cv.text(sw.right() + 8, row.y + (kRoleRowH - kFontHeight) / 2,
+        cv.text(sw.right() + 8, row.y + (kRoleRowH - cv.line_height()) / 2,
                 roles[size_t(idx)].label, ink);
     }
     bool roles_thumb_hot = g.drag == DragThumbRoles;
@@ -877,7 +879,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int show) {
+int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
+    // "--font <face.fnt>" swaps the stock face for a real Haxial one, the way
+    // KDX lets a user pick a face per surface.
+    for (int i = 1; i < __argc; ++i) {
+        if (std::strcmp(__argv[i], "--font") || i + 1 >= __argc) continue;
+        if (hfnt::load(__argv[++i], g.font)) {
+            g.canvas.set_font(&g.font);
+            g.status = "Font: " + g.font.name;
+        } else {
+            g.status = std::string("Could not load font: ") + __argv[i];
+        }
+    }
+    (void)cmd;
+
     WNDCLASSA wc{};
     wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS;
     wc.lpfnWndProc = WndProc;

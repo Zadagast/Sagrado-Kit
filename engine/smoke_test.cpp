@@ -1,9 +1,11 @@
 // Headless smoke test: load stock skin, resolve tokens, paint kit into a buffer.
 // Build with host g++ (no Win32): make smoke
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include "appearance.h"
+#include "hfnt.h"
 
 int main(int argc, char **argv) {
     Appearance ap;
@@ -46,6 +48,98 @@ int main(int argc, char **argv) {
             std::printf("partial menu.background = #%02x%02x%02x (skin has %zu colours)\n",
                         m.r, m.g, m.b, partial.skin.colors.size());
         }
+    }
+
+    // --- Text: stock face metrics, Latin-1 folding, elision, %FNT faces.
+    {
+        Canvas t;
+        t.resize(200, 40);
+        if (t.line_height() != kFontHeight) {
+            std::fprintf(stderr, "stock line height %d\n", t.line_height());
+            return 1;
+        }
+        // Accented input must still measure and paint (folded onto ASCII art).
+        if (t.text_width("caf\xc3\xa9") != t.text_width("cafe")) {
+            std::fprintf(stderr, "latin-1 fold changed advance\n");
+            return 1;
+        }
+        if (t.text_width("caf\xe9") != t.text_width("cafe")) {
+            std::fprintf(stderr, "raw latin-1 byte not folded\n");
+            return 1;
+        }
+        std::string cut = t.text_elide("Menu Bar Pattern", 60);
+        if (cut.size() < 4 || cut.compare(cut.size() - 3, 3, "...") != 0 ||
+            t.text_width(cut.c_str()) > 60) {
+            std::fprintf(stderr, "elision wrong: %s\n", cut.c_str());
+            return 1;
+        }
+        if (t.text_elide("Menu", 400) != "Menu") {
+            std::fprintf(stderr, "short label was elided\n");
+            return 1;
+        }
+
+        // A Haxial face: 12px line, one 'A' 5x7 two rows down, advance 7.
+        std::vector<uint8_t> f(0x136 + 3 * hfnt::kRecord, 0);
+        const char *magic = "%FNT";
+        for (int i = 0; i < 4; ++i) f[i] = uint8_t(magic[i]);
+        f[7] = 1;
+        f[6] = 2; // version 0x00020001
+        f[0x18] = 4;
+        std::memcpy(&f[0x19], "Test", 4);
+        f[0x10c] = 12;
+        size_t rec = 0x136;
+        auto put16 = [&](size_t o, unsigned v) {
+            f[o] = uint8_t(v >> 8);
+            f[o + 1] = uint8_t(v);
+        };
+        auto put32 = [&](size_t o, uint32_t v) {
+            for (int i = 0; i < 4; ++i) f[o + i] = uint8_t(v >> (24 - 8 * i));
+        };
+        size_t bits = f.size();
+        put16(rec, ' ');
+        f[rec + 10] = 4; // space: advance only
+        rec += hfnt::kRecord;
+        put16(rec, 'A');
+        put32(rec + 2, uint32_t(bits));
+        f[rec + 6] = 5;  // w
+        f[rec + 7] = 7;  // h
+        f[rec + 8] = 1;  // planes
+        f[rec + 9] = 2;  // ytop
+        f[rec + 10] = 7; // advance
+        for (int i = 0; i < 7; ++i) f.push_back(0xf8);
+
+        Font face;
+        if (!hfnt::parse(f, face)) {
+            std::fprintf(stderr, "%%FNT parse failed\n");
+            return 1;
+        }
+        if (face.name != "Test" || face.line_height != 12 ||
+            face.glyphs['A'].advance != 7 || face.glyphs['A'].ytop != 2 ||
+            !face.pixel(face.glyphs['A'], 4, 6) ||
+            face.pixel(face.glyphs['A'], 5, 0)) {
+            std::fprintf(stderr, "%%FNT face decoded wrong (%s lh=%d)\n",
+                         face.name.c_str(), face.line_height);
+            return 1;
+        }
+        t.set_font(&face);
+        if (t.line_height() != 12 || t.text_width("A A") != 18) {
+            std::fprintf(stderr, "loaded face metrics wrong: %d/%d\n",
+                         t.line_height(), t.text_width("A A"));
+            return 1;
+        }
+        t.clear(rgb(0, 0, 0));
+        t.text(0, 0, "A", rgb(255, 255, 255));
+        if (!t.data()[size_t(2) * t.width()] || t.data()[0]) {
+            std::fprintf(stderr, "loaded face painted at wrong ytop\n");
+            return 1;
+        }
+        t.set_font(nullptr);
+        if (t.line_height() != kFontHeight) {
+            std::fprintf(stderr, "font reset failed\n");
+            return 1;
+        }
+        std::printf("text: stock lh=%d, %%FNT '%s' lh=%d ok\n", kFontHeight,
+                    face.name.c_str(), face.line_height);
     }
 
     Canvas cv;
