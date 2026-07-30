@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     cv.resize(W, H);
 
     GelLayout gel = gel_layout(0, 0, W, H, GelStyle::Main, &ap, true);
-    paint_gel(cv, ap, {0, 0, W, H}, "Untitled — Sagrado TextEdit", true, 0,
+    paint_gel(cv, ap, {0, 0, W, H}, "Untitled - Sagrado TextEdit", true, 0,
               GelStyle::Main);
 
     Rect cl = gel.client;

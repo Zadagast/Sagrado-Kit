@@ -538,11 +538,16 @@ inline Color readable_label(const Appearance &ap, Color candidate,
 
 inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
                               const SkinImage *plate = nullptr) {
-    if (disabled) return ap.c("button_disable.label");
-    if (plate && plate->has_text_color) return plate_text_color(plate);
-    Color ink = ap.c("button.label");
-    if (has_art && label_near_white(ink)) return ap.c("primary.label");
-    return ink;
+    if (disabled) return readable_label(ap, ap.c("button_disable.label"), true);
+    // Hap Text Color on the plate wins when authored and not a blank white.
+    if (plate && plate->has_text_color) {
+        Color tc = plate_text_color(plate);
+        if (!label_near_white(tc)) return tc;
+    }
+    // Milk & friends leave Button Label at stock white while the plate is a
+    // light pill — fall through to Primary Label whenever the role is unusable.
+    (void)has_art;
+    return readable_label(ap, ap.c("button.label"));
 }
 
 // True when a title-button plate is near-uniform (Milk blank spheres) so
@@ -2383,7 +2388,7 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
         else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
     }
     if (label && *label) {
-        Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
+        Color ink = readable_label(ap, ap.c("primary.label"), disabled);
         int top = std::min(slot.y, b.y);
         int bot = std::max(slot.bottom(), b.bottom());
         Rect band{b.right() + 6, top, 8, bot - top};
@@ -2423,7 +2428,7 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
         else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
     }
     if (label && *label) {
-        Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
+        Color ink = readable_label(ap, ap.c("primary.label"), disabled);
         int top = std::min(slot.y, b.y);
         int bot = std::max(slot.bottom(), b.bottom());
         Rect band{b.right() + 6, top, 8, bot - top};

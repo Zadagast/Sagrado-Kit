@@ -364,7 +364,17 @@ std::string window_title() {
     auto slash = name.find_last_of("/\\");
     if (slash != std::string::npos) name = name.substr(slash + 1);
     if (g.doc.dirty) name += " *";
-    return name + " — Sagrado TextEdit";
+    // ASCII hyphen — stock/%FNT faces have no em-dash (showed as '?').
+    return name + " - Sagrado TextEdit";
+}
+
+// Keep the Find gel on the same face as the main window (stock or --font).
+void sync_find_font() {
+    if (!g.find.hwnd) return;
+    if (!g.font.name.empty())
+        g.find.canvas.set_font(&g.font);
+    else
+        g.find.canvas.set_font(nullptr); // stock face
 }
 
 void set_status(const std::string &s) { g.status = s; }
@@ -654,10 +664,9 @@ void paint_find() {
     CanvasClip clip(cv, f.gel.client);
     Rect cl = f.gel.client;
     int lx = cl.x + 10;
-    cv.text(lx, label_y_centered(cv, f.field_find, "Find:"), "Find:",
-            g.ap.c("primary.label"));
-    cv.text(lx, label_y_centered(cv, f.field_repl, "Replace:"), "Replace:",
-            g.ap.c("primary.label"));
+    Color lab = readable_label(g.ap, g.ap.c("primary.label"));
+    cv.text(lx, label_y_centered(cv, f.field_find, "Find:"), "Find:", lab);
+    cv.text(lx, label_y_centered(cv, f.field_repl, "Replace:"), "Replace:", lab);
     paint_field(cv, g.ap, f.field_find, f.find.c_str(), f.focus == FindFocusFind,
                 f.caret_on && f.focus == FindFocusFind);
     paint_field(cv, g.ap, f.field_repl, f.repl.c_str(), f.focus == FindFocusRepl,
@@ -1269,10 +1278,11 @@ void create_find_window(HINSTANCE hinst) {
                         "Find and Replace", style, 120, 120, kFindDlgW, kFindDlgH,
                         g.hwnd, nullptr, hinst, nullptr);
     g.find.canvas.resize(kFindDlgW, kFindDlgH);
-    if (g.canvas.font().name.size()) {
-        // share face if main loaded one — canvas holds pointer; use same Font
-        g.find.canvas.set_font(&g.font);
-    }
+    // Bug fix: do NOT key off g.canvas.font().name — that is always "Stock"
+    // (or a loaded face), while g.font is empty unless --font was passed.
+    // Pointing Find at an empty Font drew chrome with zero-width glyphs (no
+    // labels on buttons, ticks, fields, or the title).
+    sync_find_font();
     SetTimer(g.find.hwnd, 1, 500, nullptr);
 }
 
