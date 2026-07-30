@@ -459,8 +459,11 @@ template <typename AppearanceT>
 inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
     Skin skin = stock_skin();
     skin.meta.name = theme.name.empty() ? "Hap Theme" : theme.name;
-    skin.meta.creator = "imported from .hap";
-    skin.meta.description = "Live Hap import (Sagrado-style)";
+    skin.meta.creator = theme.author.empty() ? "imported from .hap" : theme.author;
+    skin.meta.description =
+        theme.description.empty() ? "Live Hap import (Sagrado-style)"
+                                  : theme.description;
+    if (!theme.version.empty()) skin.meta.version = theme.version;
 
     if (theme.has_colors) {
         for (int i = 0; i < kHapColorMapN; ++i) {

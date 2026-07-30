@@ -433,8 +433,12 @@ inline bool parse_string(const std::string &raw, std::string &out) {
     out.clear();
     for (size_t i = 1; i + 1 < s.size(); ++i) {
         if (s[i] == '\\' && i + 1 < s.size() - 1) {
-            ++i;
-            out.push_back(s[i]);
+            switch (s[++i]) {
+                case 'n': out.push_back('\n'); break;
+                case 'r': out.push_back('\r'); break;
+                case 't': out.push_back('\t'); break;
+                default: out.push_back(s[i]); break;
+            }
         } else {
             out.push_back(s[i]);
         }
@@ -622,6 +626,23 @@ inline bool load(const std::string &path, Skin &skin) {
     return true;
 }
 
+// Metadata imported from a .hap carries quotes and newlines (theme authors put
+// multi-line credits in the Info panel), so basic strings must be escaped.
+inline std::string toml_escape(const std::string &s) {
+    std::string out;
+    for (char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out += c; break;
+        }
+    }
+    return out;
+}
+
 inline bool save(const std::string &path, const Skin &skin) {
     std::ofstream f(path);
     if (!f) return false;
@@ -629,10 +650,10 @@ inline bool save(const std::string &path, const Skin &skin) {
     f << "format = \"sagrado-skin\"\n";
     f << "version = " << skin.format_version << "\n\n";
     f << "[meta]\n";
-    f << "name = \"" << skin.meta.name << "\"\n";
-    f << "creator = \"" << skin.meta.creator << "\"\n";
-    f << "description = \"" << skin.meta.description << "\"\n";
-    f << "version = \"" << skin.meta.version << "\"\n\n";
+    f << "name = \"" << toml_escape(skin.meta.name) << "\"\n";
+    f << "creator = \"" << toml_escape(skin.meta.creator) << "\"\n";
+    f << "description = \"" << toml_escape(skin.meta.description) << "\"\n";
+    f << "version = \"" << toml_escape(skin.meta.version) << "\"\n\n";
 
     // Group colors by prefix before the last role segment... actually by
     // first segment (and second for dotted groups already flattened).

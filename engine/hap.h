@@ -156,6 +156,9 @@ struct ThemeImage {
 
 struct Theme {
     std::string name;
+    std::string version;     // Info string 2, e.g. "1.0"
+    std::string author;      // Info string 3
+    std::string description; // Info string 4; may contain newlines
     bool has_colors = false;
     uint32_t colors[kColorTableLen] = {}; // 0x00RRGGBB
     std::map<int, ThemeImage> images;
@@ -252,12 +255,19 @@ inline bool load_hap(const std::string &path, Theme &theme) {
     size_t img_off = rd32(d, 0x34), img_len = rd32(d, 0x38);
     size_t col_off = rd32(d, 0x3c), col_len = rd32(d, 0x40);
 
-    // Metadata: 4 string lengths at +0x22, strings at +0x34.
+    // Metadata: four byte lengths at +0x22 (name, version, author,
+    // description), then the strings back to back at +0x34 — the same four
+    // fields AppearanceEdit's Info panel edits.
     if (info_len >= 0x34 && info_off + 0x34 <= d.size()) {
+        std::string *fields[4] = {&theme.name, &theme.version, &theme.author,
+                                  &theme.description};
         size_t s = info_off + 0x34;
-        size_t l = d[info_off + 0x22];
-        if (s + l <= d.size() && l > 0)
-            theme.name.assign(reinterpret_cast<const char *>(&d[s]), l);
+        for (int i = 0; i < 4; ++i) {
+            size_t l = d[info_off + 0x22 + i];
+            if (s + l > d.size()) break;
+            if (l > 0) fields[i]->assign(reinterpret_cast<const char *>(&d[s]), l);
+            s += l;
+        }
     }
 
     // Older themes ship no Info metadata at all — Haxial falls back to the

@@ -387,8 +387,11 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                 else
                     cv.place(*img, r.x + (r.w - img->w) / 2,
                              r.y + (r.h - img->h) / 2);
+                // Authored art is the whole button, glyph included (Ashen and
+                // WinXP draw their own cross), so stamping a stock glyph on top
+                // would show two marks.
+                return;
             }
-            // Milk Redux plates are blank spheres — draw Standard glyphs on top.
             if (glyph) glyph(cv, r, tc);
         };
         paint_btn(lay.close_box, "window.close.normal", "window.close.focus",

@@ -74,12 +74,17 @@ std::vector<uint8_t> build_hap(const std::string &name) {
     b.d[0] = '%'; b.d[1] = 'H'; b.d[2] = 'A'; b.d[3] = 'P';
     b.put32(4, 0x00010000);
 
-    // Info section: 4 string lengths at +0x22, strings from +0x34.
+    // Info section: 4 string lengths at +0x22 (name, version, author,
+    // description), strings back to back from +0x34.
     size_t info_off = b.size();
     Buf info;
     for (int i = 0; i < 0x34; ++i) info.u8(0);
-    info.d[0x22] = uint8_t(name.size());
-    for (char c : name) info.u8(uint8_t(c));
+    const std::string fields[4] = {name, name.empty() ? "" : "1.0",
+                                   name.empty() ? "" : "abbaZaba",
+                                   name.empty() ? "" : "ported \"by\" hand\nline 2"};
+    for (int i = 0; i < 4; ++i) info.d[0x22 + i] = uint8_t(fields[i].size());
+    for (const std::string &s : fields)
+        for (char c : s) info.u8(uint8_t(c));
     b.d.insert(b.d.end(), info.d.begin(), info.d.end());
     b.put32(0x2c, uint32_t(info_off));
     b.put32(0x30, uint32_t(b.size() - info_off));
@@ -116,6 +121,17 @@ std::vector<uint8_t> build_hap(const std::string &name) {
         record(img, 2, 2, 1, {0x0a0b0c, 0x0a0b0c}, {0, 0, 0, 0}, false, 0, zero,
                zero, false);
     }
+    // Window frame + a solid Close plate, to check the gel doesn't stamp a
+    // stock glyph over authored title-button art.
+    const uint8_t frame_caps[4] = {3, 3, 3, 3};
+    const uint8_t frame_pos[4] = {4, 18, 4, 4};
+    img.put32(220 * 4, uint32_t(img.size()));
+    record(img, 8, 8, 1, {0x203040, 0x203040}, std::vector<uint8_t>(64, 0), false,
+           0, frame_caps, frame_pos, false);
+    const uint8_t close_pos[4] = {5, 3, 0, 0};
+    img.put32(223 * 4, uint32_t(img.size()));
+    record(img, 12, 12, 1, {0x40c080, 0x40c080}, std::vector<uint8_t>(144, 0),
+           false, 0, zero, close_pos, false);
     b.d.insert(b.d.end(), img.d.begin(), img.d.end());
     b.put32(0x34, uint32_t(img_off));
     b.put32(0x38, uint32_t(b.size() - img_off));
@@ -166,6 +182,10 @@ void synthetic_test() {
     Theme t;
     check(load_hap(path, t), "load synthetic .hap");
     check(t.name == "Probe Theme", "info metadata name");
+    check(t.version == "1.0", "info metadata version");
+    check(t.author == "abbaZaba", "info metadata author");
+    check(t.description == "ported \"by\" hand\nline 2",
+          "info metadata description");
     check(t.has_colors, "colors present");
     check(t.colors[2] == 0x020202u, "colour table index 2");
     check(t.colors[kColorTableLen - 1] == uint32_t(kColorTableLen - 1) * 0x010101u,
@@ -216,6 +236,17 @@ void synthetic_test() {
     ap.set_skin(stock_skin());
     check(apply_hap_theme(ap, t), "apply_hap_theme");
     check(ap.skin.meta.name == "Probe Theme", "skin name from .hap");
+    check(ap.skin.meta.creator == "abbaZaba", "skin creator from .hap author");
+    check(ap.skin.meta.version == "1.0", "skin version from .hap");
+
+    // Quotes and newlines out of the Info panel must survive a .skin.toml
+    // roundtrip instead of writing unparsable TOML.
+    check(ap.save("build/hap_test_meta.skin.toml"), "save imported metadata");
+    Skin back;
+    check(skin_toml::load("build/hap_test_meta.skin.toml", back),
+          "reload imported metadata");
+    check(back.meta.description == ap.skin.meta.description,
+          "multi-line description roundtrips");
     check(ap.art("button.normal") != nullptr, "button.normal art mapped");
     check(ap.art("primary.background_pattern") != nullptr,
           "primary.background_pattern art mapped");
@@ -264,6 +295,20 @@ void synthetic_test() {
     for (int i = 0; i < 32 * 16; ++i)
         if ((cv.data()[i] & 0xffffffu) == 0x0a0b0cu) ++stamped;
     check(stamped > 0, "progress digits paint from art");
+
+    // Authored title-button art is the whole button, glyph included: Ashen and
+    // WinXP draw their own cross, so a stock glyph on top showed two marks.
+    Canvas gel;
+    gel.resize(200, 80);
+    gel.clear({0, 0, 0});
+    paint_gel(gel, ap, {0, 0, 200, 80}, "Gel", true);
+    GelLayout gl = gel_layout(0, 0, 200, 80, GelStyle::Main, &ap, true);
+    check(gl.close_box.w == 12 && gl.close_box.h == 12, "close art placed 1:1");
+    int off_art = 0;
+    for (int gy = gl.close_box.y; gy < gl.close_box.bottom(); ++gy)
+        for (int gx = gl.close_box.x; gx < gl.close_box.right(); ++gx)
+            if ((gel.data()[gy * 200 + gx] & 0xffffffu) != 0x40c080u) ++off_art;
+    check(off_art == 0, "no stock glyph over authored close art");
 
     Color pb = ap.c("primary.background");
     check(pb.r == 2 && pb.g == 2 && pb.b == 2, "colour index 2 → primary.background");
