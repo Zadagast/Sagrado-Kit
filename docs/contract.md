@@ -169,3 +169,6 @@ Same shape as Haxial and Sagrado `native/`. No OS widgets, no CSS, no web host.
 3. Paint every window through the Appearance Engine into a software framebuffer.
 4. When adding a new control, extend the skin schema + engine helpers — do not
    invent a private colour table.
+
+Reference consumer: **Sagrado TextEdit** (`apps/textedit/`) — Haxial TextEdit-
+shaped gel + menu bar + text view + Find dialog, all painted through the kit.

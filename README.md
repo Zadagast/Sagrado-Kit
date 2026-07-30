@@ -11,6 +11,8 @@ theirs.
   (colour table + image slots mapped into the same painters).
 - **One editor** that authors that format against a live kit preview
   (`editor/`), like AppearanceEdit. **Load** accepts `.hap` or `.sap`.
+- **First app** — Sagrado TextEdit (`apps/textedit/`), a Haxial TextEdit-shaped
+  plain-text editor that paints only through the Appearance Engine.
 
 Incomplete skins are valid. Token resolution: **art → colour → stock**.
 
@@ -22,6 +24,7 @@ This is not an Ooze project and not a web/Electron/npm app.
 format/          schema + stock / example skins
 engine/          Appearance Engine (load, resolve, paint)
 editor/          Win32 SagradoKit Editor
+apps/textedit/   Sagrado TextEdit — first consumer app
 docs/            contract + lessons from HAP
 ```
 
@@ -47,8 +50,9 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 # Debian/Ubuntu
 sudo apt install g++-mingw-w64-i686 wine
 
-make          # → build/SagradoKitEditor.exe + copied example skins
-make run      # launch under Wine (prefers `wine64`, then `wine`)
+make               # → Editor + TextEdit + example skins
+make run           # kit editor under Wine (prefers `wine64`, then `wine`)
+make run-textedit  # Sagrado TextEdit under Wine
 # without Wine: copy the .exe to Windows, or install WineHQ and use wine64
 ```
 
@@ -80,6 +84,24 @@ Run `build/SagradoKitEditor.exe`. Example skins are in
 
 Shortcuts: `Ctrl+O` load, `Ctrl+S` save, `Esc` quit. Drag the title bar to
 move; the close box quits.
+
+## Sagrado TextEdit
+
+Haxial TextEdit-shaped plain-text editor — first real app on the kit.
+
+- Gel main window (close / Window Menu / max / min / grow box)
+- Menu bar: File, Edit, Find, Appearance, Help
+- Soft-wrapped text view + scrollbars, selection, clipboard, undo
+- Find & Replace dialog (separate gel, TextEdit-measured 442×176)
+- **Appearance → Load Appearance** — any `.hap` / `.sap` live
+
+```sh
+make run-textedit
+# or: build/SagradoTextEdit.exe [file.txt] [--font face.fnt]
+```
+
+Shortcuts: `Ctrl+N/O/S`, `Ctrl+F` find, `Ctrl+H` replace, `Ctrl+G` find again,
+`Ctrl+Z/X/C/V/A`. Esc quits (or closes Find / menu).
 
 ## For app authors
 

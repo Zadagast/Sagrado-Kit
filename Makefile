@@ -8,16 +8,20 @@ LDFLAGS  := -mwindows -lgdi32 -luser32 -lcomdlg32 -lcomctl32
 
 BUILD    := build
 EDITOR   := $(BUILD)/SagradoKitEditor.exe
+TEXTEDIT := $(BUILD)/SagradoTextEdit.exe
 
-.PHONY: all clean run skins smoke
+.PHONY: all clean run run-textedit skins smoke
 
-all: $(EDITOR) skins
+all: $(EDITOR) $(TEXTEDIT) skins
 
 $(BUILD):
 	mkdir -p $(BUILD)
 
 $(EDITOR): editor/main.cpp engine/*.h | $(BUILD)
 	$(CXX) $(CXXFLAGS) editor/main.cpp -o $@ $(LDFLAGS)
+
+$(TEXTEDIT): apps/textedit/main.cpp engine/*.h | $(BUILD)
+	$(CXX) $(CXXFLAGS) apps/textedit/main.cpp -o $@ $(LDFLAGS)
 
 # Copy example skins next to the binary for Load dialog convenience.
 skins: | $(BUILD)
@@ -42,9 +46,19 @@ run: $(EDITOR) skins
 	echo "launching with $$WINE"; \
 	$$WINE $(EDITOR)
 
+run-textedit: $(TEXTEDIT) skins
+	@WINE=$$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null); \
+	if [ -z "$$WINE" ]; then \
+	  echo "wine64/wine not found — Sagrado TextEdit is a Win32 .exe (MinGW)."; \
+	  echo "  Or copy build/SagradoTextEdit.exe to a Windows box and run it there."; \
+	  exit 127; \
+	fi; \
+	echo "launching TextEdit with $$WINE"; \
+	$$WINE $(TEXTEDIT)
+
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
 # HAPS=<dir> also runs the .hap checks over a directory of real themes.
-smoke: engine/smoke_test.cpp engine/hap_test.cpp engine/*.h | $(BUILD)
+smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp engine/*.h | $(BUILD)
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/smoke_test.cpp -o $(BUILD)/smoke_test
 	$(BUILD)/smoke_test format/skins/stock.sap format/skins/slate.sap
 	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.sap
@@ -54,6 +68,10 @@ smoke: engine/smoke_test.cpp engine/hap_test.cpp engine/*.h | $(BUILD)
 	$(BUILD)/smoke_test "research/haps/Aluminum Alloy - Toxic.hap"
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/hap_test.cpp -o $(BUILD)/hap_test
 	$(BUILD)/hap_test $(HAPS)
+	g++ -std=c++17 -O2 -Wall -Wextra -Iengine apps/textedit/smoke_paint.cpp \
+	  -o $(BUILD)/textedit_smoke
+	$(BUILD)/textedit_smoke format/skins/milk-redux/milk-redux.sap
+	$(BUILD)/textedit_smoke "research/haps/Milk Redux.hap"
 
 clean:
 	rm -rf $(BUILD)
