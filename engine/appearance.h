@@ -1298,9 +1298,27 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
             continue;
         }
 
+        const SkinImage *ipat = ap.art(dis ? "menu.item_pattern.disabled"
+                                           : (is_hot ? "menu.item_pattern.hilited"
+                                                     : "menu.item_pattern.normal"));
+        if (ipat && !ipat->empty()) {
+            CanvasClip clip(cv, row);
+            for (int py = row.y; py < row.bottom(); py += ipat->h)
+                for (int px = row.x; px < row.right(); px += ipat->w)
+                    cv.blit_image(*ipat, px, py);
+        }
+
         const char *islot = dis ? "menu.item.disabled"
                                 : (is_hot ? "menu.item.hilited" : "menu.item.normal");
         const SkinImage *item = ap.art(islot);
+        // Haxial gives the top and bottom rows their own hilite art so a plate
+        // with rounded or open ends meets the menu frame correctly.
+        if (is_hot && count > 1) {
+            const SkinImage *end = nullptr;
+            if (i == 0) end = ap.art("menu.item.first_hilited");
+            else if (i == count - 1) end = ap.art("menu.item.last_hilited");
+            if (end) item = end;
+        }
         if (!item && is_hot) item = ap.art("menu.item.normal");
         if (item) {
             cv.nine_slice(*item, row);
@@ -1328,9 +1346,8 @@ struct MenuBarLayout {
 };
 
 // Menu bar strip — distinct from open popup menus.
-// Hap Menu Bar art is rarely authored (slots empty across probed themes);
-// colour path uses menu.* roles; optional art keys: menu_bar.pattern,
-// menu_bar.background, menu_bar.title(.hilited|.disabled).
+// Hap slots 271/272 (pattern, bar) and 273-279 (title pattern and title states),
+// confirmed against AppearanceEdit; colour path falls back to menu.* roles.
 inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
                                     const char *const *titles, int count,
                                     int hot = -1, unsigned disabled_mask = 0) {
@@ -1341,6 +1358,7 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
     cv.fill(r, ap.c("menu.background"));
     const SkinImage *pat = ap.art("menu_bar.pattern");
     if (pat && !pat->empty()) {
+        CanvasClip clip(cv, r);
         for (int py = r.y; py < r.bottom(); py += pat->h)
             for (int px = r.x; px < r.right(); px += pat->w)
                 cv.blit_image(*pat, px, py);
@@ -1371,6 +1389,7 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
                                            : (is_hot ? "menu_bar.title_pattern.hilited"
                                                      : "menu_bar.title_pattern.normal"));
         if (tpat && !tpat->empty()) {
+            CanvasClip clip(cv, item);
             for (int py = item.y; py < item.bottom(); py += tpat->h)
                 for (int px = item.x; px < item.right(); px += tpat->w)
                     cv.blit_image(*tpat, px, py);
@@ -1910,6 +1929,44 @@ inline void paint_progress_led_colour(Canvas &cv, Rect seg, Color body) {
     }
 }
 
+// Progress Bar Digit 0-9 (slots 114-123) and Digit 100% (124): Haxial stamps the
+// percentage onto the bar with bitmap digits instead of text. Themes that author
+// no digits keep the plain bar, so this is a no-op for most of the corpus.
+inline void paint_progress_digits(Canvas &cv, const Appearance &ap, Rect track,
+                                  int value, int vmax) {
+    int pct = std::clamp((value * 100 + vmax / 2) / std::max(1, vmax), 0, 100);
+    if (pct >= 100) {
+        const SkinImage *full = ap.art("progress.digit.full");
+        if (full && !full->empty()) {
+            cv.blit_image(*full, track.x + (track.w - full->w) / 2,
+                          track.y + (track.h - full->h) / 2);
+            return;
+        }
+    }
+    const SkinImage *digits[10];
+    for (int d = 0; d < 10; ++d) {
+        char key[24];
+        std::snprintf(key, sizeof(key), "progress.digit.%d", d);
+        digits[d] = ap.art(key);
+        if (!digits[d] || digits[d]->empty()) return;
+    }
+    char text[8];
+    std::snprintf(text, sizeof(text), "%d", pct);
+    int w = 0, h = 0;
+    for (const char *p = text; *p; ++p) {
+        const SkinImage *g = digits[*p - '0'];
+        w += g->w;
+        h = std::max(h, g->h);
+    }
+    int x = track.x + (track.w - w) / 2;
+    int y = track.y + (track.h - h) / 2;
+    for (const char *p = text; *p; ++p) {
+        const SkinImage *g = digits[*p - '0'];
+        cv.blit_image(*g, x, y + (h - g->h) / 2);
+        x += g->w;
+    }
+}
+
 inline int progress_art_height(const SkinImage *bar, const SkinImage *fill) {
     int h = kProgressH;
     if (bar && bar->h > 0) h = bar->h;
@@ -1989,9 +2046,20 @@ inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
     }
     int inner_w = track.w - inset_l - inset_r;
     int fill_w = (inner_w * v) / vmax;
-    if (fill_w <= 0) return;
-    Rect fr{track.x + inset_l, track.y + inset_t, fill_w,
-            track.h - inset_t - inset_b};
+    Rect inner{track.x + inset_l, track.y + inset_t, inner_w,
+               track.h - inset_t - inset_b};
+    // Progress Bar Non-Fill (slot 113) covers the part still to run, so a theme
+    // can give the unfilled track a different look from the empty bar.
+    const SkinImage *non_fill = ap.art("progress.non_fill");
+    if (non_fill && inner.h > 0 && inner_w > fill_w) {
+        Rect nr{inner.x + fill_w, inner.y, inner_w - fill_w, inner.h};
+        cv.nine_slice(*non_fill, nr);
+    }
+    if (fill_w <= 0) {
+        paint_progress_digits(cv, ap, track, v, vmax);
+        return;
+    }
+    Rect fr{inner.x, inner.y, fill_w, inner.h};
     if (fr.h <= 0 || fr.w <= 0) return;
     if (fill) {
         cv.nine_slice(*fill, fr);
@@ -2009,6 +2077,7 @@ inline void paint_progress(Canvas &cv, const Appearance &ap, Rect r, int value,
         }
         cv.rect_grad_v(fr, stops, 10);
     }
+    paint_progress_digits(cv, ap, track, v, vmax);
 }
 
 // WonderLight — 16×16 activity lamp (KDX file-transfer status spheres).
@@ -2105,10 +2174,9 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
     if (!img && size >= 32) img = ap.icon("file.generic.32");
     if (!img && size < 32) img = ap.icon("file.generic.16");
     if (img) {
-        if (img->w == size && img->h == size)
-            cv.blit_image(*img, b.x, b.y);
-        else
-            cv.nine_slice(*img, b);
+        // Icon art is never stretched: Haxial draws it at its authored size,
+        // centred in the cell (themes do author 16 px art in a 32 px slot).
+        cv.blit_image(*img, b.x + (size - img->w) / 2, b.y + (size - img->h) / 2);
         return b;
     }
     // Document plate
@@ -2127,6 +2195,28 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
     for (int i = 0; i < 3; ++i)
         cv.hline(b.x + 4, b.right() - 5, b.y + size / 2 + i * 3 - 2, edge);
     return b;
+}
+
+// Icon for a Haxial file type ("image/jpeg", "folder/uploads", "volume/hd"...).
+// Haxial resolves a type to art by walking the taxonomy: the exact type first,
+// then the family ("image/"), then generic data. Themes only author a handful
+// of families, so the walk is what makes a real .hap look right in a file list.
+inline Rect paint_file_icon(Canvas &cv, const Appearance &ap, int x, int y,
+                            const char *type, int size = 16) {
+    char key[96];
+    const char *px = size >= 32 ? "32" : "16";
+    if (type && *type) {
+        std::snprintf(key, sizeof(key), "file_icon.%s.%s", type, px);
+        if (ap.icon(key)) return paint_icon(cv, ap, x, y, key, size);
+        const char *slash = std::strchr(type, '/');
+        if (slash) {
+            std::snprintf(key, sizeof(key), "file_icon.%.*s/.%s",
+                          int(slash - type), type, px);
+            if (ap.icon(key)) return paint_icon(cv, ap, x, y, key, size);
+        }
+    }
+    std::snprintf(key, sizeof(key), "file_icon.data.%s", px);
+    return paint_icon(cv, ap, x, y, key, size);
 }
 
 // Icon Button — Hap 49/50/51. Optional title drawn beside a centred icon.
@@ -2439,6 +2529,35 @@ inline void paint_framed_raised(Canvas &cv, const Appearance &ap, Rect r) {
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("button.dark2"));
 }
 
+// Haxial Color Chooser (slots 281-283): a well showing the chosen colour inside
+// the theme's plate. Positions give the well inset; the colour path draws a
+// recessed frame like the stock control.
+inline void paint_color_chooser(Canvas &cv, const Appearance &ap, Rect r,
+                                Color value, bool pressed = false,
+                                bool disabled = false) {
+    if (r.w <= 0 || r.h <= 0) return;
+    const char *slot = disabled ? "color_chooser.disabled"
+                                : (pressed ? "color_chooser.hilited"
+                                           : "color_chooser.normal");
+    const SkinImage *img = ap.art(slot);
+    if (!img && pressed) img = ap.art("color_chooser.normal");
+    Rect well = r;
+    if (img) {
+        cv.nine_slice(*img, r);
+        well = {r.x + img->positions[0], r.y + img->positions[1],
+                r.w - img->positions[0] - img->positions[2],
+                r.h - img->positions[1] - img->positions[3]};
+        if (well.w <= 0 || well.h <= 0) well = {r.x + 3, r.y + 3, r.w - 6, r.h - 6};
+    } else {
+        cv.fill(r, ap.c("button.face"));
+        cv.frame(r, ap.c("button.frame"));
+        cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("button.dark2"));
+        cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, ap.c("button.dark2"));
+        well = {r.x + 3, r.y + 3, r.w - 6, r.h - 6};
+    }
+    if (well.w > 0 && well.h > 0) cv.fill(well, value);
+}
+
 enum class DisclosureKind { PlusSmall, MinusSmall, PlusMedium, MinusMedium };
 
 inline const char *disclosure_art_slot(DisclosureKind k) {
@@ -2632,6 +2751,10 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     if (fits(kProgressH + 8)) {
         cv.text(x, y + 1, "Progress", ap.c("primary.label"));
         paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
+        if (x + 340 <= right) {
+            paint_color_chooser(cv, ap, {x + 300, y, 34, kProgressH},
+                                ap.c("focus.box"));
+        }
         y += kProgressH + 8;
     }
     if (fits(14)) {

@@ -168,6 +168,10 @@ face + 3 px on each side (`kDefaultButtonPad`).
 | Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
 | Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
 | Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
+| Progress Bar Non-Fill | **113** | `progress.non_fill` — 9-sliced over the *unfilled* remainder, after the fill |
+| Progress Bar Digit 0–9 | **114**–**123** | `progress.digit.0`…`.9` — bitmap glyphs stamped centred; all ten required |
+| Progress Bar Digit 100% | **124** | `progress.digit.full` — single record replacing "100" at completion |
+| Color Chooser Normal/Hilited/Disabled | **281** / **282** / **283** | `color_chooser.*` — swatch well; Positions = well inset |
 | WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — 16×16 status lamp |
 | WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp |
 
@@ -181,19 +185,26 @@ face + 3 px on each side (`kDefaultButtonPad`).
 | Menu Item Normal/Hilited/Disabled | **205** / **206** / **207** | Per-row chrome above background |
 | Menu Separator | **208** | Horizontal rule; L/R caps; vertically centred |
 | Popup Window Frame Normal/Focus | **248** / **249** | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
+| Menu First / Last Item Hilited | **209** / **210** | Replaces 206 on the top/bottom row so the hilite meets the menu's rounded ends |
 
 The menu group is numbered **densely** (200…208, unlike the 4-slot blocks used
 by buttons), so the item states are 205/206/207 — the kit previously read
 206/207 as normal/hilited, i.e. it painted the hilite art on idle rows.
 Occupancy backs the dense reading: 203 and 206 (the *hilited* pattern and item)
 are the most authored rows, while normals are usually left to colours.
-Menu **Bar** art (a Mac-only surface) has no occupancy in any corpus theme.
+Menu **Bar** art (a Mac-only surface) has no occupancy in any corpus theme, but
+AppearanceEdit 1.4 does expose it, and its rows sit at **271** Menu Bar Pattern,
+**272** Menu Bar, **273**/**274**/**275** Menu Bar Title Pattern
+Normal/Hilited/Disabled and **277**/**278**/**279** Menu Bar Title
+Normal/Hilited/Disabled (276 is a hole between the two triples).
 
 Colours always apply for label / hilite / disable ink even when art is present.
 
 **SagradoKit names:** `menu.background_pattern`, `menu.background`,
 `menu.item.normal`, `menu.item.hilited`, `menu.item.disabled`,
-`menu.separator`, `popup_frame.normal`, `popup_frame.focus`.
+`menu.item.first_hilited`, `menu.item.last_hilited`, `menu.separator`,
+`popup_frame.normal`, `popup_frame.focus`, `menu_bar.pattern`,
+`menu_bar.background`, `menu_bar.title_pattern.*`, `menu_bar.title.*`.
 
 ### Slider
 
@@ -262,7 +273,9 @@ remaining occupied ranges are the file-type and label-coloured folder icons
 |---|---|---|
 | Icon Button Normal/Hilited/Disabled | **49** / **50** / **51** | `icon_button.*`; icon + optional title |
 | Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers; disabled often donor-filled |
-| Menu Bar Pattern / Menu Bar / Titles | rarely authored | Colour path `paint_menu_bar`; optional `menu_bar.*` art (no Hap occupancy in probed themes) |
+| Menu Bar Pattern / Menu Bar | **271** / **272** | `menu_bar.pattern` (tiled, clipped to the strip), `menu_bar.background` |
+| Menu Bar Title Pattern N/H/D | **273** / **274** / **275** | `menu_bar.title_pattern.*` tiled under each title cell |
+| Menu Bar Title N/H/D | **277** / **278** / **279** | `menu_bar.title.*`; colour path stays the fallback (rarely authored) |
 
 ### Column header / gel (related)
 
@@ -281,8 +294,12 @@ The Disabled variants share their group's Positions exactly (same glyph
 placement as Normal/Focus/Hilited) across all corpus themes that author them —
 that is how 226/231/236/241 were identified.
 
-**Still unresolved** (occupied but unnamed): slot 271 (32×32, 5 themes) and
-272/277/278/279 (6×21 with caps, 1–2 themes). Left unmapped rather than guessed.
+**How the last slots were pinned:** AppearanceEdit ticks a checkmark beside
+every row a theme authors, so injecting one record at a candidate slot into a
+known-good theme and reading which row gains a tick names that slot outright.
+That is the evidence for 113/114–124, 209/210, 271–275, 277–279 and 281–283 —
+the previously "occupied but unnamed" 271 and 272/277/278/279 among them. No
+image slot authored anywhere in the 111-theme corpus is unmapped now.
 
 ---
 
