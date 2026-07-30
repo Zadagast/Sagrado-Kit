@@ -178,7 +178,13 @@ void do_load() {
         bool hap = path.size() >= 4 &&
                    (path.compare(path.size() - 4, 4, ".hap") == 0 ||
                     path.compare(path.size() - 4, 4, ".HAP") == 0);
-        set_status(std::string(hap ? "Loaded Hap " : "Loaded ") + path);
+        // Echo the theme's own Info fields, the way AppearanceEdit titles a
+        // loaded appearance, rather than just the path.
+        const SkinMeta &m = g.ap.skin.meta;
+        std::string s = std::string(hap ? "Loaded Hap " : "Loaded ") + m.name;
+        if (!m.version.empty()) s += " " + m.version;
+        if (!m.creator.empty()) s += " by " + m.creator;
+        set_status(s);
     } else {
         set_status("Failed to load " + path);
     }
