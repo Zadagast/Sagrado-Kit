@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract first-wave Hap image slots into a SagradoKit art skin (.skimg + .skin.toml)."""
+"""Extract first-wave Hap image slots into a SagradoKit art skin (.skimg + .sap)."""
 from __future__ import annotations
 import struct
 import zlib
@@ -7,6 +7,7 @@ from pathlib import Path
 
 # Verified / probed Hap slot → SagradoKit art key.
 SLOT_MAP = {
+    17: "primary.background",
     25: "button.normal",
     26: "button.hilited",
     27: "button.disabled",
@@ -48,6 +49,9 @@ SLOT_MAP = {
     97: "popup.symbol.normal",
     98: "popup.symbol.hilited",
     99: "popup.symbol.disabled",
+    101: "focus_box.normal",
+    102: "focus_box.hilited",
+    103: "focus_box.disabled",
     105: "separator.h",
     106: "separator.v",
     107: "box",
@@ -111,6 +115,9 @@ SLOT_MAP = {
     # Menu Bar family: no Hap occupancy in probed themes (197–199 empty)
     200: "menu.background_pattern",
     201: "menu.background",
+    202: "menu.item.pattern.normal",
+    203: "menu.item.pattern.hilited",
+    204: "menu.item.pattern.disabled",
     206: "menu.item.normal",
     207: "menu.item.hilited",
     208: "menu.separator",
@@ -119,16 +126,23 @@ SLOT_MAP = {
     223: "window.close.normal",
     224: "window.close.focus",
     225: "window.close.hilited",
+    226: "window.close.disabled",
     228: "window.minimize.normal",
     229: "window.minimize.focus",
     230: "window.minimize.hilited",
+    231: "window.minimize.disabled",
     233: "window.maximize.normal",
     234: "window.maximize.focus",
     235: "window.maximize.hilited",
+    236: "window.maximize.disabled",
     238: "window.menu.normal",
     239: "window.menu.focus",
+    240: "window.menu.hilited",
+    241: "window.menu.disabled",
     243: "window.resize.normal",
     244: "window.resize.focus",
+    248: "popup_frame.normal",
+    249: "popup_frame.focus",
     251: "wonderlight.off",
     252: "wonderlight.pause",
     253: "wonderlight.ready",
@@ -137,6 +151,8 @@ SLOT_MAP = {
     256: "wonderlight.flash_off",
     257: "wonderlight.flash_on1",
     258: "wonderlight.flash_on2",
+    263: "disclosure.plus.medium",
+    267: "disclosure.minus.medium",
 }
 
 # Hap colour index → SagradoKit role (subset used by kit surfaces).
@@ -161,6 +177,10 @@ COLOR_MAP = {
     18: "list.hilite_foreground",
     19: "list.sort_column_background",
     20: "list.separator",
+    21: "workspace.background1",
+    22: "workspace.background2",
+    23: "workspace.background3",
+    24: "workspace.background4",
     29: "button.light2",
     30: "button.light1",
     31: "button.face",
@@ -239,6 +259,22 @@ COLOR_MAP = {
     155: "scrollbar.disable_dark",
     156: "scrollbar.disable_frame",
     157: "scrollbar.disable_label",
+    158: "slider.indicator_light",
+    159: "slider.indicator",
+    160: "slider.indicator_dark",
+    161: "slider.indicator_frame",
+    162: "slider.indicator_hilite_light",
+    163: "slider.indicator_hilite",
+    164: "slider.indicator_hilite_dark",
+    165: "slider.indicator_hilite_frame",
+    166: "slider.bar",
+    167: "slider.bar_frame",
+    168: "slider.bar_hilite",
+    169: "slider.bar_hilite_frame",
+    170: "slider.disable_light",
+    171: "slider.disable",
+    172: "slider.disable_dark",
+    173: "slider.disable_frame",
     174: "column_header.frame",
     175: "column_header.light",
     176: "column_header.face",
@@ -275,7 +311,7 @@ def rd32(d: bytes, o: int) -> int:
     return (d[o] << 24) | (d[o + 1] << 16) | (d[o + 2] << 8) | d[o + 3]
 
 
-def parse_image(d: bytes, o: int):
+def parse_image(d: bytes, o: int, is_icon: bool = False):
     w, h = rd16(d, o), rd16(d, o + 2)
     if w <= 0 or h <= 0 or w > 2048 or h > 2048:
         return None
@@ -286,10 +322,20 @@ def parse_image(d: bytes, o: int):
         return None
     palette_len = d[o + 6] + 1
     transparent_index = d[o + 7]
-    caps = list(d[o + 12 : o + 16])
-    pos = list(d[o + 16 : o + 20])
-    palette = [rd32(d, o + 20 + 4 * i) & 0x00FFFFFF for i in range(palette_len)]
-    pixels_off = o + 20 + 4 * palette_len
+    # Images: +8..+11 aux colour, +12 caps, +16 positions, +20 palette.
+    # Icons: no caps/positions — palette starts at +8.
+    if is_icon:
+        caps = [0, 0, 0, 0]
+        pos = [0, 0, 0, 0]
+        pal_off = o + 8
+    else:
+        caps = list(d[o + 12 : o + 16])
+        pos = list(d[o + 16 : o + 20])
+        pal_off = o + 20
+    if pal_off + 4 * palette_len > len(d):
+        return None
+    palette = [rd32(d, pal_off + 4 * i) & 0x00FFFFFF for i in range(palette_len)]
+    pixels_off = pal_off + 4 * palette_len
     stride = (w * bpp + 31) // 32 * 4
     if pixels_off + stride * h > len(d):
         return None
@@ -378,7 +424,7 @@ def load_hap(path: Path):
                 continue
             if ico_off + rel + 20 > len(d):
                 continue
-            img = parse_image(d, ico_off + rel)
+            img = parse_image(d, ico_off + rel, is_icon=True)
             if img:
                 icons[slot] = img
     return name, colors, images, icons
@@ -448,6 +494,10 @@ def main():
         _, _, donor_imgs, _ = load_hap(dpath)
         filled = 0
         for slot, key in SLOT_MAP.items():
+            # Primary Background is a tiled client pattern — do not borrow from
+            # another theme (Milk is solid white; Boilerplate's 128² would paint).
+            if slot == 17:
+                continue
             if slot not in images and slot in donor_imgs:
                 images[slot] = donor_imgs[slot]
                 filled += 1
@@ -524,7 +574,7 @@ def main():
 
     lines = [
         "# SagradoKit skin — Milk Redux + donor WonderLight/icons",
-        'format = "sagrado-skin"',
+        'format = "sap"',
         "version = 1",
         "",
         "[meta]",
@@ -563,7 +613,7 @@ def main():
         lines.append(f'"{key}" = "{fname}"')
     lines.append("")
 
-    toml_path = out_dir / "milk-redux.skin.toml"
+    toml_path = out_dir / "milk-redux.sap"
     toml_path.write_text("\n".join(lines) + "\n")
     print(f"wrote {toml_path} ({len(art_entries)} art, {len(icon_entries)} icons)")
 

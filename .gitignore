@@ -2,12 +2,17 @@
 **/*.rs.bk
 .DS_Store
 *.swp
+*.sap.bak
 *.skin.toml.bak
 
-# Research downloads (re-fetch; do not vendor binaries)
+# Research downloads (re-fetch; do not vendor editor binaries)
 /research/bin/
-/research/haps/
-*.hap
 *.exe
 *.zip
 research/__pycache__/
+
+# Sample Haxial Appearances live under research/haps/ (vendored for Load).
+# Ignore stray .hap elsewhere; keep the research set tracked.
+*.hap
+!research/haps/
+!research/haps/*.hap

@@ -1,6 +1,6 @@
 // SagradoKit Editor — AppearanceEdit-style authoring app.
 // Entire UI painted into a software framebuffer and blitted with
-// SetDIBitsToDevice. Edits the same .skin.toml format apps load.
+// SetDIBitsToDevice. Edits the same .sap format apps load.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <windowsx.h>
@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -16,10 +18,21 @@
 
 namespace {
 
-constexpr int kWinW = 960;
-constexpr int kWinH = 640;
+constexpr int kWinW = 1040;
+constexpr int kWinH = 700;
 constexpr int kRoleRowH = 20;
 constexpr int kSwatchW = 28;
+constexpr int kPanelTabH = 22;
+constexpr int kPanelTabW = 88;
+
+enum Panel : int {
+    PanelColors = 0,
+    PanelInfo,
+    PanelImages,
+    PanelIcons,
+    PanelGroups,
+    PanelCount,
+};
 
 enum Drag : int {
     DragNone = 0,
@@ -31,14 +44,23 @@ enum Drag : int {
     DragBtnLoad,
     DragBtnSave,
     DragBtnStock,
+    DragBtnImportColors,
+    DragBtnColorsOnly,
+    DragBtnPaste,
+    DragBtnTrans,
     DragPreviewBtn,
     DragCloseBox,
     DragMaxBox,
     DragMinBox,
     DragScrollArrowRoles,
     DragScrollArrowPreview,
+    DragScrollArrowPreviewH,
+    DragThumbPreviewH,
     DragSliderKit,
     DragDropdown,
+    DragPanelTab,
+    DragGroupBase,
+    DragImgNudge,
 };
 
 struct App {
@@ -49,36 +71,67 @@ struct App {
     KitPreviewLayout preview_lay{};
     bool focused = true;
     bool caret_on = true;
+    bool dirty = false;
+    // Focus: -1 none; 0..3 Info fields; 10 hex field (Colors/Groups/Images/Icons Text Color)
+    int focus = -1;
+    std::string hex_buf;
+    int group_sel = 0;
 
+    int panel = PanelColors;
     int scroll = 0;
     int selected = 0;
     int list_sel = 1;
     int preview_scroll = 0;
     KitPreviewState preview_st{};
+    int asset_sel = 0; // images / icons list selection
+    Color group_base{180, 180, 180};
+    int trans_mode = 0; // 0=None 1=White 2=Red 3=Green 4=Blue (last applied)
 
     int drag = DragNone;
     int drag_btn = 0;       // active preview button id (1..3) while over it
     int drag_target = 0;    // original press target (survives move-off)
     int thumb_grab = 0;     // mouse y offset within thumb
     int arrow_dir = 0;      // -1 up / +1 down
+    ScrollArrowHot arrow_hot = ScrollArrowHot::None;
     int pressed_box = 0;
+    int h_thumb_grab = 0;   // mouse x offset within H thumb
+    int nudge_which = 0;    // 0..7 caps, 8..15 pos; low bit unused, encode as (kind<<4)|axis
 
     std::string path;
-    std::string status = "Stock skin — edit colours, Save to write a .skin.toml";
+    std::string status = "Stock skin — edit colours, Save to write a .sap";
 
     Rect role_list{};
     Rect role_sbar{};
     Rect preview{};
     Rect btn_load{}, btn_save{}, btn_stock{};
+    Rect btn_import_colors{}, btn_colors_only{};
+    Rect panel_tabs[PanelCount]{};
     Rect slider_r{}, slider_g{}, slider_b{};
     Rect hex_field{};
+    Rect group_swatch{};
+    Rect info_fields[4]{};
+
+    // Images authoring strip
+    Rect img_thumb{};
+    Rect img_cap_minus[4]{}, img_cap_plus[4]{};
+    Rect img_pos_minus[4]{}, img_pos_plus[4]{};
+    Rect btn_paste{};
+    Rect btn_trans[5]{};
 
     int roles_page() const {
         int body_h = role_list.h - kHeaderH;
         return std::max(1, body_h / kRoleRowH);
     }
     int roles_max_scroll() const {
-        return std::max(0, (int)all_color_roles().size() - roles_page());
+        if (panel == PanelColors)
+            return std::max(0, (int)all_color_roles().size() - roles_page());
+        if (panel == PanelImages)
+            return std::max(0, (int)all_hap_art_keys().size() - roles_page());
+        if (panel == PanelIcons)
+            return std::max(0, (int)all_hap_icon_keys().size() - roles_page());
+        if (panel == PanelGroups)
+            return std::max(0, 7 - roles_page()); // kColorGroupN
+        return 0;
     }
     int preview_max_scroll() const {
         return std::max(0, preview_lay.row_count - preview_lay.page_rows);
@@ -97,18 +150,21 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    // Prefer live Hap (Sagrado-style), then extracted Milk skin.toml, then stock.
+    // Prefer a chrome-rich Hap (Gamespot), then Milk, then extracted .sap / stock.
     const char *cands[] = {
+        "\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\research\\haps\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
-        "\\format\\skins\\milk-redux\\milk-redux.skin.toml",
-        "\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
-        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.skin.toml",
-        "\\format\\skins\\stock.skin.toml",
-        "\\..\\format\\skins\\stock.skin.toml",
-        "\\..\\..\\format\\skins\\stock.skin.toml",
-        "\\skins\\stock.skin.toml"};
+        "\\format\\skins\\milk-redux\\milk-redux.sap",
+        "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
+        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",
+        "\\format\\skins\\stock.sap",
+        "\\..\\format\\skins\\stock.sap",
+        "\\..\\..\\format\\skins\\stock.sap",
+        "\\skins\\stock.sap"};
     for (const char *c : cands) {
         std::string p = dir + c;
         DWORD a = GetFileAttributesA(p.c_str());
@@ -128,9 +184,15 @@ void set_selected_color(Color c) {
     const auto &roles = all_color_roles();
     if (g.selected < 0 || g.selected >= (int)roles.size()) return;
     g.ap.set_color(roles[size_t(g.selected)].path, c);
+    g.dirty = true;
 }
 
 void set_status(const std::string &s) { g.status = s; }
+
+void mark_dirty(const std::string &why = {}) {
+    g.dirty = true;
+    if (!why.empty()) set_status(why);
+}
 
 void clamp_scroll() {
     g.scroll = std::clamp(g.scroll, 0, g.roles_max_scroll());
@@ -143,9 +205,9 @@ bool dialog_open_path(std::string &out) {
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
     ofn.lpstrFilter =
-        "Appearance (*.hap;*.skin.toml)\0*.hap;*.skin.toml\0"
+        "Appearance (*.hap;*.sap)\0*.hap;*.sap\0"
         "Haxial Appearance (*.hap)\0*.hap\0"
-        "SagradoKit Skin (*.skin.toml)\0*.skin.toml\0All\0*.*\0";
+        "Sagrado Appearance (*.sap)\0*.sap\0All\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -156,15 +218,15 @@ bool dialog_open_path(std::string &out) {
 }
 
 bool dialog_save_path(std::string &out) {
-    char file[MAX_PATH] = "untitled.skin.toml";
+    char file[MAX_PATH] = "untitled.sap";
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = g_hwnd;
-    ofn.lpstrFilter = "SagradoKit Skin (*.skin.toml)\0*.skin.toml\0All\0*.*\0";
+    ofn.lpstrFilter = "Sagrado Appearance (*.sap)\0*.sap\0All\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
-    ofn.lpstrDefExt = "toml";
+    ofn.lpstrDefExt = "sap";
     if (!GetSaveFileNameA(&ofn)) return false;
     out = file;
     return true;
@@ -192,12 +254,27 @@ void do_load() {
 
 void do_save() {
     std::string path = g.path;
-    if (path.empty() && !dialog_save_path(path)) return;
+    auto ends_with_ci = [](const std::string &s, const char *ext) {
+        size_t n = std::strlen(ext);
+        if (s.size() < n) return false;
+        for (size_t i = 0; i < n; ++i) {
+            char a = s[s.size() - n + i];
+            char b = ext[i];
+            if (a >= 'A' && a <= 'Z') a = char(a - 'A' + 'a');
+            if (a != b) return false;
+        }
+        return true;
+    };
+    // .hap is import-only — Save always writes .sap (with art dumped beside it).
+    if (path.empty() || ends_with_ci(path, ".hap")) {
+        if (!dialog_save_path(path)) return;
+    }
     if (path.empty()) return;
     if (g.ap.skin.meta.name.empty() || g.ap.skin.meta.name == "Stock")
         g.ap.skin.meta.name = "Untitled";
     if (g.ap.save(path)) {
         g.path = path;
+        g.dirty = false;
         set_status("Saved " + path);
     } else {
         set_status("Failed to save " + path);
@@ -208,6 +285,522 @@ void do_stock() {
     g.ap.set_skin(stock_skin());
     g.path.clear();
     set_status("Reset to stock");
+}
+
+// Import Colors — copy colour table from another Hap/Sap (AppearanceEdit Window Menu).
+void do_import_colors() {
+    std::string path;
+    if (!dialog_open_path(path)) return;
+    Appearance donor;
+    if (!donor.load(path)) {
+        set_status("Import Colors failed: " + path);
+        return;
+    }
+    int n = 0;
+    for (const auto &kv : donor.skin.colors) {
+        g.ap.skin.colors[kv.first] = kv.second;
+        ++n;
+    }
+    set_status("Imported " + std::to_string(n) + " colours from " + path);
+}
+
+// ♦ Colour Groups — derive related roles from a base (AppearanceEdit diamonds).
+struct ColorGroupDef {
+    const char *name;
+    const char *bg_role; // role used to seed the base swatch
+    enum Kind { Primary4, Bevel6, Face4, Progress4, List } kind;
+};
+
+static const ColorGroupDef kColorGroups[] = {
+    {"♦ Primary Group", "primary.background", ColorGroupDef::Primary4},
+    {"♦ Button Group", "button.face", ColorGroupDef::Bevel6},
+    {"♦ Window Group", "window.face", ColorGroupDef::Bevel6},
+    {"♦ List Group", "list.background", ColorGroupDef::List},
+    {"♦ Column Header Group", "column_header.face", ColorGroupDef::Face4},
+    {"♦ Progress Group", "progress.bkgnd", ColorGroupDef::Progress4},
+    {"♦ Scrollbar Group", "scrollbar.face", ColorGroupDef::Face4},
+};
+static constexpr int kColorGroupN = sizeof(kColorGroups) / sizeof(kColorGroups[0]);
+
+void apply_color_group(int gi, Color base) {
+    if (gi < 0 || gi >= kColorGroupN) return;
+    g.group_sel = gi;
+    g.group_base = base;
+    auto clamp8 = [](int v) -> uint8_t {
+        return uint8_t(std::clamp(v, 0, 255));
+    };
+    auto shade = [&](int d) -> Color {
+        return {clamp8(int(base.r) + d), clamp8(int(base.g) + d),
+                clamp8(int(base.b) + d)};
+    };
+    const ColorGroupDef &gd = kColorGroups[gi];
+    switch (gd.kind) {
+    case ColorGroupDef::Primary4:
+        g.ap.set_color("primary.light", shade(+40));
+        g.ap.set_color("primary.background", base);
+        g.ap.set_color("primary.dark", shade(-40));
+        g.ap.set_color("primary.frame", shade(-70));
+        break;
+    case ColorGroupDef::Bevel6: {
+        const char *p = (gi == 1) ? "button" : "window";
+        char key[48];
+        auto set = [&](const char *suf, Color c) {
+            std::snprintf(key, sizeof(key), "%s.%s", p, suf);
+            g.ap.set_color(key, c);
+        };
+        set("light2", shade(+55));
+        set("light1", shade(+30));
+        set("face", base);
+        set("dark1", shade(-30));
+        set("dark2", shade(-55));
+        set("frame", shade(-80));
+        break;
+    }
+    case ColorGroupDef::Face4: {
+        const char *p = (gi == 4) ? "column_header" : "scrollbar";
+        char key[48];
+        auto set = [&](const char *suf, Color c) {
+            std::snprintf(key, sizeof(key), "%s.%s", p, suf);
+            g.ap.set_color(key, c);
+        };
+        set("light", shade(+40));
+        set("face", base);
+        set("dark", shade(-40));
+        set("frame", shade(-70));
+        break;
+    }
+    case ColorGroupDef::Progress4:
+        g.ap.set_color("progress.bkgnd_light", shade(+40));
+        g.ap.set_color("progress.bkgnd", base);
+        g.ap.set_color("progress.bkgnd_dark", shade(-40));
+        g.ap.set_color("progress.frame", shade(-70));
+        break;
+    case ColorGroupDef::List:
+        g.ap.set_color("list.background", base);
+        g.ap.set_color("list.sort_column_background", shade(-12));
+        g.ap.set_color("list.separator", shade(-50));
+        break;
+    }
+    mark_dirty(std::string("Group: ") + gd.name);
+}
+
+void seed_group_base_from_sel() {
+    if (g.group_sel < 0 || g.group_sel >= kColorGroupN) g.group_sel = 0;
+    g.group_base = g.ap.c(kColorGroups[g.group_sel].bg_role);
+}
+
+// --- Images / Icons authoring --------------------------------------------
+
+std::vector<std::string> art_keys_list() {
+    // Full Hap Images catalog — empty slots listed so Paste can fill them.
+    return all_hap_art_keys();
+}
+
+std::vector<std::string> icon_keys_list() { return all_hap_icon_keys(); }
+
+std::string selected_art_key() {
+    auto keys = art_keys_list();
+    if (g.asset_sel < 0 || g.asset_sel >= (int)keys.size()) return {};
+    return keys[size_t(g.asset_sel)];
+}
+
+SkinImage *selected_art_mutable() {
+    std::string key = selected_art_key();
+    if (key.empty()) return nullptr;
+    auto it = g.ap.art_cache.find(key);
+    if (it == g.ap.art_cache.end() || it->second.empty()) return nullptr;
+    return &it->second;
+}
+
+void sync_selected_art_ref() {
+    std::string key = selected_art_key();
+    SkinImage *img = selected_art_mutable();
+    if (key.empty() || !img) return;
+    ArtRef &ref = g.ap.skin.art[key];
+    if (ref.path.empty()) {
+        std::string n = key;
+        for (char &c : n)
+            if (c == '.') c = '_';
+        ref.path = n + ".skimg";
+    }
+    std::memcpy(ref.caps, img->caps, 4);
+    std::memcpy(ref.positions, img->positions, 4);
+    ref.has_caps = true;
+    ref.has_positions = true;
+    ref.has_text_color = img->has_text_color;
+    ref.text_color = img->text_color;
+}
+
+void clamp_caps(SkinImage &img) {
+    while (img.w > 0 && int(img.caps[0]) + int(img.caps[2]) >= img.w) {
+        if (img.caps[2] > 0) --img.caps[2];
+        else if (img.caps[0] > 0) --img.caps[0];
+        else break;
+    }
+    while (img.h > 0 && int(img.caps[1]) + int(img.caps[3]) >= img.h) {
+        if (img.caps[3] > 0) --img.caps[3];
+        else if (img.caps[1] > 0) --img.caps[1];
+        else break;
+    }
+}
+
+void nudge_cap(int axis, int delta) {
+    SkinImage *img = selected_art_mutable();
+    if (!img || axis < 0 || axis > 3) return;
+    int v = int(img->caps[axis]) + delta;
+    img->caps[axis] = uint8_t(std::clamp(v, 0, 255));
+    clamp_caps(*img);
+    sync_selected_art_ref();
+    static const char *labs[] = {"L", "T", "R", "B"};
+    set_status(std::string("Caps ") + labs[axis] + " = " +
+               std::to_string(img->caps[axis]));
+}
+
+void nudge_pos(int axis, int delta) {
+    SkinImage *img = selected_art_mutable();
+    if (!img || axis < 0 || axis > 3) return;
+    int v = int(img->positions[axis]) + delta;
+    img->positions[axis] = uint8_t(std::clamp(v, 0, 255));
+    sync_selected_art_ref();
+    static const char *labs[] = {"L", "T", "R", "B"};
+    set_status(std::string("Positions ") + labs[axis] + " = " +
+               std::to_string(img->positions[axis]));
+}
+
+Color selected_art_text_color() {
+    SkinImage *img = selected_art_mutable();
+    if (!img || !img->has_text_color) return rgb(0, 0, 0);
+    return plate_text_color(img);
+}
+
+void set_selected_art_text_color(Color c) {
+    SkinImage *img = selected_art_mutable();
+    if (!img) return;
+    img->has_text_color = true;
+    img->text_color = (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | uint32_t(c.b);
+    sync_selected_art_ref();
+    mark_dirty();
+}
+
+// AppearanceEdit Transparent Color menu: None / White / 100% R/G/B.
+void apply_transparent_color(int mode) {
+    SkinImage *img = selected_art_mutable();
+    if (!img || img->px.empty()) return;
+    g.trans_mode = mode;
+    for (uint32_t &p : img->px) {
+        uint8_t r = uint8_t((p >> 16) & 0xff);
+        uint8_t gch = uint8_t((p >> 8) & 0xff);
+        uint8_t b = uint8_t(p & 0xff);
+        bool match = false;
+        if (mode == 0) {
+            // None → all opaque
+            p = 0xff000000u | (p & 0x00ffffffu);
+            continue;
+        } else if (mode == 1)
+            match = (r == 255 && gch == 255 && b == 255);
+        else if (mode == 2)
+            match = (r == 255 && gch == 0 && b == 0);
+        else if (mode == 3)
+            match = (r == 0 && gch == 255 && b == 0);
+        else if (mode == 4)
+            match = (r == 0 && gch == 0 && b == 255);
+        if (match)
+            p = p & 0x00ffffffu; // A=0
+        else
+            p = 0xff000000u | (p & 0x00ffffffu);
+    }
+    static const char *names[] = {"None", "White", "100% Red", "100% Green",
+                                  "100% Blue"};
+    mark_dirty(std::string("Transparent Color: ") + names[std::clamp(mode, 0, 4)]);
+}
+
+bool paste_art_from_clipboard() {
+    SkinImage *dst = selected_art_mutable();
+    std::string key = selected_art_key();
+    if (key.empty()) {
+        set_status("Select an image slot before Paste");
+        return false;
+    }
+    if (!OpenClipboard(g_hwnd)) {
+        set_status("Clipboard unavailable");
+        return false;
+    }
+    HANDLE h = GetClipboardData(CF_DIB);
+    if (!h) {
+        CloseClipboard();
+        set_status("Clipboard has no DIB bitmap (copy an image first)");
+        return false;
+    }
+    auto *bi = (BITMAPINFOHEADER *)GlobalLock(h);
+    if (!bi) {
+        CloseClipboard();
+        return false;
+    }
+    int w = bi->biWidth;
+    int hgt = bi->biHeight;
+    bool bottom_up = hgt > 0;
+    if (hgt < 0) hgt = -hgt;
+    int bpp = bi->biBitCount;
+    if (w <= 0 || hgt <= 0 || (bpp != 24 && bpp != 32) ||
+        bi->biCompression != BI_RGB) {
+        GlobalUnlock(h);
+        CloseClipboard();
+        set_status("Paste needs uncompressed 24/32-bit bitmap");
+        return false;
+    }
+    size_t header = sizeof(BITMAPINFOHEADER);
+    if (bpp <= 8) header += size_t(1u << bpp) * sizeof(RGBQUAD);
+    const uint8_t *bits = (const uint8_t *)bi + header;
+    int stride = ((w * bpp + 31) / 32) * 4;
+
+    SkinImage out;
+    out.w = w;
+    out.h = hgt;
+    out.px.assign(size_t(w) * size_t(hgt), 0);
+    if (dst) {
+        std::memcpy(out.caps, dst->caps, 4);
+        std::memcpy(out.positions, dst->positions, 4);
+        out.has_text_color = dst->has_text_color;
+        out.text_color = dst->text_color;
+    } else {
+        out.caps[0] = uint8_t(std::max(1, w / 2));
+        out.caps[1] = uint8_t(std::max(1, hgt / 2));
+        out.caps[2] = uint8_t(std::max(0, w - 1 - out.caps[0]));
+        out.caps[3] = uint8_t(std::max(0, hgt - 1 - out.caps[1]));
+    }
+    clamp_caps(out);
+
+    for (int y = 0; y < hgt; ++y) {
+        int src_y = bottom_up ? (hgt - 1 - y) : y;
+        const uint8_t *row = bits + size_t(src_y) * size_t(stride);
+        for (int x = 0; x < w; ++x) {
+            uint8_t b, gch, r, a = 255;
+            if (bpp == 32) {
+                b = row[x * 4 + 0];
+                gch = row[x * 4 + 1];
+                r = row[x * 4 + 2];
+                a = row[x * 4 + 3];
+                if (a == 0) a = 255; // many DIBs leave A=0
+            } else {
+                b = row[x * 3 + 0];
+                gch = row[x * 3 + 1];
+                r = row[x * 3 + 2];
+            }
+            out.px[size_t(y) * size_t(w) + size_t(x)] =
+                (uint32_t(a) << 24) | (uint32_t(r) << 16) | (uint32_t(gch) << 8) |
+                uint32_t(b);
+        }
+    }
+    GlobalUnlock(h);
+    CloseClipboard();
+
+    g.ap.art_cache[key] = std::move(out);
+    sync_selected_art_ref();
+    set_status("Pasted " + std::to_string(w) + "x" + std::to_string(hgt) +
+               " into " + key);
+    mark_dirty();
+    return true;
+}
+
+std::string selected_icon_key() {
+    auto keys = icon_keys_list();
+    if (g.asset_sel < 0 || g.asset_sel >= (int)keys.size()) return {};
+    return keys[size_t(g.asset_sel)];
+}
+
+SkinImage *selected_icon_mutable() {
+    std::string key = selected_icon_key();
+    if (key.empty()) return nullptr;
+    auto it = g.ap.icon_cache.find(key);
+    if (it == g.ap.icon_cache.end() || it->second.empty()) return nullptr;
+    return &it->second;
+}
+
+void sync_selected_icon_ref() {
+    std::string key = selected_icon_key();
+    SkinImage *img = selected_icon_mutable();
+    if (key.empty() || !img) return;
+    g.ap.skin.icons[key] = key + ".skimg"; // basename rewritten on Save
+}
+
+Color selected_icon_text_color() {
+    SkinImage *img = selected_icon_mutable();
+    if (!img || !img->has_text_color) return rgb(0, 0, 0);
+    return plate_text_color(img);
+}
+
+void set_selected_icon_text_color(Color c) {
+    SkinImage *img = selected_icon_mutable();
+    if (!img) return;
+    img->has_text_color = true;
+    img->text_color = (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) | uint32_t(c.b);
+    sync_selected_icon_ref();
+    mark_dirty();
+}
+
+void apply_transparent_color_icon(int mode) {
+    SkinImage *img = selected_icon_mutable();
+    if (!img || img->px.empty()) return;
+    g.trans_mode = mode;
+    for (uint32_t &p : img->px) {
+        uint8_t r = uint8_t((p >> 16) & 0xff);
+        uint8_t gch = uint8_t((p >> 8) & 0xff);
+        uint8_t b = uint8_t(p & 0xff);
+        bool match = false;
+        if (mode == 0) {
+            p = 0xff000000u | (p & 0x00ffffffu);
+            continue;
+        } else if (mode == 1)
+            match = (r == 255 && gch == 255 && b == 255);
+        else if (mode == 2)
+            match = (r == 255 && gch == 0 && b == 0);
+        else if (mode == 3)
+            match = (r == 0 && gch == 255 && b == 0);
+        else if (mode == 4)
+            match = (r == 0 && gch == 0 && b == 255);
+        if (match)
+            p = p & 0x00ffffffu;
+        else
+            p = 0xff000000u | (p & 0x00ffffffu);
+    }
+    mark_dirty("Transparent Color (icon)");
+}
+
+bool paste_icon_from_clipboard() {
+    std::string key = selected_icon_key();
+    if (key.empty()) {
+        set_status("Select an icon slot before Paste");
+        return false;
+    }
+    // Reuse DIB decode via art paste into a temp key, then move — keep logic local.
+    if (!OpenClipboard(g_hwnd)) {
+        set_status("Clipboard unavailable");
+        return false;
+    }
+    HANDLE h = GetClipboardData(CF_DIB);
+    if (!h) {
+        CloseClipboard();
+        set_status("Clipboard has no DIB bitmap (copy an image first)");
+        return false;
+    }
+    auto *bi = (BITMAPINFOHEADER *)GlobalLock(h);
+    if (!bi) {
+        CloseClipboard();
+        return false;
+    }
+    int w = bi->biWidth;
+    int hgt = bi->biHeight;
+    bool bottom_up = hgt > 0;
+    if (hgt < 0) hgt = -hgt;
+    int bpp = bi->biBitCount;
+    if (w <= 0 || hgt <= 0 || (bpp != 24 && bpp != 32) ||
+        bi->biCompression != BI_RGB) {
+        GlobalUnlock(h);
+        CloseClipboard();
+        set_status("Paste needs uncompressed 24/32-bit bitmap");
+        return false;
+    }
+    size_t header = sizeof(BITMAPINFOHEADER);
+    const uint8_t *bits = (const uint8_t *)bi + header;
+    int stride = ((w * bpp + 31) / 32) * 4;
+    SkinImage out;
+    out.w = w;
+    out.h = hgt;
+    out.px.assign(size_t(w) * size_t(hgt), 0);
+    std::memset(out.caps, 0, 4);
+    std::memset(out.positions, 0, 4);
+    for (int y = 0; y < hgt; ++y) {
+        int src_y = bottom_up ? (hgt - 1 - y) : y;
+        const uint8_t *row = bits + size_t(src_y) * size_t(stride);
+        for (int x = 0; x < w; ++x) {
+            uint8_t b, gch, r, a = 255;
+            if (bpp == 32) {
+                b = row[x * 4 + 0];
+                gch = row[x * 4 + 1];
+                r = row[x * 4 + 2];
+                a = row[x * 4 + 3];
+                if (a == 0) a = 255;
+            } else {
+                b = row[x * 3 + 0];
+                gch = row[x * 3 + 1];
+                r = row[x * 3 + 2];
+            }
+            out.px[size_t(y) * size_t(w) + size_t(x)] =
+                (uint32_t(a) << 24) | (uint32_t(r) << 16) | (uint32_t(gch) << 8) |
+                uint32_t(b);
+        }
+    }
+    GlobalUnlock(h);
+    CloseClipboard();
+    g.ap.icon_cache[key] = std::move(out);
+    sync_selected_icon_ref();
+    mark_dirty("Pasted " + std::to_string(w) + "x" + std::to_string(hgt) +
+               " into " + key);
+    return true;
+}
+
+Color focused_edit_color() {
+    if (g.panel == PanelGroups) return g.group_base;
+    if (g.panel == PanelImages) return selected_art_text_color();
+    if (g.panel == PanelIcons) return selected_icon_text_color();
+    return selected_color();
+}
+
+void apply_focused_edit_color(Color c) {
+    if (g.panel == PanelGroups) {
+        apply_color_group(g.group_sel, c);
+    } else if (g.panel == PanelImages) {
+        set_selected_art_text_color(c);
+        mark_dirty();
+    } else if (g.panel == PanelIcons) {
+        set_selected_icon_text_color(c);
+    } else {
+        set_selected_color(c);
+        mark_dirty();
+    }
+}
+
+void begin_hex_edit() {
+    g.focus = 10;
+    g.hex_buf = color_to_hex(focused_edit_color());
+}
+
+bool commit_hex_edit() {
+    if (g.focus != 10) return false;
+    Color c;
+    if (!parse_hex_color(g.hex_buf, c)) {
+        set_status("Hex must be #RRGGBB");
+        g.hex_buf = color_to_hex(focused_edit_color());
+        return false;
+    }
+    apply_focused_edit_color(c);
+    g.hex_buf = color_to_hex(c);
+    set_status("Hex " + g.hex_buf);
+    return true;
+}
+
+std::string &info_field_ref(int i) {
+    static std::string dummy;
+    switch (i) {
+    case 0: return g.ap.skin.meta.name;
+    case 1: return g.ap.skin.meta.version;
+    case 2: return g.ap.skin.meta.creator;
+    case 3: return g.ap.skin.meta.description;
+    default: return dummy;
+    }
+}
+
+
+void paint_nudge(Canvas &cv, const Appearance &ap, Rect minus, Rect plus, int value,
+                 bool minus_p, bool plus_p) {
+    paint_button(cv, ap, minus, "-", minus_p, false);
+    paint_button(cv, ap, plus, "+", plus_p, false);
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "%d", value);
+    int mid = (minus.right() + plus.x) / 2;
+    int tw = cv.text_width(buf);
+    cv.text(mid - tw / 2, minus.y + (minus.h - kFontHeight) / 2, buf,
+            ap.c("primary.label"));
 }
 
 void paint_slider(Canvas &cv, Rect r, const char *label, int value, Color fill) {
@@ -245,12 +838,30 @@ void layout() {
     g.btn_load = {client.x + 12, by, kToolBtnW, kButtonH};
     g.btn_save = default_button_rect(g.btn_load.right() + kToolGap, by, kToolBtnW);
     g.btn_stock = {g.btn_save.right() + kToolGap, by, kToolBtnW, kButtonH};
+    g.btn_import_colors = {g.btn_stock.right() + kToolGap, by, 110, kButtonH};
+    g.btn_colors_only = {g.btn_import_colors.right() + kToolGap, by, 100, kButtonH};
 
-    int split = client.x + 420;
+    int split = client.x + 440;
     int content_top = by + kDefaultButtonH + 10;
     int content_h = client.bottom() - content_top - 8;
 
-    g.role_list = {client.x + 10, content_top, 400, content_h - 90};
+    // Panel tabs above the left list.
+    static const char *tab_labels[] = {"Colors", "Info", "Images", "Icons", "Groups"};
+    (void)tab_labels;
+    int tx = client.x + 10;
+    for (int i = 0; i < PanelCount; ++i) {
+        g.panel_tabs[i] = {tx, content_top, kPanelTabW, kPanelTabH};
+        tx += kPanelTabW + 4;
+    }
+
+    int list_top = content_top + kPanelTabH + 6;
+    int bottom_reserve = 90;
+    if (g.panel == PanelImages) bottom_reserve = 210;
+    if (g.panel == PanelIcons) bottom_reserve = 120;
+    if (g.panel == PanelGroups) bottom_reserve = 100;
+    if (g.panel == PanelInfo) bottom_reserve = 0;
+    int list_h = content_h - kPanelTabH - 6 - bottom_reserve;
+    g.role_list = {client.x + 10, list_top, 420, std::max(80, list_h)};
     int body_y = g.role_list.y + kHeaderH;
     int body_h = g.role_list.h - kHeaderH;
     g.role_sbar = {g.role_list.right() - kScrollbarW, body_y, kScrollbarW, body_h};
@@ -260,10 +871,49 @@ void layout() {
     g.slider_g = {client.x + 10, ey + 24, 360, 20};
     g.slider_b = {client.x + 10, ey + 48, 360, 20};
     g.hex_field = {client.x + 330, ey + 18, 72, kFieldH};
+    g.group_swatch = {client.x + 380, ey, 48, 48};
+
+    // Images authoring strip (below list)
+    g.img_thumb = {client.x + 10, ey, 72, 56};
+    int nx = g.img_thumb.right() + 8;
+    int ny = ey;
+    constexpr int kNudgeW = 18;
+    constexpr int kNudgeH = 18;
+    constexpr int kNudgeGap = 52;
+    for (int i = 0; i < 4; ++i) {
+        int x0 = nx + i * kNudgeGap;
+        g.img_cap_minus[i] = {x0, ny, kNudgeW, kNudgeH};
+        g.img_cap_plus[i] = {x0 + 28, ny, kNudgeW, kNudgeH};
+        g.img_pos_minus[i] = {x0, ny + 22, kNudgeW, kNudgeH};
+        g.img_pos_plus[i] = {x0 + 28, ny + 22, kNudgeW, kNudgeH};
+    }
+    g.btn_paste = {client.x + 10, ey + 64, 72, kButtonH};
+    static const int kTransW = 56;
+    for (int i = 0; i < 5; ++i)
+        g.btn_trans[i] = {client.x + 90 + i * (kTransW + 4), ey + 64, kTransW, kButtonH};
+    // Text Color RGB sliders under Paste/Transparent for Images and Icons.
+    if (g.panel == PanelImages || g.panel == PanelIcons) {
+        int sy = ey + 64 + kButtonH + 8;
+        if (g.panel == PanelIcons) {
+            // Icons: no Caps/Positions strip — Paste row at ey, sliders below.
+            g.btn_paste = {client.x + 10, ey, 72, kButtonH};
+            static const int kTransW = 56;
+            for (int i = 0; i < 5; ++i)
+                g.btn_trans[i] = {client.x + 90 + i * (kTransW + 4), ey, kTransW,
+                                  kButtonH};
+            sy = ey + kButtonH + 8;
+        }
+        g.slider_r = {client.x + 10, sy, 360, 20};
+        g.slider_g = {client.x + 10, sy + 22, 360, 20};
+        g.slider_b = {client.x + 10, sy + 44, 360, 20};
+        g.hex_field = {client.x + 330, sy + 16, 72, kFieldH};
+    }
+
+    // Information meta field rows
+    for (int i = 0; i < 4; ++i)
+        g.info_fields[i] = {client.x + 120, list_top + 28 + i * 28, 280, kFieldH};
 
     g.preview = {split + 10, content_top, client.right() - split - 20, content_h};
-    // Approximate preview layout metrics for hit-testing before paint.
-    // paint() overwrites preview_lay with exact rects.
     g.preview_lay.bounds = g.preview;
     g.preview_lay.page_rows = std::max(1, (g.preview.h - (kFindDlgH + 200)) / kRowH);
     g.preview_lay.row_count = 8;
@@ -285,48 +935,274 @@ void paint() {
     bool load_p = g.drag == DragBtnLoad && g.btn_load.contains(pt.x, pt.y);
     bool save_p = g.drag == DragBtnSave && g.btn_save.contains(pt.x, pt.y);
     bool stock_p = g.drag == DragBtnStock && g.btn_stock.contains(pt.x, pt.y);
+    bool import_p =
+        g.drag == DragBtnImportColors && g.btn_import_colors.contains(pt.x, pt.y);
+    bool only_p =
+        g.drag == DragBtnColorsOnly && g.btn_colors_only.contains(pt.x, pt.y);
     paint_button(cv, ap, g.btn_load, "Load", load_p, false);
     paint_button(cv, ap, g.btn_save, "Save", save_p, true);
     paint_button(cv, ap, g.btn_stock, "Stock", stock_p, false);
+    paint_button(cv, ap, g.btn_import_colors, "Import Colors", import_p, false);
+    paint_button(cv, ap, g.btn_colors_only,
+                 g.preview_st.colours_only ? "Full Preview" : "Colors Preview",
+                 only_p || g.preview_st.colours_only, false);
 
-    cv.text(g.btn_stock.right() + 16,
+    cv.text(g.btn_colors_only.right() + 12,
             g.btn_load.y + (g.btn_load.h - cv.line_height()) / 2, g.status.c_str(),
             ap.c("primary.disable_label"));
 
-    // Role list
+    // Panel tabs
+    static const char *tab_labels[] = {"Colors", "Info", "Images", "Icons", "Groups"};
+    for (int i = 0; i < PanelCount; ++i) {
+        bool on = g.panel == i;
+        Rect t = g.panel_tabs[i];
+        if (on)
+            cv.fill(t, ap.c("list.hilite_background"));
+        else
+            paint_button_face(cv, ap, t, false, false);
+        cv.frame(t, ap.c("primary.frame"));
+        Color ink = on ? ap.c("list.hilite_foreground") : ap.c("primary.label");
+        int tw = cv.text_width(tab_labels[i]);
+        cv.text(t.x + (t.w - tw) / 2, t.y + (t.h - kFontHeight) / 2, tab_labels[i],
+                ink);
+    }
+
+    // Left panel body
     cv.fill(g.role_list, ap.c("list.background"));
     cv.frame(g.role_list, ap.c("primary.frame"));
-    paint_column_header(cv, ap,
-                        {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
-                        "Colour Roles", true);
 
-    const auto &roles = all_color_roles();
-    int body_y = g.role_list.y + kHeaderH;
-    int page = g.roles_page();
-    int max_scroll = g.roles_max_scroll();
-    for (int i = 0; i < page; ++i) {
-        int idx = g.scroll + i;
-        if (idx >= (int)roles.size()) break;
-        Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
-                 g.role_list.w - 2 - kScrollbarW, kRoleRowH};
-        bool sel = idx == g.selected;
-        if (sel) cv.fill(row, ap.c("list.hilite_background"));
-        Color col = ap.c(roles[size_t(idx)].path);
-        Rect sw{row.x + 4, row.y + 3, kSwatchW, kRoleRowH - 6};
-        cv.fill(sw, col);
-        cv.frame(sw, ap.c("primary.frame"));
-        Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
-        cv.text(sw.right() + 8, row.y + (kRoleRowH - cv.line_height()) / 2,
-                roles[size_t(idx)].label, ink);
+    if (g.panel == PanelColors) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Colour Roles", true);
+        const auto &roles = all_color_roles();
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        int max_scroll = g.roles_max_scroll();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= (int)roles.size()) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.selected;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            Color col = ap.c(roles[size_t(idx)].path);
+            Rect sw{row.x + 4, row.y + 3, kSwatchW, kRoleRowH - 6};
+            cv.fill(sw, col);
+            cv.frame(sw, ap.c("primary.frame"));
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            cv.text(sw.right() + 8, row.y + (kRoleRowH - cv.line_height()) / 2,
+                    roles[size_t(idx)].label, ink);
+        }
+        bool roles_thumb_hot = g.drag == DragThumbRoles;
+        ScrollArrowHot roles_arrow =
+            g.drag == DragScrollArrowRoles ? g.arrow_hot : ScrollArrowHot::None;
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page,
+                        roles_thumb_hot, false, false, roles_arrow);
+
+        Color cur = selected_color();
+        paint_slider(cv, g.slider_r, "R", cur.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", cur.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", cur.b, rgb(40, 80, 200));
+        {
+            bool hex_f = g.focus == 10;
+            const char *hx =
+                hex_f ? g.hex_buf.c_str() : color_to_hex(cur).c_str();
+            paint_field(cv, ap, g.hex_field, hx, hex_f, g.caret_on);
+        }
+    } else if (g.panel == PanelInfo) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Information", true);
+        static const char *labs[] = {"Name:", "Version:", "Creator:", "Description:"};
+        for (int i = 0; i < 4; ++i) {
+            cv.text(g.role_list.x + 12, g.info_fields[i].y + 4, labs[i],
+                    ap.c("primary.label"));
+            bool foc = g.focus == i;
+            paint_field(cv, ap, g.info_fields[i], info_field_ref(i).c_str(), foc,
+                        g.caret_on);
+        }
+        cv.text(g.role_list.x + 12, g.info_fields[3].bottom() + 16,
+                "Click a field and type. Tab cycles. Save writes .sap meta.",
+                ap.c("primary.disable_label"));
+    } else if (g.panel == PanelImages) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Images", true);
+        auto keys = art_keys_list();
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        int max_scroll = g.roles_max_scroll();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= (int)keys.size()) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.asset_sel;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            const SkinImage *img = ap.art(keys[size_t(idx)].c_str());
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            char detail[96];
+            if (img) {
+                std::snprintf(detail, sizeof(detail), "%s  %dx%d  caps[%d,%d,%d,%d]",
+                              keys[size_t(idx)].c_str(), img->w, img->h, img->caps[0],
+                              img->caps[1], img->caps[2], img->caps[3]);
+            } else {
+                std::snprintf(detail, sizeof(detail), "%s  (empty)",
+                              keys[size_t(idx)].c_str());
+            }
+            cv.text(row.x + 6, row.y + (kRoleRowH - cv.line_height()) / 2, detail, ink);
+            if (img && img->has_text_color) {
+                Rect sw{row.right() - 22, row.y + 3, 14, kRoleRowH - 6};
+                cv.fill(sw, plate_text_color(img));
+                cv.frame(sw, ap.c("primary.frame"));
+            }
+        }
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page,
+                        g.drag == DragThumbRoles, false, false,
+                        g.drag == DragScrollArrowRoles ? g.arrow_hot
+                                                       : ScrollArrowHot::None);
+
+        // Authoring strip — thumbnail, Caps/Positions nudges, Paste, Transparent,
+        // Text Color RGB (sliders below).
+        SkinImage *sel = selected_art_mutable();
+        cv.fill(g.img_thumb, ap.c("list.background"));
+        cv.frame(g.img_thumb, ap.c("primary.frame"));
+        if (sel) {
+            int dx = g.img_thumb.x + 2 +
+                     std::max(0, (g.img_thumb.w - 4 - sel->w) / 2);
+            int dy = g.img_thumb.y + 2 +
+                     std::max(0, (g.img_thumb.h - 4 - sel->h) / 2);
+            cv.place(*sel, dx, dy);
+        }
+        static const char *axes[] = {"L", "T", "R", "B"};
+        cv.text(g.img_cap_minus[0].x - 36, g.img_cap_minus[0].y + 2, "Caps",
+                ap.c("primary.label"));
+        cv.text(g.img_pos_minus[0].x - 36, g.img_pos_minus[0].y + 2, "Pos",
+                ap.c("primary.label"));
+        for (int i = 0; i < 4; ++i) {
+            cv.text(g.img_cap_minus[i].x + 6, g.img_cap_minus[i].y - 12, axes[i],
+                    ap.c("primary.disable_label"));
+            int cap_v = sel ? sel->caps[i] : 0;
+            int pos_v = sel ? sel->positions[i] : 0;
+            bool cm = g.drag == DragImgNudge && g.nudge_which == i && g.arrow_dir < 0;
+            bool cp = g.drag == DragImgNudge && g.nudge_which == i && g.arrow_dir > 0;
+            bool pm =
+                g.drag == DragImgNudge && g.nudge_which == (8 + i) && g.arrow_dir < 0;
+            bool pp =
+                g.drag == DragImgNudge && g.nudge_which == (8 + i) && g.arrow_dir > 0;
+            paint_nudge(cv, ap, g.img_cap_minus[i], g.img_cap_plus[i], cap_v, cm, cp);
+            paint_nudge(cv, ap, g.img_pos_minus[i], g.img_pos_plus[i], pos_v, pm, pp);
+        }
+
+        bool paste_p = g.drag == DragBtnPaste && g.btn_paste.contains(pt.x, pt.y);
+        paint_button(cv, ap, g.btn_paste, "Paste", paste_p, false);
+        static const char *trans_labs[] = {"None", "White", "Red", "Green", "Blue"};
+        for (int i = 0; i < 5; ++i) {
+            bool on = g.trans_mode == i;
+            bool pressed =
+                g.drag == DragBtnTrans && g.drag_target == i &&
+                g.btn_trans[i].contains(pt.x, pt.y);
+            paint_button(cv, ap, g.btn_trans[i], trans_labs[i], pressed || on, false);
+        }
+
+        Color tc = selected_art_text_color();
+        cv.text(g.slider_r.x, g.slider_r.y - 14, "Text Color", ap.c("primary.label"));
+        paint_slider(cv, g.slider_r, "R", tc.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", tc.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", tc.b, rgb(40, 80, 200));
+        {
+            bool hex_f = g.focus == 10;
+            const char *hx =
+                hex_f ? g.hex_buf.c_str() : color_to_hex(tc).c_str();
+            paint_field(cv, ap, g.hex_field, hx, hex_f, g.caret_on);
+        }
+    } else if (g.panel == PanelIcons) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "Icons", true);
+        auto keys = icon_keys_list();
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        int max_scroll = g.roles_max_scroll();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= (int)keys.size()) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.asset_sel;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            const SkinImage *ic = ap.icon(keys[size_t(idx)].c_str());
+            if (ic)
+                paint_icon(cv, ap, row.x + 4, row.y + (kRoleRowH - 16) / 2,
+                           keys[size_t(idx)].c_str(), 16);
+            else {
+                Rect ph{row.x + 4, row.y + (kRoleRowH - 16) / 2, 16, 16};
+                cv.frame(ph, ap.c("primary.disable_frame"));
+            }
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            char lab[80];
+            std::snprintf(lab, sizeof(lab), "%s%s", keys[size_t(idx)].c_str(),
+                          ic ? "" : "  (empty)");
+            cv.text(row.x + 26, row.y + (kRoleRowH - cv.line_height()) / 2, lab, ink);
+        }
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page,
+                        g.drag == DragThumbRoles, false, false,
+                        g.drag == DragScrollArrowRoles ? g.arrow_hot
+                                                       : ScrollArrowHot::None);
+        bool paste_p = g.drag == DragBtnPaste && g.btn_paste.contains(pt.x, pt.y);
+        paint_button(cv, ap, g.btn_paste, "Paste", paste_p, false);
+        static const char *trans_labs[] = {"None", "White", "Red", "Green", "Blue"};
+        for (int i = 0; i < 5; ++i) {
+            bool on = g.trans_mode == i;
+            bool pressed = g.drag == DragBtnTrans && g.drag_target == i &&
+                           g.btn_trans[i].contains(pt.x, pt.y);
+            paint_button(cv, ap, g.btn_trans[i], trans_labs[i], pressed || on, false);
+        }
+        Color tc = selected_icon_text_color();
+        cv.text(g.slider_r.x, g.slider_r.y - 14, "Text Color", ap.c("primary.label"));
+        paint_slider(cv, g.slider_r, "R", tc.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", tc.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", tc.b, rgb(40, 80, 200));
+        {
+            bool hex_f = g.focus == 10;
+            const char *hx =
+                hex_f ? g.hex_buf.c_str() : color_to_hex(tc).c_str();
+            paint_field(cv, ap, g.hex_field, hx, hex_f, g.caret_on);
+        }
+    } else if (g.panel == PanelGroups) {
+        paint_column_header(cv, ap,
+                            {g.role_list.x, g.role_list.y, g.role_list.w, kHeaderH},
+                            "♦ Groups", true);
+        int body_y = g.role_list.y + kHeaderH;
+        int page = g.roles_page();
+        for (int i = 0; i < page; ++i) {
+            int idx = g.scroll + i;
+            if (idx >= kColorGroupN) break;
+            Rect row{g.role_list.x + 1, body_y + i * kRoleRowH,
+                     g.role_list.w - 2 - kScrollbarW, kRoleRowH};
+            bool sel = idx == g.group_sel;
+            if (sel) cv.fill(row, ap.c("list.hilite_background"));
+            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            cv.text(row.x + 8, row.y + (kRoleRowH - cv.line_height()) / 2,
+                    kColorGroups[idx].name, ink);
+        }
+        paint_scrollbar(cv, ap, g.role_sbar, g.scroll, g.roles_max_scroll(), page,
+                        g.drag == DragThumbRoles, false, false,
+                        g.drag == DragScrollArrowRoles ? g.arrow_hot
+                                                       : ScrollArrowHot::None);
+        cv.fill(g.group_swatch, g.group_base);
+        cv.frame(g.group_swatch, ap.c("primary.frame"));
+        paint_slider(cv, g.slider_r, "R", g.group_base.r, rgb(200, 40, 40));
+        paint_slider(cv, g.slider_g, "G", g.group_base.g, rgb(40, 180, 40));
+        paint_slider(cv, g.slider_b, "B", g.group_base.b, rgb(40, 80, 200));
+        {
+            bool hex_f = g.focus == 10;
+            const char *hx =
+                hex_f ? g.hex_buf.c_str() : color_to_hex(g.group_base).c_str();
+            paint_field(cv, ap, g.hex_field, hx, hex_f, g.caret_on);
+        }
     }
-    bool roles_thumb_hot = g.drag == DragThumbRoles;
-    paint_scrollbar(cv, ap, g.role_sbar, g.scroll, max_scroll, page, roles_thumb_hot);
-
-    Color cur = selected_color();
-    paint_slider(cv, g.slider_r, "R", cur.r, rgb(200, 40, 40));
-    paint_slider(cv, g.slider_g, "G", cur.g, rgb(40, 180, 40));
-    paint_slider(cv, g.slider_b, "B", cur.b, rgb(40, 80, 200));
-    paint_field(cv, ap, g.hex_field, color_to_hex(cur).c_str(), true, g.caret_on);
 
     // Live kit preview — clip so tall samples cannot paint through the gel frame.
     paint_primary_background(cv, ap, g.preview);
@@ -335,6 +1211,11 @@ void paint() {
                                    ? g.drag_btn
                                    : 0;
     g.preview_st.thumb_hot = g.drag == DragThumbPreview;
+    g.preview_st.h_thumb_hot = g.drag == DragThumbPreviewH;
+    g.preview_st.arrow_hot =
+        g.drag == DragScrollArrowPreview ? g.arrow_hot : ScrollArrowHot::None;
+    g.preview_st.h_arrow_hot =
+        g.drag == DragScrollArrowPreviewH ? g.arrow_hot : ScrollArrowHot::None;
     g.preview_st.slider_hot = g.drag == DragSliderKit;
     {
         CanvasClip preview_clip(cv, g.preview);
@@ -374,6 +1255,14 @@ int scroll_from_thumb_y(const ScrollLayout &sl, int my, int max_scroll) {
     return travel ? ty * max_scroll / travel : 0;
 }
 
+int scroll_from_thumb_x(const ScrollLayout &sl, int mx, int max_scroll) {
+    if (max_scroll <= 0 || sl.track.w <= sl.thumb.w) return 0;
+    int travel = sl.track.w - sl.thumb.w;
+    int tx = mx - g.h_thumb_grab - sl.track.x;
+    tx = std::clamp(tx, 0, travel);
+    return travel ? tx * max_scroll / travel : 0;
+}
+
 void on_arrow_tick() {
     if (g.drag == DragScrollArrowRoles) {
         g.scroll = std::clamp(g.scroll + g.arrow_dir, 0, g.roles_max_scroll());
@@ -381,6 +1270,9 @@ void on_arrow_tick() {
     } else if (g.drag == DragScrollArrowPreview) {
         g.preview_scroll =
             std::clamp(g.preview_scroll + g.arrow_dir, 0, g.preview_max_scroll());
+        redraw();
+    } else if (g.drag == DragScrollArrowPreviewH) {
+        g.preview_st.h_scroll = std::clamp(g.preview_st.h_scroll + g.arrow_dir, 0, 8);
         redraw();
     }
 }
@@ -429,23 +1321,50 @@ void mouse_down(int mx, int my) {
         redraw();
         return;
     }
+    if (g.btn_import_colors.contains(mx, my)) {
+        g.drag = DragBtnImportColors;
+        redraw();
+        return;
+    }
+    if (g.btn_colors_only.contains(mx, my)) {
+        g.drag = DragBtnColorsOnly;
+        redraw();
+        return;
+    }
 
-    // Role-list scrollbar
-    if (g.role_sbar.contains(mx, my)) {
-        ScrollLayout sl =
-            scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
-        if (sl.up.contains(mx, my)) {
-            g.drag = DragScrollArrowRoles;
-            g.arrow_dir = -1;
-            on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr); // initial delay, then faster
+    // Panel tabs
+    for (int i = 0; i < PanelCount; ++i) {
+        if (g.panel_tabs[i].contains(mx, my)) {
+            g.panel = i;
+            g.scroll = 0;
+            g.asset_sel = 0;
+            if (i == PanelGroups) seed_group_base_from_sel();
+            if (i == PanelInfo) g.focus = 0;
+            else g.focus = -1;
+            set_status(std::string("Panel: ") +
+                       (i == 0   ? "Colors"
+                        : i == 1 ? "Information"
+                        : i == 2 ? "Images"
+                        : i == 3 ? "Icons"
+                                 : "Groups"));
+            redraw();
             return;
         }
-        if (sl.down.contains(mx, my)) {
+    }
+
+    // Role-list scrollbar
+    if (g.role_sbar.contains(mx, my) &&
+        (g.panel == PanelColors || g.panel == PanelImages || g.panel == PanelIcons ||
+         g.panel == PanelGroups)) {
+        ScrollLayout sl =
+            scroll_layout(g.ap, g.role_sbar, g.scroll, g.roles_max_scroll(), g.roles_page());
+        ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
+        if (hot != ScrollArrowHot::None) {
             g.drag = DragScrollArrowRoles;
-            g.arrow_dir = 1;
+            g.arrow_hot = hot;
+            g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
+            SetTimer(g_hwnd, 2, 200, nullptr); // hold-repeat initial delay
             return;
         }
         if (sl.thumb.contains(mx, my)) {
@@ -464,42 +1383,180 @@ void mouse_down(int mx, int my) {
         }
     }
 
-    // Role rows
+    // Role / asset / group rows
     if (g.role_list.contains(mx, my) && my >= g.role_list.y + kHeaderH &&
-        mx < g.role_sbar.x) {
+        mx < g.role_sbar.x &&
+        (g.panel == PanelColors || g.panel == PanelImages || g.panel == PanelIcons ||
+         g.panel == PanelGroups)) {
         int row = (my - (g.role_list.y + kHeaderH)) / kRoleRowH;
         int idx = g.scroll + row;
-        if (idx >= 0 && idx < (int)all_color_roles().size()) {
-            g.selected = idx;
-            redraw();
+        if (g.panel == PanelColors) {
+            if (idx >= 0 && idx < (int)all_color_roles().size()) {
+                g.selected = idx;
+                g.focus = -1;
+                redraw();
+            }
+        } else if (g.panel == PanelImages) {
+            if (idx >= 0 && idx < (int)art_keys_list().size()) {
+                g.asset_sel = idx;
+                g.focus = -1;
+                redraw();
+            }
+        } else if (g.panel == PanelIcons) {
+            if (idx >= 0 && idx < (int)icon_keys_list().size()) {
+                g.asset_sel = idx;
+                g.focus = -1;
+                redraw();
+            }
+        } else if (g.panel == PanelGroups) {
+            if (idx >= 0 && idx < kColorGroupN) {
+                g.group_sel = idx;
+                seed_group_base_from_sel();
+                g.focus = -1;
+                redraw();
+            }
         }
         return;
     }
 
-    // RGB sliders
-    if (g.slider_r.contains(mx, my)) {
+    // Info fields + hex field focus
+    if (g.panel == PanelInfo) {
+        for (int i = 0; i < 4; ++i) {
+            if (g.info_fields[i].contains(mx, my)) {
+                g.focus = i;
+                redraw();
+                return;
+            }
+        }
+    }
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages ||
+         g.panel == PanelIcons) &&
+        g.hex_field.contains(mx, my)) {
+        begin_hex_edit();
+        redraw();
+        return;
+    }
+
+    // RGB sliders (Colors + Groups + Images/Icons Text Color)
+    auto apply_slider_channel = [&](char ch, int mxv) {
+        int v = slider_value_at(ch == 'r'   ? g.slider_r
+                                : ch == 'g' ? g.slider_g
+                                            : g.slider_b,
+                                mxv);
+        if (g.panel == PanelGroups) {
+            if (ch == 'r') g.group_base.r = uint8_t(v);
+            else if (ch == 'g') g.group_base.g = uint8_t(v);
+            else g.group_base.b = uint8_t(v);
+            apply_color_group(g.group_sel, g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            if (ch == 'r') c.r = uint8_t(v);
+            else if (ch == 'g') c.g = uint8_t(v);
+            else c.b = uint8_t(v);
+            set_selected_art_text_color(c);
+        } else if (g.panel == PanelIcons) {
+            Color c = selected_icon_text_color();
+            if (ch == 'r') c.r = uint8_t(v);
+            else if (ch == 'g') c.g = uint8_t(v);
+            else c.b = uint8_t(v);
+            set_selected_icon_text_color(c);
+        } else {
+            Color c = selected_color();
+            if (ch == 'r') c.r = uint8_t(v);
+            else if (ch == 'g') c.g = uint8_t(v);
+            else c.b = uint8_t(v);
+            set_selected_color(c);
+        }
+    };
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages ||
+         g.panel == PanelIcons) &&
+        g.slider_r.contains(mx, my)) {
         g.drag = DragSliderR;
-        Color c = selected_color();
-        c.r = uint8_t(slider_value_at(g.slider_r, mx));
-        set_selected_color(c);
+        apply_slider_channel('r', mx);
         redraw();
         return;
     }
-    if (g.slider_g.contains(mx, my)) {
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages ||
+         g.panel == PanelIcons) &&
+        g.slider_g.contains(mx, my)) {
         g.drag = DragSliderG;
-        Color c = selected_color();
-        c.g = uint8_t(slider_value_at(g.slider_g, mx));
-        set_selected_color(c);
+        apply_slider_channel('g', mx);
         redraw();
         return;
     }
-    if (g.slider_b.contains(mx, my)) {
+    if ((g.panel == PanelColors || g.panel == PanelGroups || g.panel == PanelImages ||
+         g.panel == PanelIcons) &&
+        g.slider_b.contains(mx, my)) {
         g.drag = DragSliderB;
-        Color c = selected_color();
-        c.b = uint8_t(slider_value_at(g.slider_b, mx));
-        set_selected_color(c);
+        apply_slider_channel('b', mx);
         redraw();
         return;
+    }
+
+    // Images/Icons authoring — Caps/Positions nudges, Paste, Transparent Color
+    if (g.panel == PanelImages) {
+        for (int i = 0; i < 4; ++i) {
+            if (g.img_cap_minus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = i;
+                g.arrow_dir = -1;
+                nudge_cap(i, -1);
+                redraw();
+                return;
+            }
+            if (g.img_cap_plus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = i;
+                g.arrow_dir = 1;
+                nudge_cap(i, 1);
+                redraw();
+                return;
+            }
+            if (g.img_pos_minus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = 8 + i;
+                g.arrow_dir = -1;
+                nudge_pos(i, -1);
+                redraw();
+                return;
+            }
+            if (g.img_pos_plus[i].contains(mx, my)) {
+                g.drag = DragImgNudge;
+                g.nudge_which = 8 + i;
+                g.arrow_dir = 1;
+                nudge_pos(i, 1);
+                redraw();
+                return;
+            }
+        }
+        if (g.btn_paste.contains(mx, my)) {
+            g.drag = DragBtnPaste;
+            redraw();
+            return;
+        }
+        for (int i = 0; i < 5; ++i) {
+            if (g.btn_trans[i].contains(mx, my)) {
+                g.drag = DragBtnTrans;
+                g.drag_target = i;
+                redraw();
+                return;
+            }
+        }
+    }
+    if (g.panel == PanelIcons) {
+        if (g.btn_paste.contains(mx, my)) {
+            g.drag = DragBtnPaste;
+            redraw();
+            return;
+        }
+        for (int i = 0; i < 5; ++i) {
+            if (g.btn_trans[i].contains(mx, my)) {
+                g.drag = DragBtnTrans;
+                g.drag_target = i;
+                redraw();
+                return;
+            }
+        }
     }
 
     // Open dropdown menu takes clicks first (stacked above list)
@@ -569,23 +1626,18 @@ void mouse_down(int mx, int my) {
         return;
     }
 
-    // Preview scrollbar
+    // Preview vertical scrollbar
     if (g.preview_lay.sbar.contains(mx, my)) {
         int max_s = g.preview_max_scroll();
         ScrollLayout sl = scroll_layout(g.ap, g.preview_lay.sbar, g.preview_scroll, max_s,
                                         g.preview_lay.page_rows);
-        if (sl.up.contains(mx, my)) {
+        ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
+        if (hot != ScrollArrowHot::None) {
             g.drag = DragScrollArrowPreview;
-            g.arrow_dir = -1;
+            g.arrow_hot = hot;
+            g.arrow_dir = scroll_arrow_dir(hot);
             on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
-            return;
-        }
-        if (sl.down.contains(mx, my)) {
-            g.drag = DragScrollArrowPreview;
-            g.arrow_dir = 1;
-            on_arrow_tick();
-            SetTimer(g_hwnd, 2, 400, nullptr);
+            SetTimer(g_hwnd, 2, 200, nullptr);
             return;
         }
         if (sl.thumb.contains(mx, my)) {
@@ -603,10 +1655,39 @@ void mouse_down(int mx, int my) {
         }
     }
 
-    // Preview list rows
+    // Preview horizontal scrollbar
+    if (g.preview_lay.hsbar.contains(mx, my)) {
+        constexpr int kHMax = 8, kHPage = 4;
+        ScrollLayout sl = scroll_layout_h(g.ap, g.preview_lay.hsbar, g.preview_st.h_scroll,
+                                          kHMax, kHPage);
+        ScrollArrowHot hot = scroll_arrow_hit(sl, mx, my);
+        if (hot != ScrollArrowHot::None) {
+            g.drag = DragScrollArrowPreviewH;
+            g.arrow_hot = hot;
+            g.arrow_dir = scroll_arrow_dir(hot);
+            on_arrow_tick();
+            SetTimer(g_hwnd, 2, 200, nullptr);
+            return;
+        }
+        if (sl.thumb.contains(mx, my)) {
+            g.drag = DragThumbPreviewH;
+            g.h_thumb_grab = mx - sl.thumb.x;
+            redraw();
+            return;
+        }
+        if (sl.track.contains(mx, my)) {
+            if (mx < sl.thumb.x) g.preview_st.h_scroll -= kHPage;
+            else g.preview_st.h_scroll += kHPage;
+            g.preview_st.h_scroll = std::clamp(g.preview_st.h_scroll, 0, kHMax);
+            redraw();
+            return;
+        }
+    }
+
+    // Preview list rows (exclude V and H bars)
     Rect list = g.preview_lay.list;
     if (list.w > 0 && mx >= list.x && mx < list.right() - kScrollbarW &&
-        my >= list.y + kHeaderH && my < list.bottom()) {
+        my >= list.y + kHeaderH && my < list.bottom() - kScrollbarW) {
         int row = (my - (list.y + kHeaderH)) / kRowH;
         int idx = g.preview_scroll + row;
         if (idx >= 0 && idx < g.preview_lay.row_count) {
@@ -629,20 +1710,38 @@ void mouse_move(int mx, int my) {
                           g.preview_lay.page_rows);
         g.preview_scroll = scroll_from_thumb_y(sl, my, g.preview_max_scroll());
         redraw();
-    } else if (g.drag == DragSliderR) {
-        Color c = selected_color();
-        c.r = uint8_t(slider_value_at(g.slider_r, mx));
-        set_selected_color(c);
+    } else if (g.drag == DragThumbPreviewH) {
+        ScrollLayout sl = scroll_layout_h(g.ap, g.preview_lay.hsbar, g.preview_st.h_scroll, 8, 4);
+        g.preview_st.h_scroll = scroll_from_thumb_x(sl, mx, 8);
         redraw();
-    } else if (g.drag == DragSliderG) {
-        Color c = selected_color();
-        c.g = uint8_t(slider_value_at(g.slider_g, mx));
-        set_selected_color(c);
-        redraw();
-    } else if (g.drag == DragSliderB) {
-        Color c = selected_color();
-        c.b = uint8_t(slider_value_at(g.slider_b, mx));
-        set_selected_color(c);
+    } else if (g.drag == DragSliderR || g.drag == DragSliderG || g.drag == DragSliderB) {
+        char ch = g.drag == DragSliderR ? 'r' : (g.drag == DragSliderG ? 'g' : 'b');
+        Rect sr = ch == 'r' ? g.slider_r : (ch == 'g' ? g.slider_g : g.slider_b);
+        int v = slider_value_at(sr, mx);
+        if (g.panel == PanelGroups) {
+            if (ch == 'r') g.group_base.r = uint8_t(v);
+            else if (ch == 'g') g.group_base.g = uint8_t(v);
+            else g.group_base.b = uint8_t(v);
+            apply_color_group(g.group_sel, g.group_base);
+        } else if (g.panel == PanelImages) {
+            Color c = selected_art_text_color();
+            if (ch == 'r') c.r = uint8_t(v);
+            else if (ch == 'g') c.g = uint8_t(v);
+            else c.b = uint8_t(v);
+            set_selected_art_text_color(c);
+        } else if (g.panel == PanelIcons) {
+            Color c = selected_icon_text_color();
+            if (ch == 'r') c.r = uint8_t(v);
+            else if (ch == 'g') c.g = uint8_t(v);
+            else c.b = uint8_t(v);
+            set_selected_icon_text_color(c);
+        } else {
+            Color c = selected_color();
+            if (ch == 'r') c.r = uint8_t(v);
+            else if (ch == 'g') c.g = uint8_t(v);
+            else c.b = uint8_t(v);
+            set_selected_color(c);
+        }
         redraw();
     } else if (g.drag == DragSliderKit) {
         g.preview_st.slider_value =
@@ -662,8 +1761,10 @@ void mouse_move(int mx, int my) {
         g.pressed_box = g.gel.min_box.contains(mx, my) ? 4 : 0;
         redraw();
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
-               g.drag == DragBtnStock || g.drag == DragPreviewBtn ||
-               g.drag == DragDropdown) {
+               g.drag == DragBtnStock || g.drag == DragBtnImportColors ||
+               g.drag == DragBtnColorsOnly || g.drag == DragBtnPaste ||
+               g.drag == DragBtnTrans || g.drag == DragImgNudge ||
+               g.drag == DragPreviewBtn || g.drag == DragDropdown) {
         if (g.drag == DragPreviewBtn) {
             bool over =
                 (g.drag_target == 1 && g.preview_lay.btn_ok.contains(mx, my)) ||
@@ -691,6 +1792,7 @@ void mouse_up(int mx, int my) {
     g.drag_target = 0;
     g.pressed_box = 0;
     g.arrow_dir = 0;
+    g.arrow_hot = ScrollArrowHot::None;
     ReleaseCapture();
 
     if (was == DragCloseBox && g.gel.close_box.contains(mx, my)) {
@@ -712,7 +1814,20 @@ void mouse_up(int mx, int my) {
     if (was == DragBtnLoad && g.btn_load.contains(mx, my)) do_load();
     else if (was == DragBtnSave && g.btn_save.contains(mx, my)) do_save();
     else if (was == DragBtnStock && g.btn_stock.contains(mx, my)) do_stock();
-    else if (was == DragPreviewBtn) {
+    else if (was == DragBtnImportColors && g.btn_import_colors.contains(mx, my))
+        do_import_colors();
+    else if (was == DragBtnColorsOnly && g.btn_colors_only.contains(mx, my)) {
+        g.preview_st.colours_only = !g.preview_st.colours_only;
+        set_status(g.preview_st.colours_only ? "Colors Preview (no images/icons)"
+                                             : "Full Kit Preview");
+    } else if (was == DragBtnPaste && g.btn_paste.contains(mx, my)) {
+        if (g.panel == PanelIcons) paste_icon_from_clipboard();
+        else paste_art_from_clipboard();
+    } else if (was == DragBtnTrans && target >= 0 && target < 5 &&
+               g.btn_trans[target].contains(mx, my)) {
+        if (g.panel == PanelIcons) apply_transparent_color_icon(target);
+        else apply_transparent_color(target);
+    } else if (was == DragPreviewBtn) {
         if (target == 1 && g.preview_lay.btn_ok.contains(mx, my))
             set_status("Preview: OK clicked");
         else if (target == 2 && g.preview_lay.btn_cancel.contains(mx, my))
@@ -777,6 +1892,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         redraw();
         return 0;
     case WM_LBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
+        // Treat double-clicks as presses — otherwise rapid clicks are eaten
+        // (Win32 sends DBLCLK instead of the second DOWN).
         mouse_down(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEMOVE: {
@@ -811,8 +1929,58 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         redraw();
         return 0;
     }
+    case WM_CHAR: {
+        // Info meta typing + hex #RRGGBB
+        if (g.focus >= 0 && g.focus <= 3 && g.panel == PanelInfo) {
+            std::string &s = info_field_ref(g.focus);
+            if (wp == 8) { // Backspace
+                if (!s.empty()) s.pop_back();
+                mark_dirty();
+            } else if (wp >= 32 && wp < 127 && s.size() < 120) {
+                s.push_back(char(wp));
+                mark_dirty();
+            }
+            redraw();
+            return 0;
+        }
+        if (g.focus == 10) {
+            if (wp == 8) {
+                // Keep leading '#'
+                if (g.hex_buf.size() > 1) g.hex_buf.pop_back();
+            } else if (wp == '\r' || wp == '\n') {
+                commit_hex_edit();
+            } else if (std::isxdigit(int(wp)) && g.hex_buf.size() < 7) {
+                if (g.hex_buf.empty()) g.hex_buf = "#";
+                g.hex_buf.push_back(char(wp));
+                if (g.hex_buf.size() == 7) commit_hex_edit();
+            }
+            redraw();
+            return 0;
+        }
+        return 0;
+    }
     case WM_KEYDOWN:
-        if (wp == VK_ESCAPE) PostQuitMessage(0);
+        if (wp == VK_ESCAPE) {
+            if (g.focus >= 0) {
+                if (g.focus == 10) g.hex_buf = color_to_hex(focused_edit_color());
+                g.focus = -1;
+                redraw();
+                return 0;
+            }
+            PostQuitMessage(0);
+        }
+        if (wp == VK_TAB && g.panel == PanelInfo) {
+            bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            if (g.focus < 0 || g.focus > 3) g.focus = 0;
+            else g.focus = shift ? (g.focus + 3) % 4 : (g.focus + 1) % 4;
+            redraw();
+            return 0;
+        }
+        if (wp == VK_RETURN && g.focus == 10) {
+            commit_hex_edit();
+            redraw();
+            return 0;
+        }
         if (wp == 'O' && (GetKeyState(VK_CONTROL) & 0x8000)) {
             do_load();
             redraw();
@@ -821,15 +1989,47 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             do_save();
             redraw();
         }
+        if (wp == 'V' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+            if (g.panel == PanelImages) paste_art_from_clipboard();
+            else if (g.panel == PanelIcons) paste_icon_from_clipboard();
+            redraw();
+        }
         if (wp == VK_UP) {
-            g.selected = std::max(0, g.selected - 1);
-            if (g.selected < g.scroll) g.scroll = g.selected;
+            if (g.panel == PanelImages || g.panel == PanelIcons) {
+                g.asset_sel = std::max(0, g.asset_sel - 1);
+                if (g.asset_sel < g.scroll) g.scroll = g.asset_sel;
+            } else if (g.panel == PanelGroups) {
+                g.group_sel = std::max(0, g.group_sel - 1);
+                seed_group_base_from_sel();
+                if (g.group_sel < g.scroll) g.scroll = g.group_sel;
+            } else {
+                g.selected = std::max(0, g.selected - 1);
+                if (g.selected < g.scroll) g.scroll = g.selected;
+            }
             redraw();
         }
         if (wp == VK_DOWN) {
-            g.selected = std::min((int)all_color_roles().size() - 1, g.selected + 1);
-            if (g.selected >= g.scroll + g.roles_page())
-                g.scroll = g.selected - g.roles_page() + 1;
+            if (g.panel == PanelImages) {
+                int n = (int)art_keys_list().size();
+                g.asset_sel = std::min(n - 1, g.asset_sel + 1);
+                if (g.asset_sel >= g.scroll + g.roles_page())
+                    g.scroll = g.asset_sel - g.roles_page() + 1;
+            } else if (g.panel == PanelIcons) {
+                int n = (int)icon_keys_list().size();
+                g.asset_sel = std::min(n - 1, g.asset_sel + 1);
+                if (g.asset_sel >= g.scroll + g.roles_page())
+                    g.scroll = g.asset_sel - g.roles_page() + 1;
+            } else if (g.panel == PanelGroups) {
+                g.group_sel = std::min(kColorGroupN - 1, g.group_sel + 1);
+                seed_group_base_from_sel();
+                if (g.group_sel >= g.scroll + g.roles_page())
+                    g.scroll = g.group_sel - g.roles_page() + 1;
+            } else {
+                g.selected =
+                    std::min((int)all_color_roles().size() - 1, g.selected + 1);
+                if (g.selected >= g.scroll + g.roles_page())
+                    g.scroll = g.selected - g.roles_page() + 1;
+            }
             redraw();
         }
         if (wp == VK_PRIOR) {

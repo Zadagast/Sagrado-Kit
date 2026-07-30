@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Zadagast/Sagrado-Kit/format/schema.json",
-  "title": "SagradoSkin",
-  "description": "SagradoKit skin format — named colour roles with reserved art/icon slots. Incomplete skins are valid; missing tokens fall through to stock.",
+  "title": "SagradoAppearance",
+  "description": "SagradoKit .sap (Sagrado Appearance) format — named colour roles with reserved art/icon slots. Incomplete skins are valid; missing tokens fall through to stock.",
   "type": "object",
   "required": ["format", "version"],
   "additionalProperties": false,
   "properties": {
     "format": {
-      "const": "sagrado-skin",
-      "description": "Format identifier. Must be the string sagrado-skin."
+      "const": "sap",
+      "description": "Format identifier. Must be the string sap."
     },
     "version": {
       "type": "integer",
@@ -54,8 +54,13 @@
     },
     "art": {
       "type": "object",
-      "description": "Widget-chrome art slots named after AppearanceEdit Images entries (see docs/haxial-surface-map.md). Values are relative image paths for now; caps/positions metadata lands with art painting. Incomplete OK — missing slots fall through to colours.",
-      "additionalProperties": { "type": "string" }
+      "description": "Widget-chrome art slots named after AppearanceEdit Images entries (see docs/haxial-surface-map.md). Each value is a relative image path string, or an object with file + optional caps/positions (9-slice / travel). Incomplete OK — missing slots fall through to colours.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "$ref": "#/$defs/artSlot" }
+        ]
+      }
     },
     "icons": {
       "type": "object",
@@ -64,6 +69,29 @@
     }
   },
   "$defs": {
+    "artSlot": {
+      "type": "object",
+      "description": "Structured art reference — Hap-parity caps/positions travel with the file.",
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "description": "Relative path to .skimg / .tga / .png" },
+        "path": { "type": "string", "description": "Alias for file" },
+        "caps": {
+          "type": "array",
+          "description": "9-slice margins [left, top, right, bottom], 0–255",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "positions": {
+          "type": "array",
+          "description": "Per-slot layout [left, top, right, bottom], 0–255",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    },
     "color": {
       "type": "string",
       "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"

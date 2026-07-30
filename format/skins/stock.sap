@@ -1,7 +1,7 @@
 # SagradoKit stock skin — the last-resort appearance.
 # Incomplete author skins fall through to these values (art → colour → stock).
 
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]

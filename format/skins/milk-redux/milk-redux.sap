@@ -1,5 +1,5 @@
 # SagradoKit skin — Milk Redux + donor WonderLight/icons
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]
@@ -150,6 +150,24 @@ track_dark2 = "#222222"
 track_light1 = "#555555"
 track_light2 = "#666666"
 
+[colors.slider]
+bar = "#444444"
+bar_frame = "#000000"
+bar_hilite = "#660000"
+bar_hilite_frame = "#000000"
+disable = "#333333"
+disable_dark = "#2a2a2a"
+disable_frame = "#222222"
+disable_light = "#444444"
+indicator = "#333333"
+indicator_dark = "#111111"
+indicator_frame = "#000000"
+indicator_hilite = "#880000"
+indicator_hilite_dark = "#440000"
+indicator_hilite_frame = "#000000"
+indicator_hilite_light = "#cc0000"
+indicator_light = "#666666"
+
 [colors.text]
 background = "#f5f5f5"
 foreground = "#000000"
@@ -214,6 +232,12 @@ transition = [
   "#bc0000",
   "#c30000"
 ]
+
+[colors.workspace]
+background1 = "#100010"
+background2 = "#300030"
+background3 = "#300000"
+background4 = "#002000"
 
 [art."button.normal"]
 file = "button_normal.skimg"
@@ -403,6 +427,16 @@ positions = [0, 0, 0, 0]
 [art."popup.symbol.disabled"]
 file = "popup_symbol_disabled.skimg"
 caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."focus_box.hilited"]
+file = "focus_box_hilited.skimg"
+caps = [2, 2, 2, 2]
+positions = [0, 0, 0, 0]
+
+[art."focus_box.disabled"]
+file = "focus_box_disabled.skimg"
+caps = [3, 3, 3, 3]
 positions = [0, 0, 0, 0]
 
 [art."separator.h"]
@@ -690,6 +724,21 @@ file = "menu_background.skimg"
 caps = [32, 21, 32, 15]
 positions = [0, 0, 0, 0]
 
+[art."menu.item.pattern.normal"]
+file = "menu_item_pattern_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."menu.item.pattern.hilited"]
+file = "menu_item_pattern_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."menu.item.pattern.disabled"]
+file = "menu_item_pattern_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."menu.item.normal"]
 file = "menu_item_normal.skimg"
 caps = [19, 9, 18, 8]
@@ -725,6 +774,11 @@ file = "window_close_hilited.skimg"
 caps = [0, 0, 0, 0]
 positions = [7, 4, 0, 0]
 
+[art."window.close.disabled"]
+file = "window_close_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."window.minimize.normal"]
 file = "window_minimize_normal.skimg"
 caps = [0, 0, 0, 0]
@@ -739,6 +793,11 @@ positions = [24, 4, 0, 0]
 file = "window_minimize_hilited.skimg"
 caps = [0, 0, 0, 0]
 positions = [24, 4, 0, 0]
+
+[art."window.minimize.disabled"]
+file = "window_minimize_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 6, 0, 0]
 
 [art."window.maximize.normal"]
 file = "window_maximize_normal.skimg"
@@ -755,6 +814,11 @@ file = "window_maximize_hilited.skimg"
 caps = [0, 0, 0, 0]
 positions = [41, 4, 0, 0]
 
+[art."window.maximize.disabled"]
+file = "window_maximize_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 31, 0]
+
 [art."window.menu.normal"]
 file = "window_menu_normal.skimg"
 caps = [0, 0, 0, 0]
@@ -765,6 +829,11 @@ file = "window_menu_focus.skimg"
 caps = [0, 0, 0, 0]
 positions = [0, 4, 7, 0]
 
+[art."window.menu.disabled"]
+file = "window_menu_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [33, 0, 0, 0]
+
 [art."window.resize.normal"]
 file = "window_resize_normal.skimg"
 caps = [0, 0, 0, 0]
@@ -773,6 +842,16 @@ positions = [0, 0, 0, 0]
 [art."window.resize.focus"]
 file = "window_resize_focus.skimg"
 caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."popup_frame.normal"]
+file = "popup_frame_normal.skimg"
+caps = [1, 1, 1, 1]
+positions = [0, 0, 0, 0]
+
+[art."popup_frame.focus"]
+file = "popup_frame_focus.skimg"
+caps = [1, 1, 1, 1]
 positions = [0, 0, 0, 0]
 
 [art."wonderlight.off"]
@@ -812,6 +891,16 @@ positions = [0, 0, 0, 0]
 
 [art."wonderlight.flash_on2"]
 file = "wonderlight_flash_on2.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."disclosure.plus.medium"]
+file = "disclosure_plus_medium.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."disclosure.minus.medium"]
+file = "disclosure_minus_medium.skimg"
 caps = [0, 0, 0, 0]
 positions = [0, 0, 0, 0]
 

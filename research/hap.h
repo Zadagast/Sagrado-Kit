@@ -12,11 +12,14 @@
 //   u16 width, u16 height
 //   u16 flags_bpp  (high byte: bit0 = transparency active; low byte bpp 1/2/4/8)
 //   u8 max_palette_index, u8 transparent_palette_index
-//   u32 transparent color, u8[4] caps (l,t,r,b), u8[4] positions (l,t,r,b)
+//   u32 transparent/aux color, u8[4] caps (l,t,r,b), u8[4] positions (l,t,r,b)
 //   u32[max_palette_index+1] palette
 //   rows of packed indices, each row padded to a 4-byte boundary
+// Icon record: same header through transparent_palette_index, then palette at
+// +8 (no caps/positions fields).
 #pragma once
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <string>
@@ -151,10 +154,15 @@ struct Theme {
     bool has_colors = false;
     uint32_t colors[kColorTableLen] = {}; // 0x00RRGGBB
     std::map<int, ThemeImage> images;
+    std::map<int, ThemeImage> icons;
 
     const ThemeImage *image(int slot) const {
         auto it = images.find(slot);
         return it == images.end() ? nullptr : &it->second;
+    }
+    const ThemeImage *icon(int slot) const {
+        auto it = icons.find(slot);
+        return it == icons.end() ? nullptr : &it->second;
     }
     uint32_t color(int i) const {
         return (i >= 0 && i < kColorTableLen) ? colors[i] : 0;
@@ -174,24 +182,35 @@ inline uint32_t rd32(const std::vector<uint8_t> &d, size_t o) {
 }
 
 inline bool parse_image(const std::vector<uint8_t> &d, size_t o,
-                        ThemeImage &out) {
+                        ThemeImage &out, bool is_icon = false) {
     int w = rd16(d, o), h = rd16(d, o + 2);
     if (w <= 0 || h <= 0 || w > 2048 || h > 2048) return false;
     uint16_t flags_bpp = rd16(d, o + 4);
     bool transparent_active = (flags_bpp & 0x0100) != 0;
     int bpp = flags_bpp & 0xff;
     if (bpp != 1 && bpp != 2 && bpp != 4 && bpp != 8) return false;
-    if (o + 20 > d.size()) return false;
     int palette_len = d[o + 6] + 1;
     int transparent_index = d[o + 7];
-    for (int i = 0; i < 4; ++i) {
-        out.caps[i] = d[o + 12 + i];
-        out.positions[i] = d[o + 16 + i];
+    // Images: +8..+11 text/aux colour, +12 caps, +16 positions, +20 palette.
+    // Icons: no caps/positions — palette begins at +8.
+    size_t pal_off;
+    if (is_icon) {
+        std::memset(out.caps, 0, 4);
+        std::memset(out.positions, 0, 4);
+        pal_off = o + 8;
+    } else {
+        if (o + 20 > d.size()) return false;
+        for (int i = 0; i < 4; ++i) {
+            out.caps[i] = d[o + 12 + i];
+            out.positions[i] = d[o + 16 + i];
+        }
+        pal_off = o + 20;
     }
+    if (pal_off + 4 * size_t(palette_len) > d.size()) return false;
     std::vector<uint32_t> palette(palette_len);
     for (int i = 0; i < palette_len; ++i)
-        palette[i] = rd32(d, o + 20 + 4 * i) & 0x00ffffff;
-    size_t pixels_off = o + 20 + 4 * palette_len;
+        palette[i] = rd32(d, pal_off + 4 * i) & 0x00ffffff;
+    size_t pixels_off = pal_off + 4 * size_t(palette_len);
     size_t stride = (size_t(w) * bpp + 31) / 32 * 4;
     if (pixels_off + stride * h > d.size()) return false;
 
@@ -263,6 +282,26 @@ inline bool load_hap(const std::string &path, Theme &theme) {
             ThemeImage img;
             if (parse_image(d, img_off + offsets[slot], img))
                 theme.images[int(slot)] = std::move(img);
+        }
+    }
+
+    // Icons section (same image records as the images table).
+    size_t ico_off = rd32(d, 0x44), ico_len = rd32(d, 0x48);
+    if (ico_len > 0 && ico_off + 4 <= d.size()) {
+        size_t first_record = SIZE_MAX;
+        std::vector<size_t> offsets;
+        for (size_t i = 0; 4 * i < first_record; ++i) {
+            if (first_record == SIZE_MAX && i > 512) break;
+            if (ico_off + 4 * i + 4 > d.size()) break;
+            size_t v = rd32(d, ico_off + 4 * i);
+            if (v != 0 && v < first_record) first_record = v;
+            offsets.push_back(v);
+        }
+        for (size_t slot = 0; slot < offsets.size(); ++slot) {
+            if (offsets[slot] == 0) continue;
+            ThemeImage img;
+            if (parse_image(d, ico_off + offsets[slot], img, /*is_icon=*/true))
+                theme.icons[int(slot)] = std::move(img);
         }
     }
     return true;

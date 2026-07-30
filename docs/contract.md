@@ -5,7 +5,7 @@ own look — they load a skin through the Appearance Engine and paint kit
 surfaces from resolved tokens.
 
 ```
-┌─────────────────┐     .skin.toml      ┌──────────────────┐
+┌─────────────────┐        .sap         ┌──────────────────┐
 │  SagradoKit      │ ─────────────────► │  Appearance       │
 │  Editor          │   load / save      │  Engine           │
 └─────────────────┘                     └────────┬─────────┘
@@ -22,17 +22,17 @@ surfaces from resolved tokens.
 
 | Piece | Path | Job |
 |---|---|---|
-| Skin format | `format/` | Named colour roles + reserved art/icon slots (`.skin.toml`) |
+| Skin format | `format/` | Named colour roles + reserved art/icon slots (`.sap`) |
 | Appearance Engine | `engine/` | Load skin, resolve tokens, paint kit surfaces into a software framebuffer |
 | Editor | `editor/` | Win32 AppearanceEdit-style app — author the format against a live kit preview |
 
-## Skin format (`.skin.toml`)
+## Skin format (`.sap`)
 
-Human-authored TOML. Schema: [`format/schema.json`](../format/schema.json).
-Example: [`format/skins/stock.skin.toml`](../format/skins/stock.skin.toml).
+Human-authored TOML (Sagrado Appearance). Schema: [`format/schema.json`](../format/schema.json).
+Example: [`format/skins/stock.sap`](../format/skins/stock.sap).
 
 ```toml
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]
@@ -45,15 +45,32 @@ background = "#c0c0c0"
 label = "#000000"
 # …
 
-[art]
-# reserved: "window.frame.normal" = "relative/path.png"
+[art."button.normal"]
+file = "button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
 
 [icons]
-# reserved: "file.generic.16" = "relative/path.png"
+# reserved: "file.generic.16" = "relative/path.skimg"
 ```
 
 Colours are `#RRGGBB` or `#RRGGBBAA`. Omitted roles fall through to stock.
-Art/icon maps are reserved in this slice (paths accepted, painting later).
+Art slots use Hap names; each may carry `caps` (9-slice) and `positions`
+(travel / thickness). Saving a live-loaded `.hap` writes a `.sap` plus `.skimg`
+files beside it — same art the Hap imported.
+
+### Hap ↔ Sap
+
+| | `.hap` | `.sap` |
+|---|---|---|
+| Role | Haxial Appearance (binary import) | Sagrado Appearance (authored) |
+| Colours | 204-index table → named roles | Named roles (+ transitions) |
+| Images | Indexed slots + caps/positions | `[art."slot"]` + `.skimg` |
+| Icons | Separate icon table | `[icons]` |
+| Editor | Load only | Load / Save |
+
+`.sap` is meant to express everything Hap carries that the kit uses. Load either;
+author and ship `.sap`.
 
 ### Named colour roles (first slice)
 
@@ -90,8 +107,8 @@ that map for what Positions mean on each control.
 
 | Namespace | Keys (first wave + reserved) |
 |---|---|
-| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.*`, `icon_button.normal`, `icon_button.hilited`, `icon_button.disabled`, `tick.*`, `mutex.*`, `disclosure.*`, `popup.*`, `popup.no_title.*`, `popup.symbol.*`, `popup_frame.*`, `menu.background(_pattern)`, `menu.item.*`, `menu.separator`, `menu_bar.pattern`, `menu_bar.background`, `menu_bar.title*`, `separator.h/v`, `box`, `framed_raised`, `progress.*`, `focus_box.*`, `slider.h/v.bar.*`, `slider.h/v.indicator.*`, `slider.h/v.indicator_pointed.*`, `scrollbar.v/h.double_arrows`, `scrollbar.v/h.single_arrows`, `scrollbar.v/h.disabled`, `scrollbar.v/h.too_small`, `scrollbar.v/h.indicator.*`, `scrollbar.v/h.grips.*`, `scrollbar.v/h.arrow_hilite.*`, `column_header.normal/hilited/disabled`, `window.frame.*`, `window.close/minimize/maximize/menu/resize.*`, `wonderlight.*` |
-| `icons` | `file.generic.16`, `file.generic.32`, `folder.16`, `folder.32`, `user.16`, `user.32` |
+| `art` | `primary.background` (tiled client pattern; colour role shares the name), `button.normal`, `button.hilited`, `button.disabled`, `default_button.*`, `icon_button.normal`, `icon_button.hilited`, `icon_button.disabled`, `tick.*`, `mutex.*`, `disclosure.*`, `popup.*`, `popup.no_title.*`, `popup.symbol.*`, `popup_frame.*`, `menu.background(_pattern)`, `menu.item.pattern.*`, `menu.item.*`, `menu.separator`, `menu_bar.pattern`, `menu_bar.background`, `menu_bar.title*`, `separator.h/v`, `box`, `framed_raised`, `progress.*`, `focus_box.*`, `slider.h/v.bar.*`, `slider.h/v.indicator.*`, `slider.h/v.indicator_pointed.*`, `scrollbar.v/h.double_arrows`, `scrollbar.v/h.single_arrows`, `scrollbar.v/h.disabled`, `scrollbar.v/h.too_small`, `scrollbar.v/h.indicator.*`, `scrollbar.v/h.grips.*`, `scrollbar.v/h.arrow_hilite.*`, `column_header.normal/hilited/disabled`, `window.frame.*`, `window.close/minimize/maximize/menu/resize.*` (incl. `.disabled`), `wonderlight.*` |
+| `icons` | Full AppearanceEdit catalog (`stop`, `note`, `caution`, `question`, `program`, `plugin`, `shared_library`, `unattached_alias`, `document` (+ text/image/audio/video/font/archive/partial/saved), `folder` (+ uploads/dropbox/programs/programming/games/internet/pictures/sounds), disks, `settings`, `tools`, `exit`, `about`, `information`, `address_book`, `launch`, `create_folder`, `connect`, `disconnect`, `data_transfer`, `news`, `chat`, `message`, `users`/`user`, `haxial`, `server`, `files`) each as `.16` / `.32`. Aliases: `file.generic` → `document`, `user` → `users`. Unmapped Hap images preserved as `hap.image.N`. |
 
 Art painting is gated on the surface map (verified Hap index + caps/positions
 meaning). Colour fallbacks remain mandatory.
@@ -134,7 +151,8 @@ resolved colour roles). They do not hardcode a parallel palette.
 
 ## Editor responsibilities
 
-- Load / save `.skin.toml`
+- Load / save `.sap` (also load Haxial `.hap`; Hap is import-only — Save always writes `.sap`)
+- Panels: Colors (typed `#RRGGBB`, Import Colors, Colors Preview), Info meta typing, Images / Icons (full Hap catalogs + Paste), ♦ Groups
 - Present named colour roles for editing
 - Live preview of the kit surfaces above, driven by the same engine apps use
 - Leave incomplete skins valid (partial colour tables are fine)

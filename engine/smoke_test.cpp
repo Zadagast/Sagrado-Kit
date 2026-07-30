@@ -9,7 +9,7 @@
 
 int main(int argc, char **argv) {
     Appearance ap;
-    std::string path = argc > 1 ? argv[1] : "format/skins/stock.skin.toml";
+    std::string path = argc > 1 ? argv[1] : "format/skins/stock.sap";
     if (!ap.load(path)) {
         std::fprintf(stderr, "load failed: %s\n", path.c_str());
         // Fall back to embedded stock
@@ -33,6 +33,22 @@ int main(int argc, char **argv) {
         if (ap.icon("file.generic.16"))
             std::printf("file.generic.16 icon %dx%d\n", ap.icon("file.generic.16")->w,
                         ap.icon("file.generic.16")->h);
+        if (ap.icon("folder.16"))
+            std::printf("folder.16 icon %dx%d\n", ap.icon("folder.16")->w,
+                        ap.icon("folder.16")->h);
+        if (ap.icon("user.16"))
+            std::printf("user.16 icon %dx%d\n", ap.icon("user.16")->w,
+                        ap.icon("user.16")->h);
+        if (ap.art("hap.image.271"))
+            std::printf("hap.image.271 preserved %dx%d\n", ap.art("hap.image.271")->w,
+                        ap.art("hap.image.271")->h);
+        if (ap.art("menu.item.hilited"))
+            std::printf("menu.item.hilited art %dx%d\n", ap.art("menu.item.hilited")->w,
+                        ap.art("menu.item.hilited")->h);
+        if (ap.art("slider.h.bar.disabled"))
+            std::printf("slider.h.bar.disabled art %dx%d\n",
+                        ap.art("slider.h.bar.disabled")->w,
+                        ap.art("slider.h.bar.disabled")->h);
     }
 
     Color bg = ap.c("primary.background");
@@ -152,7 +168,7 @@ int main(int argc, char **argv) {
         if (cv.data()[i]) ++lit;
     std::printf("painted %zu non-black pixels\n", lit);
 
-    std::string out = "build/smoke-roundtrip.skin.toml";
+    std::string out = "build/smoke-roundtrip.sap";
     if (!ap.save(out)) {
         std::fprintf(stderr, "save failed\n");
         return 1;
@@ -166,6 +182,22 @@ int main(int argc, char **argv) {
     if (bg2.r != bg.r || bg2.g != bg.g || bg2.b != bg.b) {
         std::fprintf(stderr, "roundtrip colour mismatch\n");
         return 1;
+    }
+    if (!ap.art_cache.empty()) {
+        if (again.art_cache.size() != ap.art_cache.size()) {
+            std::fprintf(stderr, "roundtrip art count mismatch %zu → %zu\n",
+                         ap.art_cache.size(), again.art_cache.size());
+            return 1;
+        }
+        if (ap.art("button.normal") && again.art("button.normal")) {
+            const SkinImage *a = ap.art("button.normal");
+            const SkinImage *b = again.art("button.normal");
+            if (a->w != b->w || a->h != b->h || a->px != b->px) {
+                std::fprintf(stderr, "roundtrip button.normal pixels mismatch\n");
+                return 1;
+            }
+        }
+        std::printf("art roundtrip ok (%zu slots)\n", again.art_cache.size());
     }
     std::printf("roundtrip ok → %s\n", out.c_str());
 

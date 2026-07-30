@@ -13,6 +13,9 @@ struct SkinImage {
     std::vector<uint32_t> px;           // 0xAARRGGBB; A=0 transparent
     uint8_t caps[4] = {0, 0, 0, 0};      // l, t, r, b
     uint8_t positions[4] = {0, 0, 0, 0}; // l, t, r, b
+    // Hap AppearanceEdit Text Color on the plate (0x00RRGGBB); optional.
+    bool has_text_color = false;
+    uint32_t text_color = 0;
 
     uint32_t at(int x, int y) const {
         if (x < 0 || y < 0 || x >= w || y >= h) return 0;
@@ -28,6 +31,9 @@ struct ArtRef {
     uint8_t positions[4] = {0, 0, 0, 0};
     bool has_caps = false;
     bool has_positions = false;
+    // Hap AppearanceEdit Text Color (0x00RRGGBB); optional art meta.
+    bool has_text_color = false;
+    uint32_t text_color = 0;
 };
 
 // Uncompressed 32-bit TGA (top-left origin), BGRA bytes on disk.
