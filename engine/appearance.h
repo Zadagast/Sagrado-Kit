@@ -536,18 +536,36 @@ inline Color readable_label(const Appearance &ap, Color candidate,
     return candidate;
 }
 
-inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
-                              const SkinImage *plate = nullptr) {
-    if (disabled) return readable_label(ap, ap.c("button_disable.label"), true);
-    // Hap Text Color on the plate wins when authored and not a blank white.
+// Canonical label ink for every kit painter that draws text on a control.
+// Resolution: plate Text Color (authored, not blank-white) → role → Primary Label.
+// Apps should call this (or a paint_* helper) instead of raw ap.c("*.label").
+inline Color label_ink(const Appearance &ap, Color role_ink,
+                       const SkinImage *plate = nullptr, bool disabled = false) {
+    if (disabled) return ap.c("primary.disable_label");
     if (plate && plate->has_text_color) {
         Color tc = plate_text_color(plate);
         if (!label_near_white(tc)) return tc;
     }
-    // Milk & friends leave Button Label at stock white while the plate is a
-    // light pill — fall through to Primary Label whenever the role is unusable.
+    return readable_label(ap, role_ink, disabled);
+}
+
+inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
+                              const SkinImage *plate = nullptr) {
     (void)has_art;
-    return readable_label(ap, ap.c("button.label"));
+    if (disabled)
+        return label_ink(ap, ap.c("button_disable.label"), plate, true);
+    // Milk & friends leave Button Label at stock white on light pills.
+    return label_ink(ap, ap.c("button.label"), plate, false);
+}
+
+// Gel title ink: frame Text Color, else Window Label with stock-white remap.
+inline Color gel_title_ink(const Appearance &ap, bool focused,
+                           const SkinImage *frame = nullptr) {
+    if (frame && frame->has_text_color) {
+        Color tc = plate_text_color(frame);
+        if (!label_near_white(tc)) return tc;
+    }
+    return ap.title_label(focused);
 }
 
 // True when a title-button plate is near-uniform (Milk blank spheres) so
@@ -587,8 +605,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     if (!frame) frame = ap.art("window.frame.normal");
     if (frame) {
         cv.nine_slice(*frame, win);
-        Color tc = frame->has_text_color ? plate_text_color(frame)
-                                         : ap.title_label(focused);
+        Color tc = gel_title_ink(ap, focused, frame);
         int tw = cv.text_width(title);
         Rect title_band{win.x, win.y, win.w, lay.title_h};
         cv.text(win.x + (win.w - tw) / 2,
@@ -901,10 +918,9 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     if (fw < 40) fw = 40;
     Rect find_field{fx, cl.y + 10, fw, kFieldH};
     Rect repl_field{fx, cl.y + 40, fw, kFieldH};
-    cv.text(lx, label_y_centered(cv, find_field, "Find:"), "Find:",
-            ap.c("primary.label"));
-    cv.text(lx, label_y_centered(cv, repl_field, "Replace:"), "Replace:",
-            ap.c("primary.label"));
+    Color lab = label_ink(ap, ap.c("primary.label"));
+    cv.text(lx, label_y_centered(cv, find_field, "Find:"), "Find:", lab);
+    cv.text(lx, label_y_centered(cv, repl_field, "Replace:"), "Replace:", lab);
     paint_field(cv, ap, find_field, "needle", true, caret_on);
     paint_field(cv, ap, repl_field, "replacement", false, false);
 
@@ -946,18 +962,11 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     if (!img && disabled) img = ap.art("column_header.normal");
     if (!img && hilite) img = ap.art("column_header.normal");
 
-    Color ink;
-    if (disabled) {
-        ink = ap.c("primary.disable_label");
-    } else if (img && img->has_text_color) {
-        ink = plate_text_color(img);
-    } else if (hilite) {
-        // Hilite Label is often stock-white on light header art — same KDX
-        // Primary Label remap as the normal header path.
-        ink = readable_label(ap, ap.c("column_header.hilite_label"));
-    } else {
-        ink = readable_label(ap, ap.c("column_header.label"));
-    }
+    Color role = disabled ? ap.c("primary.disable_label")
+                          : (hilite ? ap.c("column_header.hilite_label")
+                                    : ap.c("column_header.label"));
+    // Hilite Label is often stock-white on light header art — label_ink remaps.
+    Color ink = label_ink(ap, role, img, disabled);
 
     if (img) {
         cv.nine_slice(*img, r);
@@ -1012,7 +1021,10 @@ inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
         else if (i % 2)
             cv.fill(row, ap.c("list.sort_column_background"));
         if (i < n_rows) {
-            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
+            // Hilite foreground is intentional white-on-hilite; only remap the
+            // idle list label when it is stock-white on a light list.
+            Color ink = sel ? ap.c("list.hilite_foreground")
+                            : readable_label(ap, ap.c("list.label"));
             cv.text(row.x + 6, label_y_centered(cv, row, rows[i]), rows[i], ink);
         }
         cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
@@ -1788,12 +1800,9 @@ const char *pslot = dis ? "menu.item.pattern.disabled"
             cv.vline(row.right() - 1, row.y, row.bottom(), ap.c("menu.hilite_dark"));
         }
 
-        Color ink = dis ? ap.c("menu.disable_label")
-                        : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
-        if (!dis && item && item->has_text_color)
-            ink = plate_text_color(item);
-        else if (!dis)
-            ink = readable_label(ap, ink);
+        Color role = dis ? ap.c("menu.disable_label")
+                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        Color ink = label_ink(ap, role, item, dis);
         cv.text(row.x + 8, row.y + (kMenuItemH - cv.line_height()) / 2, items[i], ink);
     }
     return lay;
@@ -1860,12 +1869,9 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
         }
         if (title_art) cv.nine_slice(*title_art, item);
 
-        Color ink = dis ? ap.c("menu.disable_label")
-                        : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
-        if (!dis && title_art && title_art->has_text_color)
-            ink = plate_text_color(title_art);
-        else if (!dis)
-            ink = readable_label(ap, ink);
+        Color role = dis ? ap.c("menu.disable_label")
+                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        Color ink = label_ink(ap, role, title_art, dis);
         cv.text(item.x + 8, item.y + (item.h - cv.line_height()) / 2, t, ink);
         x += iw;
     }
@@ -2388,7 +2394,7 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
         else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
     }
     if (label && *label) {
-        Color ink = readable_label(ap, ap.c("primary.label"), disabled);
+        Color ink = label_ink(ap, ap.c("primary.label"), nullptr, disabled);
         int top = std::min(slot.y, b.y);
         int bot = std::max(slot.bottom(), b.bottom());
         Rect band{b.right() + 6, top, 8, bot - top};
@@ -2428,7 +2434,7 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
         else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
     }
     if (label && *label) {
-        Color ink = readable_label(ap, ap.c("primary.label"), disabled);
+        Color ink = label_ink(ap, ap.c("primary.label"), nullptr, disabled);
         int top = std::min(slot.y, b.y);
         int bot = std::max(slot.bottom(), b.bottom());
         Rect band{b.right() + 6, top, 8, bot - top};
@@ -3093,7 +3099,7 @@ inline void paint_box(Canvas &cv, const Appearance &ap, Rect r, const char *titl
         // Straddle the top edge on ink bounds so the label is not clipped
         // into the frame (old path used kFontHeight/2 which rode too high).
         int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        Color ink = ap.c("primary.label");
+        Color ink = label_ink(ap, ap.c("primary.label"));
         Color bg = ap.c("primary.background");
         if (!cv.text_ink(title, x0, y0, x1, y1)) {
             cv.text(r.x + 8, r.y - kFontHeight / 2 + 1, title, ink);
@@ -3283,7 +3289,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
     auto fits = [&](int need_h) { return y + need_h <= client.bottom() - pad; };
 
     cv.text(x, y, st.colours_only ? "Kit Preview (colours)" : "Kit Preview",
-            ap.c("primary.label"));
+            label_ink(ap, ap.c("primary.label")));
     y += cv.line_height() + 8;
 
     // Icon buttons + catalog strip + menu bar (one band).
@@ -3402,7 +3408,8 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
             paint_box(cv, ap, {bx, y, 100, 36}, "Box");
             if (bx + 210 <= right) {
                 paint_framed_raised(cv, ap, {bx + 110, y, 100, 36});
-                cv.text(bx + 120, y + 12, "Framed", ap.c("primary.label"));
+                cv.text(bx + 120, y + 12, "Framed",
+                        label_ink(ap, ap.c("primary.label")));
             }
         }
         if (bx + 250 <= right)
@@ -3460,7 +3467,7 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
         int readout_x = lay.slider_lay.bar.right() + 8;
         if (readout_x + 24 <= right)
             cv.text(readout_x, label_y_centered(cv, lay.slider, sval), sval,
-                    ap.c("primary.label"));
+                    label_ink(ap, ap.c("primary.label")));
         Rect dis_slide{lay.slider.right() + 40, y, std::min(80, right - (lay.slider.right() + 40)),
                        22};
         if (dis_slide.w >= 40)

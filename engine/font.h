@@ -169,6 +169,48 @@ inline unsigned char fold_latin1(unsigned cp) {
     return 0;
 }
 
+// Punctuation / dashes / quotes that Haxial faces and our stock face usually
+// lack. Fold onto ASCII so window titles ("Untitled — App") do not paint '?'.
+inline unsigned char fold_punct(unsigned cp) {
+    switch (cp) {
+    case 0x2010: // hyphen
+    case 0x2011: // non-breaking hyphen
+    case 0x2012: // figure dash
+    case 0x2013: // en dash
+    case 0x2014: // em dash
+    case 0x2015: // horizontal bar
+    case 0x2212: // minus sign
+    case 0x00ad: // soft hyphen
+        return '-';
+    case 0x2018: // ‘
+    case 0x2019: // ’
+    case 0x201a: // ‚
+    case 0x2032: // ′
+        return '\'';
+    case 0x201c: // “
+    case 0x201d: // ”
+    case 0x201e: // „
+    case 0x2033: // ″
+        return '"';
+    case 0x2022: // •
+    case 0x00b7: // ·
+        return '*';
+    case 0x2026: // …
+        return '.';
+    default:
+        return 0;
+    }
+}
+
+// A face is usable when at least one inked printable glyph measures. Empty /
+// default-constructed Font structs fail this — Canvas refuses them and keeps
+// stock so labels never paint at zero width.
+inline bool font_usable(const Font &f) {
+    for (unsigned c = 33; c < 127; ++c)
+        if (f.glyphs[c].advance > 0 && f.glyphs[c].w > 0) return true;
+    return false;
+}
+
 // Decode one UTF-8 sequence (also accepts raw Latin-1 bytes, which the older
 // skins and .hap metadata still contain). Advances s past the sequence.
 inline unsigned next_cp(const char *&s) {

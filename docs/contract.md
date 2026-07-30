@@ -172,3 +172,36 @@ Same shape as Haxial and Sagrado `native/`. No OS widgets, no CSS, no web host.
 
 Reference consumer: **Sagrado TextEdit** (`apps/textedit/`) — Haxial TextEdit-
 shaped gel + menu bar + text view + Find dialog, all painted through the kit.
+
+## Label ink (do not invent a private palette)
+
+Kit painters resolve label colour with one policy (`label_ink` /
+`button_label_ink` / `gel_title_ink`):
+
+```
+plate Text Color (authored, not blank-white)
+  → named role (button.label, menu.label, …)
+  → primary.label   (Haxial practice when the role is still stock-white)
+```
+
+Call a `paint_*` helper, or `label_ink(ap, ap.c("….label"), plate)`, instead of
+raw `ap.c("button.label")`. Hap themes (Milk especially) leave Button Label at
+white on light pills — the kit remaps that.
+
+## Fonts (every Canvas / gel)
+
+- Each `Canvas` defaults to the stock face. `set_font(&face)` swaps in a Haxial
+  `%FNT`; `set_font(nullptr)` restores stock.
+- **Unusable faces are rejected** (empty / default-constructed `Font` with no
+  Latin advances) — the canvas keeps stock so chrome never paints with
+  zero-width glyphs.
+- Share one loaded face across every gel window (`set_font` on each canvas), or
+  leave them all on stock. Do not point a canvas at an unloaded `Font`.
+- Missing punctuation (em/en dash, smart quotes, ellipsis) folds onto ASCII so
+  titles stay readable.
+
+## Multi-window apps
+
+Each Win32 gel is its own `Canvas` + blit. Skin lives in one shared
+`Appearance`; faces must be applied per canvas. Incomplete skins remain valid —
+art → colour → stock still fills every hole.

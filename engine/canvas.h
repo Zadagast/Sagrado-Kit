@@ -98,9 +98,12 @@ struct Canvas {
         }
     }
 
-    // Faces are swappable like KDX's per-surface font settings; unset means the
-    // bundled stock face.
-    void set_font(const Font *f) { font_ = f ? f : &stock_font(); }
+    // Faces are swappable like KDX's per-surface font settings; unset / unusable
+    // means the bundled stock face. Never bind an empty Font — that paints
+    // chrome with zero-width glyphs (missing labels on every control).
+    void set_font(const Font *f) {
+        font_ = (f && fontutil::font_usable(*f)) ? f : &stock_font();
+    }
     const Font &font() const { return *font_; }
     int line_height() const { return font_->line_height; }
 
@@ -284,9 +287,12 @@ struct Canvas {
     unsigned map_cp(const char *&s) const {
         unsigned cp = fontutil::next_cp(s);
         if (font_->has(cp)) return cp;
+        unsigned char punct = fontutil::fold_punct(cp);
+        if (punct && font_->has(punct)) return punct;
         unsigned char base = fontutil::fold_latin1(cp);
         if (base && font_->has(base)) return base;
-        if (cp == 0x2026 && font_->has('.')) return '.'; // lone ellipsis
+        // Ellipsis → three dots when the face has '.'.
+        if (cp == 0x2026 && font_->has('.')) return '.';
         return font_->has('?') ? '?' : ' ';
     }
 

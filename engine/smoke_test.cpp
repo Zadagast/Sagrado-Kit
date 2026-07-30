@@ -83,6 +83,27 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "raw latin-1 byte not folded\n");
             return 1;
         }
+        // Em-dash / smart quotes fold onto ASCII (stock face has no U+2014).
+        if (t.text_width("Untitled \xe2\x80\x94 App") !=
+            t.text_width("Untitled - App")) {
+            std::fprintf(stderr, "em-dash not folded to hyphen\n");
+            return 1;
+        }
+        if (t.text_width("\xe2\x80\x9chello\xe2\x80\x9d") !=
+            t.text_width("\"hello\"")) {
+            std::fprintf(stderr, "smart quotes not folded\n");
+            return 1;
+        }
+        // Empty Font must not stick — Canvas keeps stock (avoids blank labels).
+        {
+            Font empty;
+            t.set_font(&empty);
+            if (t.font().name != "Stock" || t.text_width("Find") == 0) {
+                std::fprintf(stderr, "empty font was not rejected\n");
+                return 1;
+            }
+            t.set_font(nullptr);
+        }
         std::string cut = t.text_elide("Menu Bar Pattern", 60);
         if (cut.size() < 4 || cut.compare(cut.size() - 3, 3, "...") != 0 ||
             t.text_width(cut.c_str()) > 60) {

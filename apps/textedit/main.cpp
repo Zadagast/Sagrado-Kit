@@ -364,8 +364,8 @@ std::string window_title() {
     auto slash = name.find_last_of("/\\");
     if (slash != std::string::npos) name = name.substr(slash + 1);
     if (g.doc.dirty) name += " *";
-    // ASCII hyphen — stock/%FNT faces have no em-dash (showed as '?').
-    return name + " - Sagrado TextEdit";
+    // Em-dash is fine: Canvas folds U+2014 onto '-' when the face lacks it.
+    return name + " — Sagrado TextEdit";
 }
 
 // Keep the Find gel on the same face as the main window (stock or --font).
@@ -664,7 +664,7 @@ void paint_find() {
     CanvasClip clip(cv, f.gel.client);
     Rect cl = f.gel.client;
     int lx = cl.x + 10;
-    Color lab = readable_label(g.ap, g.ap.c("primary.label"));
+    Color lab = label_ink(g.ap, g.ap.c("primary.label"));
     cv.text(lx, label_y_centered(cv, f.field_find, "Find:"), "Find:", lab);
     cv.text(lx, label_y_centered(cv, f.field_repl, "Replace:"), "Replace:", lab);
     paint_field(cv, g.ap, f.field_find, f.find.c_str(), f.focus == FindFocusFind,

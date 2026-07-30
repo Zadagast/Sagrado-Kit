@@ -24,12 +24,17 @@ SagradoKit keeps the *roles*, expressed as **named tokens**
 Authoring traps carried forward:
 
 - Prefer **primary.label** for titles and column-header ink. Bitmap themes
-  often leave window/header label slots at default white.
+  often leave window/header label slots at default white. The kit’s
+  `label_ink` / `button_label_ink` do this remap automatically.
+- **Button Label** is frequently stock-white on light Hap pills (Milk) —
+  never paint with raw `button.label`; use the kit helpers.
 - **Focus** outlines are a first-class role; default-button / window-focus
   rings often stayed stock-red in art themes — use the focus role when those
   look untouched.
 - Do **not** invent colour roles the kit does not expose. Reuse primary /
   focus / button / list / text groups.
+- Faces are per-`Canvas`. An unloaded `Font*` paints zero-width glyphs —
+  `Canvas::set_font` rejects unusable faces and keeps stock.
 
 ## Surfaces
 
