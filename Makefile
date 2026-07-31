@@ -23,9 +23,14 @@ JABBER_CXXFLAGS := $(CXXFLAGS) -Iapps/jabber -Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/mbedtls/include \
 	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
 
-.PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke
+.PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke emoji-pack
 
 all: $(EDITOR) $(TEXTEDIT) $(JABBER) skins
+
+# Full Noto emoji pack for the kit Emoji Picker (on-disk; not embedded).
+emoji-pack: | $(BUILD)
+	python3 tools/gen_emoji_pack.py --out $(BUILD)/emoji_pack
+	@test -f $(BUILD)/emoji_pack/catalog.txt
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -45,10 +50,13 @@ $(MBEDTLS_LIB): $(MBEDTLS_SRCS) apps/jabber/xmpp/jabber_mbedtls_config.h | $(BUI
 	done
 	i686-w64-mingw32-ar rcs $@ $(BUILD)/mbedtls/*.o
 
-$(JABBER): apps/jabber/main.cpp apps/jabber/reaction_icons.h apps/jabber/xmpp/*.h \
+$(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h \
            apps/jabber/third_party/stb_image.h $(MBEDTLS_LIB) engine/*.h | $(BUILD)
 	$(CXX) $(JABBER_CXXFLAGS) apps/jabber/main.cpp $(MBEDTLS_LIB) -o $@ $(JABBER_LDFLAGS)
 	cp -f apps/jabber/providers.txt $(BUILD)/providers.txt
+	@if [ ! -f $(BUILD)/emoji_pack/catalog.txt ]; then \
+	  $(MAKE) emoji-pack; \
+	fi
 
 $(JABBER_CONNECT_SMOKE): apps/jabber/connect_smoke.cpp apps/jabber/xmpp/*.h $(MBEDTLS_LIB) | $(BUILD)
 	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/connect_smoke.cpp $(MBEDTLS_LIB) \

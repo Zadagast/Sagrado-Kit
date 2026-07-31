@@ -3466,6 +3466,8 @@ struct KitPreviewState {
 // Full kit preview panel inside a gel client rect.
 // All ink is clipped to `client` so nested gels / wide rows cannot spill the
 // host window frame. Sections that no longer fit vertically are skipped.
+#include "emoji_picker.h"
+
 inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
                                           Rect client, bool caret_on,
                                           int list_sel, int scroll_val,
@@ -3747,6 +3749,26 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
         Rect corner{lay.hsbar.right(), lay.hsbar.y, kScrollbarW, kScrollbarW};
         cv.fill(corner, ap.c("scrollbar.face"));
         cv.frame(corner, ap.c("scrollbar.frame"));
+    }
+
+    // Emoji picker sample — full dialog when pack is loaded (kit surface).
+    if (!st.colours_only && sagrado::emoji_pack_ready() && fits(200)) {
+        cv.text(x, y, "Emoji Picker", label_ink(ap, ap.c("primary.label")));
+        y += cv.line_height() + 4;
+        int dw = 0, dh = 0;
+        sagrado::emoji_picker_size(&dw, &dh);
+        dw = std::min(dw, w);
+        dh = std::min(dh, 220);
+        if (fits(dh)) {
+            static sagrado::EmojiPickerState ep_st;
+            Rect box{x, y, dw, dh};
+            sagrado::paint_emoji_picker(cv, ap, box, ep_st, true);
+            y += dh + 10;
+        }
+    } else if (!st.colours_only && fits(cv.line_height() + 8)) {
+        cv.text(x, y, "Emoji Picker (load emoji_pack next to the app)",
+                ap.c("menu.disable_label"));
+        y += cv.line_height() + 8;
     }
 
     // Open dropdown menu painted last so it stacks above the list (still clipped).

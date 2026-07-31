@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "../../engine/appearance.h"
+#include "../../engine/emoji_picker.h"
 #include "../../engine/hfnt.h"
-#include "reaction_icons.h"
 #include "xmpp/client.h"
 
 namespace {
@@ -76,9 +76,6 @@ static const char *kChatItems[] = {
     "Bookmark Room",
     "Autojoin Room",
 };
-// XEP-0444 quick set — real emoji on the wire; PNGs for kit paint (Latin-1 font).
-static constexpr int kReactCount = jabber_react_icons::kCount;
-static_assert(kReactCount == 6, "reaction icon table size");
 static const char *kAppearanceItems[] = {
     "Load Appearance...", "Stock Appearance",
 };
@@ -203,10 +200,9 @@ struct App {
     std::string field_invite;
     std::string field_invite_reason;
     std::string react_target_id; // XEP-0444 id for DlgReact
-    Rect react_btn_r[kReactCount]{};
-    SkinImage react_icon_28[kReactCount]{};
-    SkinImage react_icon_20[kReactCount]{};
-    bool react_icons_ok = false;
+    sagrado::EmojiPickerState emoji_st{};
+    sagrado::EmojiPickerLayout emoji_lay{};
+    bool emoji_pack_ok = false;
     int focus_field = 0; // which dialog field
     bool captcha_visible = false;
     bool about_open = false;
@@ -292,38 +288,46 @@ void tray_update_tip();
 void tray_balloon(const std::string &title, const std::string &body);
 void open_sign_on();
 
-void load_react_icons() {
-    g.react_icons_ok = true;
-    for (int i = 0; i < kReactCount; ++i) {
-        const auto &ic = jabber_react_icons::kIcons[i];
-        if (!jabber::decode_image_bytes(ic.png28, int(ic.png28_len),
-                                        g.react_icon_28[i]) ||
-            !jabber::decode_image_bytes(ic.png20, int(ic.png20_len),
-                                        g.react_icon_20[i])) {
-            g.react_icons_ok = false;
-        }
+std::string emoji_recent_path() { return exe_dir() + "\\emoji_recent.txt"; }
+
+void load_emoji_recent() {
+    g.emoji_st.recent.clear();
+    std::ifstream in(emoji_recent_path());
+    std::string line;
+    while (std::getline(in, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+            line.pop_back();
+        if (!line.empty()) g.emoji_st.recent.push_back(line);
+        if (g.emoji_st.recent.size() >= 48) break;
     }
 }
 
-int react_icon_index(const std::string &emoji) {
-    std::string w = jabber::reaction_wire(emoji);
-    for (int i = 0; i < kReactCount; ++i) {
-        if (w == jabber_react_icons::kIcons[i].emoji) return i;
-        if (emoji == jabber_react_icons::kIcons[i].emoji) return i;
+void save_emoji_recent() {
+    std::ofstream out(emoji_recent_path(), std::ios::trunc);
+    for (const auto &w : g.emoji_st.recent) out << w << "\n";
+}
+
+void load_emoji_pack() {
+    std::string base = exe_dir();
+    const char *cands[] = {
+        "\\emoji_pack",
+        "\\..\\build\\emoji_pack",
+        "\\..\\..\\build\\emoji_pack",
+    };
+    g.emoji_pack_ok = false;
+    for (const char *c : cands) {
+        if (sagrado::emoji_pack_set_root(base + c)) {
+            g.emoji_pack_ok = true;
+            break;
+        }
     }
-    // Heart without variation selector.
-    if (w == u8"❤" || emoji == u8"❤") {
-        for (int i = 0; i < kReactCount; ++i)
-            if (std::strcmp(jabber_react_icons::kIcons[i].id, "heart") == 0)
-                return i;
-    }
-    return -1;
+    load_emoji_recent();
 }
 
 // Height of the reaction marks row under a chat line.
 int reaction_row_height(const jabber::ChatLine &ln, int lh) {
     if (ln.reactions.empty()) return 0;
-    if (g.react_icons_ok) return std::max(lh, 22);
+    if (g.emoji_pack_ok) return std::max(lh, 34);
     return lh;
 }
 
@@ -331,31 +335,15 @@ int reaction_row_height(const jabber::ChatLine &ln, int lh) {
 int paint_reaction_row(Canvas &cv, int x, int y, int /*wrap_w*/,
                        const jabber::ChatLine &ln, Color count_ink) {
     if (ln.reactions.empty()) return 0;
-    const int lh = cv.line_height();
-    const int row_h = reaction_row_height(ln, lh);
-    int px = x + 10;
+    const int row_h = reaction_row_height(ln, cv.line_height());
+    std::vector<std::pair<std::string, int>> marks;
+    std::vector<bool> mine;
     for (const auto &rx : ln.reactions) {
-        int idx = react_icon_index(rx.emoji);
-        if (g.react_icons_ok && idx >= 0 && !g.react_icon_20[idx].empty()) {
-            int iy = y + (row_h - g.react_icon_20[idx].h) / 2;
-            cv.blit_image(g.react_icon_20[idx], px, iy);
-            px += g.react_icon_20[idx].w + 2;
-        } else {
-            const char *lab = jabber::reaction_label(rx.emoji);
-            cv.text(px, y + (row_h - lh) / 2, lab, count_ink);
-            px += cv.text_width(lab) + 2;
-        }
-        if (rx.count > 1 || rx.mine) {
-            std::string tail;
-            if (rx.count > 1) tail += std::to_string(rx.count);
-            if (rx.mine) tail += "*";
-            cv.text(px, y + (row_h - lh) / 2, tail.c_str(), count_ink);
-            px += cv.text_width(tail.c_str()) + 8;
-        } else {
-            px += 8;
-        }
+        marks.push_back({rx.emoji, rx.count});
+        mine.push_back(rx.mine);
     }
-    return row_h;
+    return sagrado::paint_emoji_marks(cv, x + 10, y, row_h, marks, count_ink,
+                                      mine);
 }
 void redraw();
 void stop_typing_indicator();
@@ -1227,12 +1215,23 @@ void open_react_dialog() {
         set_status("Open a chat first");
         return;
     }
+    if (!g.emoji_pack_ok) {
+        set_status("Emoji pack missing — run make emoji-pack");
+        return;
+    }
     if (!pick_react_target(&g.react_target_id)) {
         set_status("No message to react to yet");
         return;
     }
     g.dialog = DlgReact;
     g.focus_field = 0;
+    g.emoji_st.query.clear();
+    g.emoji_st.category = 0;
+    g.emoji_st.scroll = 0;
+    g.emoji_st.hot_cell = -1;
+    g.emoji_st.pressed_cell = -1;
+    g.emoji_st.hot_nav = -1;
+    g.emoji_st.search_focus = true;
 }
 
 bool tab_is_muc(int idx) {
@@ -1333,11 +1332,13 @@ void paint_dialog(Canvas &cv) {
     else if (g.dialog == DlgSetTopic) {
         dw = 360;
         dh = 180;
-    } else if (g.dialog == DlgReact) {
-        dw = 360;
-        dh = 230;
-    }
+    } else if (g.dialog == DlgReact)
+        sagrado::emoji_picker_size(&dw, &dh);
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
+    if (g.dialog == DlgReact) {
+        g.emoji_lay = sagrado::paint_emoji_picker(cv, g.ap, box, g.emoji_st, true);
+        return;
+    }
     const char *title = "Sign On";
     if (g.dialog == DlgRegister) title = "Get an Account";
     if (g.dialog == DlgAddBuddy) title = "Add Buddy";
@@ -1345,7 +1346,6 @@ void paint_dialog(Canvas &cv) {
     if (g.dialog == DlgBrowseMuc) title = "Browse Chat Rooms";
     if (g.dialog == DlgSetTopic) title = "Set Topic";
     if (g.dialog == DlgInvite) title = "Invite";
-    if (g.dialog == DlgReact) title = "React";
     paint_gel(cv, g.ap, box, title, true, 0, GelStyle::Dialog);
     GelLayout gl = gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
     Rect cl = gl.client;
@@ -1517,32 +1517,6 @@ void paint_dialog(Canvas &cv) {
     } else if (g.dialog == DlgInvite) {
         field("Buddy JID", g.field_invite, 0, false);
         field("Reason (optional)", g.field_invite_reason, 1, false);
-    } else if (g.dialog == DlgReact) {
-        cv.text(cl.x + 12, y, "Pick a reaction (again clears yours)",
-                g.ap.c("primary.label"));
-        y += lh + 10;
-        int bw = 72, bh = 40, gap = 10;
-        int row_w = 3 * bw + 2 * gap;
-        int x0 = cl.x + (cl.w - row_w) / 2;
-        for (int i = 0; i < kReactCount; ++i) {
-            int col = i % 3, row = i / 3;
-            g.react_btn_r[i] = {x0 + col * (bw + gap), y + row * (bh + gap), bw, bh};
-            paint_button(cv, g.ap, g.react_btn_r[i], "", false, false);
-            if (g.react_icons_ok && !g.react_icon_28[i].empty()) {
-                int ix = g.react_btn_r[i].x +
-                         (g.react_btn_r[i].w - g.react_icon_28[i].w) / 2;
-                int iy = g.react_btn_r[i].y +
-                         (g.react_btn_r[i].h - g.react_icon_28[i].h) / 2;
-                cv.blit_image(g.react_icon_28[i], ix, iy);
-            } else {
-                const char *lab =
-                    jabber::reaction_label(jabber_react_icons::kIcons[i].emoji);
-                paint_button(cv, g.ap, g.react_btn_r[i], lab, false, false);
-            }
-        }
-        Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
-        paint_button(cv, g.ap, cancel, "Cancel", false, false);
-        return;
     }
     Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
     Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
@@ -2417,11 +2391,60 @@ void mouse_down(int x, int y) {
         else if (g.dialog == DlgSetTopic) {
             dw = 360;
             dh = 180;
-        } else if (g.dialog == DlgReact) {
-            dw = 360;
-            dh = 230;
         }
+        if (g.dialog == DlgReact) sagrado::emoji_picker_size(&dw, &dh);
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
+        if (g.dialog == DlgReact) {
+            // Layout was painted last frame into g.emoji_lay.
+            auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
+            using HK = sagrado::EmojiPickerHitKind;
+            if (hit.kind == HK::Close || hit.kind == HK::Cancel) {
+                g.dialog = DlgNone;
+                g.react_target_id.clear();
+                redraw();
+                return;
+            }
+            if (hit.kind == HK::Search) {
+                g.emoji_st.search_focus = true;
+                redraw();
+                return;
+            }
+            if (hit.kind == HK::Nav && hit.index >= 0) {
+                g.emoji_st.category = hit.index;
+                g.emoji_st.query.clear();
+                g.emoji_st.scroll = 0;
+                g.emoji_st.search_focus = false;
+                redraw();
+                return;
+            }
+            if (hit.kind == HK::Cell && hit.index >= 0) {
+                std::string wire =
+                    sagrado::emoji_picker_wire_at(g.emoji_st, hit.index);
+                if (!wire.empty() && g.active_tab >= 0 &&
+                    !g.react_target_id.empty()) {
+                    bool muc = g.tabs[g.active_tab].muc;
+                    g.client.send_reaction(g.tabs[g.active_tab].jid,
+                                           g.react_target_id, wire, muc);
+                    sagrado::emoji_recent_push(g.emoji_st, wire);
+                    save_emoji_recent();
+                    set_status("Reacted");
+                }
+                g.dialog = DlgNone;
+                g.react_target_id.clear();
+                redraw();
+                return;
+            }
+            if (hit.kind == HK::Sbar && g.emoji_lay.grid_max > 0) {
+                // Page jump toward click in track.
+                Rect bar = g.emoji_lay.sbar;
+                float t = float(y - bar.y) / float(std::max(1, bar.h));
+                g.emoji_st.scroll =
+                    std::clamp(int(t * g.emoji_lay.grid_max), 0, g.emoji_lay.grid_max);
+                redraw();
+                return;
+            }
+            return;
+        }
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
         Rect cl = gl.client;
@@ -2434,32 +2457,6 @@ void mouse_down(int x, int y) {
             g.react_target_id.clear();
             maybe_show_next_muc_invite();
             redraw();
-            return;
-        }
-        if (g.dialog == DlgReact) {
-            for (int i = 0; i < kReactCount; ++i) {
-                if (g.react_btn_r[i].contains(x, y)) {
-                    if (g.active_tab >= 0 && !g.react_target_id.empty()) {
-                        bool muc = g.tabs[g.active_tab].muc;
-                        g.client.send_reaction(
-                            g.tabs[g.active_tab].jid, g.react_target_id,
-                            jabber_react_icons::kIcons[i].emoji, muc);
-                        set_status(std::string("Reacted ") +
-                                   jabber::reaction_label(
-                                       jabber_react_icons::kIcons[i].emoji));
-                    }
-                    g.dialog = DlgNone;
-                    g.react_target_id.clear();
-                    redraw();
-                    return;
-                }
-            }
-            Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
-            if (cancel.contains(x, y)) {
-                g.dialog = DlgNone;
-                g.react_target_id.clear();
-                redraw();
-            }
             return;
         }
         Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
@@ -2842,6 +2839,18 @@ void mouse_move(int x, int y) {
                         g.recent_page);
         return;
     }
+    if (g.dialog == DlgReact) {
+        auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
+        int hot_cell = -1, hot_nav = -1;
+        if (hit.kind == sagrado::EmojiPickerHitKind::Cell) hot_cell = hit.index;
+        if (hit.kind == sagrado::EmojiPickerHitKind::Nav) hot_nav = hit.index;
+        if (hot_cell != g.emoji_st.hot_cell || hot_nav != g.emoji_st.hot_nav) {
+            g.emoji_st.hot_cell = hot_cell;
+            g.emoji_st.hot_nav = hot_nav;
+            redraw();
+        }
+        return;
+    }
     if (g.menu_open >= 0) {
         int row = menu_hit_row(g.popup, x, y);
         int title = menu_bar_hit(x, y);
@@ -2921,11 +2930,21 @@ void handle_char(WPARAM wp) {
         else if (g.dialog == DlgInvite)
             f = g.focus_field == 0 ? &g.field_invite : &g.field_invite_reason;
         else if (g.dialog == DlgReact) {
-            if (wp == '\r' || wp == 27) {
+            if (wp == 27) {
                 g.dialog = DlgNone;
                 g.react_target_id.clear();
                 redraw();
+                return;
             }
+            if (wp == 8) {
+                if (!g.emoji_st.query.empty()) g.emoji_st.query.pop_back();
+                g.emoji_st.scroll = 0;
+            } else if (wp >= 32 && wp < 127 && g.emoji_st.query.size() < 40) {
+                g.emoji_st.query.push_back(char(wp));
+                g.emoji_st.scroll = 0;
+                g.emoji_st.search_focus = true;
+            }
+            redraw();
             return;
         }
         if (wp == 8) {
@@ -2984,7 +3003,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         else
             g.ap.set_skin(stock_skin());
         g.client.on_event = [](const jabber::ClientEvent &e) { post_client_event(e); };
-        load_react_icons();
+        load_emoji_pack();
         load_providers();
         load_accounts();
         if (!g.recent_jids.empty()) g.field_jid = g.recent_jids[0];
@@ -3197,8 +3216,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return list.contains(pt.x, pt.y) ||
                    (sbar.w > 0 && sbar.contains(pt.x, pt.y));
         };
-        if (g.dialog == DlgRegister &&
-            in_list(g.provider_list_r, g.provider_sbar)) {
+        if (g.dialog == DlgReact &&
+            (g.emoji_lay.grid.contains(pt.x, pt.y) ||
+             (g.emoji_lay.sbar.w > 0 && g.emoji_lay.sbar.contains(pt.x, pt.y)))) {
+            g.emoji_st.scroll =
+                std::clamp(g.emoji_st.scroll + d, 0, g.emoji_lay.grid_max);
+        } else if (g.dialog == DlgRegister &&
+                   in_list(g.provider_list_r, g.provider_sbar)) {
             g.provider_scroll =
                 std::clamp(g.provider_scroll + d, 0, g.provider_max);
         } else if (g.dialog == DlgSignOn &&
@@ -3210,7 +3234,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         } else if (g.roster_r.contains(pt.x, pt.y) ||
                    (g.roster_sbar.w > 0 && g.roster_sbar.contains(pt.x, pt.y)))
             g.roster_scroll = std::clamp(g.roster_scroll + d, 0, g.roster_max);
-        else
+        else if (g.dialog == DlgNone)
             g.chat_scroll = std::clamp(g.chat_scroll + d, 0, g.chat_max);
         redraw();
         return 0;
