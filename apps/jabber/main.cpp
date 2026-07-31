@@ -2302,7 +2302,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         mouse_up(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEMOVE:
-        if (g.drag == DragSize || (wp & MK_LBUTTON) || g.menu_open >= 0)
+        if (g.drag == DragSize || g.drag == DragThumbChat ||
+            g.drag == DragThumbRoster || g.drag == DragThumbBrowse ||
+            g.drag == DragThumbProvider || g.drag == DragThumbRecent ||
+            (wp & MK_LBUTTON) || g.menu_open >= 0)
             mouse_move(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEWHEEL: {
