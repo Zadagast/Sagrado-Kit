@@ -261,6 +261,9 @@ enum Drag : int {
     DragFindMin,
     DragFindBtn,
     DragFindTick,
+    DragAboutClose,
+    DragAboutMin,
+    DragAboutOk,
 };
 
 enum FindFocus : int { FindFocusFind = 0, FindFocusRepl = 1 };
@@ -285,6 +288,16 @@ struct FindState {
     Rect btn_all{}, btn_repl{}, btn_cancel{}, btn_find{};
 };
 
+struct AboutState {
+    HWND hwnd = nullptr;
+    Canvas canvas;
+    AlertLayout lay{};
+    bool visible = false;
+    bool focused = true;
+    int pressed_box = 0;
+    bool ok_pressed = false;
+};
+
 struct App {
     HWND hwnd = nullptr;
     HINSTANCE hinst = nullptr;
@@ -296,6 +309,7 @@ struct App {
     MenuLayout popup{};
     Doc doc;
     FindState find;
+    AboutState about;
 
     bool focused = true;
     bool caret_on = true;
@@ -368,13 +382,22 @@ std::string window_title() {
     return name + " — Sagrado TextEdit";
 }
 
-// Keep the Find gel on the same face as the main window (stock or --font).
+// Keep dialog gels on the same face as the main window (stock or --font).
+void sync_dialog_font(Canvas &cv) {
+    if (!g.font.name.empty())
+        cv.set_font(&g.font);
+    else
+        cv.set_font(nullptr); // stock face
+}
+
 void sync_find_font() {
     if (!g.find.hwnd) return;
-    if (!g.font.name.empty())
-        g.find.canvas.set_font(&g.font);
-    else
-        g.find.canvas.set_font(nullptr); // stock face
+    sync_dialog_font(g.find.canvas);
+}
+
+void sync_about_font() {
+    if (!g.about.hwnd) return;
+    sync_dialog_font(g.about.canvas);
 }
 
 void set_status(const std::string &s) { g.status = s; }
@@ -879,6 +902,12 @@ void do_new() {
     set_status("New document");
 }
 
+void paint_about();
+void redraw_about();
+void show_about();
+void hide_about();
+void create_about_window(HINSTANCE hinst);
+
 void do_load_appearance() {
     char file[MAX_PATH] = "";
     OPENFILENAMEA ofn{};
@@ -894,7 +923,10 @@ void do_load_appearance() {
     if (!GetOpenFileNameA(&ofn)) return;
     if (g.ap.load(file)) {
         set_status(std::string("Appearance: ") + g.ap.skin.meta.name);
+        sync_find_font();
+        sync_about_font();
         redraw_find();
+        redraw_about();
     } else
         set_status("Failed to load appearance");
 }
@@ -902,17 +934,13 @@ void do_load_appearance() {
 void do_stock_appearance() {
     g.ap.set_skin(stock_skin());
     set_status("Stock appearance");
+    sync_find_font();
+    sync_about_font();
     redraw_find();
+    redraw_about();
 }
 
-void about_box() {
-    MessageBoxA(g.hwnd,
-                "Sagrado TextEdit\n\n"
-                "First consumer app of SagradoKit — the authoritative\n"
-                "appearance kit (Haxial-faithful gel, menus, fields).\n\n"
-                "Load any .hap or .sap via Appearance → Load Appearance.",
-                "About Sagrado TextEdit", MB_OK | MB_ICONINFORMATION);
-}
+void about_box() { show_about(); }
 
 void close_menu() {
     g.menu_open = -1;
@@ -1286,6 +1314,145 @@ void create_find_window(HINSTANCE hinst) {
     SetTimer(g.find.hwnd, 1, 500, nullptr);
 }
 
+// --- About dialog (kit gel — never MessageBox) ----------------------------
+
+static const char *kAboutBody =
+    "Sagrado TextEdit\n\n"
+    "First consumer app of SagradoKit - the authoritative "
+    "appearance kit (Haxial-faithful gel, menus, fields).\n\n"
+    "Load any .hap or .sap via Appearance -> Load Appearance.";
+
+void paint_about() {
+    AboutState &a = g.about;
+    Canvas &cv = a.canvas;
+    a.lay = paint_alert(cv, g.ap, {0, 0, cv.width(), cv.height()},
+                        "About Sagrado TextEdit", kAboutBody, AlertKind::Note,
+                        a.focused, a.pressed_box, a.ok_pressed);
+}
+
+void redraw_about() {
+    if (!g.about.hwnd || !g.about.visible) return;
+    paint_about();
+    blit(g.about.hwnd, g.about.canvas);
+}
+
+void hide_about() {
+    g.about.visible = false;
+    g.about.pressed_box = 0;
+    g.about.ok_pressed = false;
+    if (g.about.hwnd) ShowWindow(g.about.hwnd, SW_HIDE);
+    if (g.hwnd) SetForegroundWindow(g.hwnd);
+}
+
+void show_about() {
+    if (!g.about.hwnd) return;
+    g.about.visible = true;
+    // Centre over the main window when possible.
+    RECT rc{};
+    if (g.hwnd && GetWindowRect(g.hwnd, &rc)) {
+        int x = rc.left + ((rc.right - rc.left) - kAlertDlgW) / 2;
+        int y = rc.top + ((rc.bottom - rc.top) - kAlertDlgH) / 2;
+        SetWindowPos(g.about.hwnd, nullptr, x, y, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER);
+    }
+    ShowWindow(g.about.hwnd, SW_SHOW);
+    SetForegroundWindow(g.about.hwnd);
+    redraw_about();
+}
+
+LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+
+void create_about_window(HINSTANCE hinst) {
+    WNDCLASSA wc{};
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    wc.lpfnWndProc = AboutWndProc;
+    wc.hInstance = hinst;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.lpszClassName = "SagradoTextEditAbout";
+    RegisterClassA(&wc);
+
+    DWORD style = WS_POPUP | WS_SYSMENU | WS_CLIPCHILDREN;
+    g.about.hwnd =
+        CreateWindowExA(WS_EX_TOOLWINDOW | WS_EX_APPWINDOW, wc.lpszClassName,
+                        "About Sagrado TextEdit", style, 160, 160, kAlertDlgW,
+                        kAlertDlgH, g.hwnd, nullptr, hinst, nullptr);
+    g.about.canvas.resize(kAlertDlgW, kAlertDlgH);
+    sync_about_font();
+}
+
+LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    AboutState &a = g.about;
+    switch (msg) {
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        BeginPaint(hwnd, &ps);
+        paint_about();
+        blit(hwnd, a.canvas);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    case WM_SETFOCUS:
+        a.focused = true;
+        redraw_about();
+        return 0;
+    case WM_KILLFOCUS:
+        a.focused = false;
+        redraw_about();
+        return 0;
+    case WM_LBUTTONDOWN: {
+        int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+        paint_about(); // refresh hit rects
+        SetCapture(hwnd);
+        if (a.lay.gel.close_box.contains(x, y)) {
+            a.pressed_box = 1;
+            g.drag = DragAboutClose;
+        } else if (a.lay.gel.min_box.contains(x, y)) {
+            a.pressed_box = 4;
+            g.drag = DragAboutMin;
+        } else if (a.lay.btn_ok.contains(x, y)) {
+            a.ok_pressed = true;
+            g.drag = DragAboutOk;
+        }
+        redraw_about();
+        return 0;
+    }
+    case WM_LBUTTONUP: {
+        int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+        ReleaseCapture();
+        if (g.drag == DragAboutClose && a.lay.gel.close_box.contains(x, y))
+            hide_about();
+        if (g.drag == DragAboutMin && a.lay.gel.min_box.contains(x, y))
+            ShowWindow(hwnd, SW_MINIMIZE);
+        if (g.drag == DragAboutOk && a.lay.btn_ok.contains(x, y)) hide_about();
+        a.pressed_box = 0;
+        a.ok_pressed = false;
+        g.drag = DragNone;
+        redraw_about();
+        return 0;
+    }
+    case WM_KEYDOWN:
+        if (wp == VK_ESCAPE || wp == VK_RETURN) hide_about();
+        return 0;
+    case WM_NCHITTEST: {
+        LRESULT hit = DefWindowProcA(hwnd, msg, wp, lp);
+        if (hit == HTCLIENT) {
+            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            ScreenToClient(hwnd, &pt);
+            paint_about();
+            if (pt.y >= 0 && pt.y < a.lay.gel.title_h &&
+                !a.lay.gel.close_box.contains(pt.x, pt.y) &&
+                !a.lay.gel.min_box.contains(pt.x, pt.y))
+                return HTCAPTION;
+        }
+        return hit;
+    }
+    case WM_NCCALCSIZE:
+        if (wp) return 0;
+        break;
+    }
+    return DefWindowProcA(hwnd, msg, wp, lp);
+}
+
 LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     FindState &f = g.find;
     switch (msg) {
@@ -1440,6 +1607,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g.doc.dirty = false;
         SetTimer(hwnd, 1, 500, nullptr);
         create_find_window(g.hinst);
+        create_about_window(g.hinst);
         return 0;
     }
     case WM_SIZE: {

@@ -145,6 +145,7 @@ Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 13. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
 14. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
 15. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
+16. **Alert / About** — gel dialog with optional alert icon + wrapped body + default OK (`paint_alert`). Apps own the HWND; never `MessageBox` / OS widgets for in-app chrome.
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.

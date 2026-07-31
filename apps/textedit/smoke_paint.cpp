@@ -95,6 +95,21 @@ int main(int argc, char **argv) {
     if (H > kFindDlgH + 40)
         paint_find_chrome_sample(cv, ap, 40, 40, kFindDlgW, true);
 
+    // About / alert gel — must be kit chrome, never OS MessageBox.
+    {
+        AlertLayout al = paint_alert(
+            cv, ap, {W - kAlertDlgW - 16, H - kAlertDlgH - 16, kAlertDlgW, kAlertDlgH},
+            "About Sagrado TextEdit",
+            "Sagrado TextEdit\n\nFirst consumer app of SagradoKit.",
+            AlertKind::Note, true, 0, false);
+        if (al.btn_ok.w <= 0 || al.gel.client.w <= 0) {
+            std::fprintf(stderr, "alert layout missing OK or client\n");
+            return 1;
+        }
+        std::printf("alert gel client %dx%d ok %dx%d\n", al.gel.client.w,
+                    al.gel.client.h, al.btn_ok.w, al.btn_ok.h);
+    }
+
     paint_gel_grip(cv, ap, gel.grip, true);
 
     size_t lit = 0;

@@ -45,6 +45,8 @@ constexpr int kKitButtonH = 20;
 constexpr int kFieldH = 20;
 constexpr int kFindDlgW = 442; // Sagrado Find window size
 constexpr int kFindDlgH = 176;
+constexpr int kAlertDlgW = 380; // Note / About gel dialog
+constexpr int kAlertDlgH = 200;
 
 // Default-button outer around a regular face width, same top as Find.
 inline Rect default_button_rect(int x, int y, int face_w) {
@@ -2780,6 +2782,114 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
     else
         cv.place(*img, b.x + (b.w - img->w) / 2, b.y + (b.h - img->h) / 2);
     return b;
+}
+
+// Word-wrap `text` into `r` (honours '\n'). Returns line count painted.
+inline int paint_wrapped_text(Canvas &cv, Rect r, const char *text, Color ink) {
+    if (!text || r.w <= 0 || r.h <= 0) return 0;
+    const int lh = cv.line_height();
+    int y = r.y;
+    int lines = 0;
+    const char *p = text;
+    while (*p && y + lh <= r.bottom()) {
+        const char *eol = p;
+        while (*eol && *eol != '\n') ++eol;
+        const char *seg = p;
+        while (seg < eol && y + lh <= r.bottom()) {
+            int fit = 0, last_space = -1;
+            int wsum = 0;
+            for (int i = 0; seg + i < eol; ++i) {
+                char ch[2] = {seg[i], 0};
+                int cw = cv.text_width(ch);
+                if (wsum + cw > r.w && fit > 0) break;
+                wsum += cw;
+                fit = i + 1;
+                if (seg[i] == ' ') last_space = i;
+            }
+            if (fit == 0) fit = 1;
+            int take = (last_space > 0 && seg + fit < eol) ? last_space + 1 : fit;
+            std::string line(seg, seg + take);
+            while (!line.empty() && line.back() == ' ') line.pop_back();
+            cv.text(r.x, y, line.c_str(), ink);
+            y += lh;
+            ++lines;
+            seg += take;
+            while (seg < eol && *seg == ' ') ++seg;
+        }
+        p = (*eol == '\n') ? eol + 1 : eol;
+    }
+    return lines;
+}
+
+enum class AlertKind { Note, Stop, Caution, Question };
+
+inline const char *alert_icon_slot(AlertKind kind, int size) {
+    const bool big = size >= 32;
+    switch (kind) {
+    case AlertKind::Stop:
+        return big ? "alert.stop.32" : "alert.stop.16";
+    case AlertKind::Caution:
+        return big ? "alert.caution.32" : "alert.caution.16";
+    case AlertKind::Question:
+        return big ? "alert.question.32" : "alert.question.16";
+    case AlertKind::Note:
+    default:
+        return big ? "alert.note.32" : "alert.note.16";
+    }
+}
+
+struct AlertLayout {
+    GelLayout gel{};
+    Rect icon{};
+    Rect text{};
+    Rect btn_ok{};
+};
+
+// Alert / About gel — icon (when authored) + wrapped body + default OK.
+// Apps own the HWND; the kit owns the chrome. Never MessageBox / OS widgets.
+inline AlertLayout paint_alert(Canvas &cv, const Appearance &ap, Rect win,
+                               const char *title, const char *body,
+                               AlertKind kind = AlertKind::Note,
+                               bool focused = true, int pressed_box = 0,
+                               bool ok_pressed = false) {
+    AlertLayout lay;
+    lay.gel = gel_layout(win.x, win.y, win.w, win.h, GelStyle::Dialog, &ap,
+                         focused);
+    paint_gel(cv, ap, win, title ? title : "Alert", focused, pressed_box,
+              GelStyle::Dialog);
+
+    CanvasClip clip(cv, lay.gel.client);
+    Rect cl = lay.gel.client;
+    const int icon_sz = 32;
+    const int pad = 12;
+    int tx = cl.x + pad;
+    int ty = cl.y + pad;
+    const char *slot = alert_icon_slot(kind, icon_sz);
+    if (!ap.icon(slot) && kind == AlertKind::Note && ap.icon("note.32"))
+        slot = "note.32";
+    if (ap.icon(slot)) {
+        lay.icon = paint_icon(cv, ap, tx, ty, slot, icon_sz);
+        tx = lay.icon.right() + 12;
+    } else {
+        lay.icon = {tx, ty, 0, 0};
+    }
+
+    int by = cl.bottom() - 12 - kDefaultButtonH;
+    if (by < cl.y + 4) by = cl.y + 4;
+    int ok_w = std::max(72, cv.text_width("OK") + 36);
+    lay.btn_ok =
+        default_button_rect(cl.right() - pad - ok_w - 2 * kDefaultButtonPad, by,
+                            ok_w);
+    if (lay.btn_ok.bottom() > cl.bottom() - 2)
+        lay.btn_ok.y = cl.bottom() - 2 - lay.btn_ok.h;
+
+    lay.text = {tx, ty, cl.right() - pad - tx, lay.btn_ok.y - 10 - ty};
+    if (lay.text.h < cv.line_height()) lay.text.h = cv.line_height();
+    if (lay.text.w < 40) lay.text.w = 40;
+    paint_wrapped_text(cv, lay.text, body ? body : "",
+                       label_ink(ap, ap.c("primary.label")));
+    paint_button(cv, ap, lay.btn_ok, "OK", ok_pressed, true);
+    return lay;
 }
 
 // Icon for a Haxial file type ("image/jpeg", "folder/uploads", "volume/hd"...).
