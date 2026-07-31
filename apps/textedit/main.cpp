@@ -1855,6 +1855,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY:
         KillTimer(hwnd, 1);
         if (g.find.hwnd) DestroyWindow(g.find.hwnd);
+        if (g.about.hwnd) DestroyWindow(g.about.hwnd);
         PostQuitMessage(0);
         return 0;
     }
@@ -1882,8 +1883,11 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
     wc.lpszClassName = "SagradoTextEdit";
     RegisterClassA(&wc);
 
-    DWORD style = WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX |
-                  WS_SYSMENU | WS_CLIPCHILDREN;
+    // Gel paints the title bar. Do not set WS_CAPTION / WS_SYSMENU /
+    // WS_MINIMIZEBOX / WS_MAXIMIZEBOX — Wine's window manager treats those as
+    // "decorate me" and stacks a second host title bar on Linux.
+    // WS_THICKFRAME keeps edge resize; gel buttons call ShowWindow/DestroyWindow.
+    DWORD style = WS_POPUP | WS_THICKFRAME | WS_CLIPCHILDREN;
     g.hwnd = CreateWindowExA(WS_EX_APPWINDOW, wc.lpszClassName, "Sagrado TextEdit",
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);

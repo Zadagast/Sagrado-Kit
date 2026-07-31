@@ -2109,8 +2109,9 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
 
     // Exact client size — WM_NCCALCSIZE makes the window borderless, so do
     // not inflate with AdjustWindowRect (that caused hit-test mismatches).
-    DWORD style = WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX |
-                  WS_SYSMENU | WS_CLIPCHILDREN;
+    // Gel owns the title bar: omit WS_CAPTION / WS_SYSMENU / min / max styles
+    // so Wine does not stack a host WM title bar on Linux.
+    DWORD style = WS_POPUP | WS_THICKFRAME | WS_CLIPCHILDREN;
     g_hwnd = CreateWindowExA(WS_EX_APPWINDOW, wc.lpszClassName, "SagradoKit Editor",
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);
