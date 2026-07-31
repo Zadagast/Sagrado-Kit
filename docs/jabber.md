@@ -36,11 +36,12 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    change your icon — published as your vCard photo (max ~96 KB).
 2. **Left Buddies** — online first; buddy icon + presence mark + name + status text
 3. **Center** — IM tabs, soft-wrapped transcript (kit `layout_lines`), compose + Send
-4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
-5. **Status strip** — “Signed on as …”, presence alerts, upload progress
-6. **MUC** — full-height “In room” rail beside transcript **and** compose; sticky topic
+4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs (wheel + thumb/arrows)
+5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
+6. **Status strip** — “Signed on as …”, presence alerts, upload progress
+7. **MUC** — full-height “In room” rail beside transcript **and** compose; sticky topic
    under the transcript top; Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
-7. **System tray** — gel close (X) hides to the notification area; minimize stays a
+8. **System tray** — gel close (X) hides to the notification area; minimize stays a
    normal taskbar minimize. Tray menu: Open / Sign On / Sign Off / Quit; inbound IM
    can balloon while hidden
 

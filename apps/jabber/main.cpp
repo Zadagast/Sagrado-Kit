@@ -90,6 +90,16 @@ enum Drag : int {
     DragMin,
     DragSize,
     DragMenuBar,
+    DragThumbChat,
+    DragThumbRoster,
+    DragThumbBrowse,
+    DragThumbProvider,
+    DragThumbRecent,
+    DragArrowChat,
+    DragArrowRoster,
+    DragArrowBrowse,
+    DragArrowProvider,
+    DragArrowRecent,
 };
 enum SizeEdge : int {
     SizeLeft = 1,
@@ -134,8 +144,17 @@ struct App {
     std::vector<Tab> tabs;
     int active_tab = -1;
     int roster_hot = -1;
-    int roster_scroll = 0;
-    int chat_scroll = 0;
+    int roster_scroll = 0; // pixels
+    int chat_scroll = 0;   // pixels
+    int thumb_grab = 0;
+    ScrollArrowHot arrow_hot = ScrollArrowHot::None;
+    int arrow_dir = 0;
+    // Cached in paint for scrollbar hit-testing (pixels).
+    int chat_page = 1, chat_max = 0;
+    int roster_page = 1, roster_max = 0;
+    int browse_page = 1, browse_max = 0;
+    int provider_page = 1, provider_max = 0;
+    int recent_page = 1, recent_max = 0;
 
     DialogKind dialog = DlgNone;
     std::string field_jid;
@@ -160,19 +179,19 @@ struct App {
     };
     std::vector<Provider> providers;
     int provider_sel = 0;
-    int provider_scroll = 0;
-    Rect provider_list_r{};
+    int provider_scroll = 0; // pixels
+    Rect provider_list_r{}, provider_sbar{};
 
     // Recent account names (JIDs). Passwords are never stored.
     std::vector<std::string> recent_jids;
     int recent_sel = -1;
-    int recent_scroll = 0;
-    Rect recent_list_r{};
+    int recent_scroll = 0; // pixels
+    Rect recent_list_r{}, recent_sbar{};
 
     // Browse Chat Rooms dialog
     int browse_sel = -1; // index into browse_rows
-    int browse_scroll = 0;
-    Rect browse_list_r{};
+    int browse_scroll = 0; // pixels
+    Rect browse_list_r{}, browse_sbar{};
     struct BrowseRow {
         std::string jid;
         std::string label;
@@ -188,7 +207,8 @@ struct App {
     bool presence_menu = false; // popup anchored to identity strip
 
     Rect identity_r{}, avatar_r{}, presence_r{}, status_field_r{};
-    Rect roster_r{}, tabs_r{}, transcript_r{}, compose_r{}, status_r{};
+    Rect roster_r{}, roster_sbar{}, tabs_r{}, transcript_r{}, chat_sbar{};
+    Rect compose_r{}, status_r{};
     Rect btn_send{}, occ_r{}, progress_r{};
 
     bool tray_added = false;
@@ -563,6 +583,13 @@ void layout() {
         g.presence_r = {};
         g.status_field_r = {};
     }
+    // Roster list + kit V scrollbar (header "Buddies" stays full width).
+    g.roster_sbar = {};
+    if (g.roster_r.h > 22) {
+        g.roster_sbar = {g.roster_r.right() - kScrollbarW, g.roster_r.y + 22,
+                         kScrollbarW, g.roster_r.h - 22};
+    }
+
     int cx = g.roster_r.right();
     int cw = cl.right() - cx;
     g.tabs_r = {cx, top, cw, kTabH};
@@ -577,6 +604,7 @@ void layout() {
                         g.status_r.h - 6};
     }
     g.occ_r = {};
+    g.chat_sbar = {};
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
         g.tabs[g.active_tab].muc) {
         // Full-height nick rail beside transcript + compose (no dead pad under list).
@@ -587,6 +615,62 @@ void layout() {
         g.compose_r.w -= occ_w;
         g.btn_send.x = g.compose_r.right() - 72;
     }
+    // Transcript kit V scrollbar (compose stays full width under bar).
+    if (g.transcript_r.w > kScrollbarW + 40 && g.transcript_r.h > 0) {
+        g.chat_sbar = {g.transcript_r.right() - kScrollbarW, g.transcript_r.y,
+                       kScrollbarW, g.transcript_r.h};
+        g.transcript_r.w -= kScrollbarW;
+    }
+}
+
+// Shared V-scrollbar hit: arrows / thumb / page. Returns true if consumed.
+bool sbar_mouse_down(Rect sbar, int x, int y, int &scroll, int max_v, int page,
+                     int step, Drag thumb_drag, Drag arrow_drag) {
+    if (sbar.w <= 0 || !sbar.contains(x, y)) return false;
+    if (max_v < 0) max_v = 0;
+    if (page < 1) page = 1;
+    if (step < 1) step = 1;
+    ScrollLayout sl = scroll_layout(g.ap, sbar, scroll, max_v, page);
+    ScrollArrowHot ah = scroll_arrow_hit(sl, x, y);
+    if (ah != ScrollArrowHot::None) {
+        g.drag = arrow_drag;
+        g.arrow_hot = ah;
+        g.arrow_dir = scroll_arrow_dir(ah);
+        scroll = std::clamp(scroll + g.arrow_dir * step, 0, max_v);
+        redraw();
+        return true;
+    }
+    if (sl.thumb.contains(x, y)) {
+        g.drag = thumb_drag;
+        g.thumb_grab = y - sl.thumb.y;
+        redraw();
+        return true;
+    }
+    if (y < sl.thumb.y) scroll = std::max(0, scroll - page);
+    else scroll = std::min(max_v, scroll + page);
+    redraw();
+    return true;
+}
+
+bool sbar_thumb_drag(Rect sbar, int y, int &scroll, int max_v, int page) {
+    if (sbar.w <= 0 || max_v <= 0) return false;
+    if (page < 1) page = 1;
+    ScrollLayout sl = scroll_layout(g.ap, sbar, scroll, max_v, page);
+    int track = sl.track.h - sl.thumb.h;
+    if (track <= 0) return false;
+    int ty = y - g.thumb_grab - sl.track.y;
+    scroll = std::clamp(ty * max_v / track, 0, max_v);
+    redraw();
+    return true;
+}
+
+void paint_v_sbar(Canvas &cv, Rect sbar, int value, int max_v, int page,
+                  Drag thumb_drag, Drag arrow_drag) {
+    if (sbar.w <= 0) return;
+    bool thumb = (g.drag == thumb_drag);
+    ScrollArrowHot ah =
+        (g.drag == arrow_drag) ? g.arrow_hot : ScrollArrowHot::None;
+    paint_scrollbar(cv, g.ap, sbar, value, max_v, page, thumb, false, false, ah);
 }
 
 // Fixed AIM/Yahoo presence ink — readable on every Hap, not skin roles.
@@ -854,7 +938,11 @@ void paint_dialog(Canvas &cv) {
     int y = cl.y + 8;
     int lh = cv.line_height();
     g.recent_list_r = {};
+    g.recent_sbar = {};
     g.browse_list_r = {};
+    g.browse_sbar = {};
+    g.provider_list_r = {};
+    g.provider_sbar = {};
     auto field = [&](const char *lab, const std::string &val, int idx, bool secret) {
         cv.text(cl.x + 12, y, lab, g.ap.c("primary.label"));
         y += lh + 2;
@@ -870,7 +958,13 @@ void paint_dialog(Canvas &cv) {
         if ((int)g.recent_jids.size() >= 2) {
             int rows = std::min(4, (int)g.recent_jids.size());
             int row_h = lh + 4;
-            g.recent_list_r = {cl.x + 12, y, cl.w - 24, rows * row_h + 4};
+            int box_w = cl.w - 24;
+            g.recent_list_r = {cl.x + 12, y, box_w - kScrollbarW, rows * row_h + 4};
+            g.recent_sbar = {g.recent_list_r.right(), y, kScrollbarW, g.recent_list_r.h};
+            int content_h = (int)g.recent_jids.size() * row_h;
+            g.recent_page = std::max(1, g.recent_list_r.h - 4);
+            g.recent_max = std::max(0, content_h - g.recent_page);
+            g.recent_scroll = std::clamp(g.recent_scroll, 0, g.recent_max);
             cv.fill(g.recent_list_r, g.ap.c("list.background"));
             {
                 CanvasClip clip(cv, g.recent_list_r);
@@ -886,6 +980,8 @@ void paint_dialog(Canvas &cv) {
                     yy += row_h;
                 }
             }
+            paint_v_sbar(cv, g.recent_sbar, g.recent_scroll, g.recent_max, g.recent_page,
+                         DragThumbRecent, DragArrowRecent);
             y = g.recent_list_r.bottom() + 8;
         }
         field("Password", g.field_pass, 1, true);
@@ -906,11 +1002,17 @@ void paint_dialog(Canvas &cv) {
         cv.text(cl.x + 12, y, "Home server", g.ap.c("primary.label"));
         y += lh + 2;
         int list_h = g.captcha_visible ? 72 : 96;
-        g.provider_list_r = {cl.x + 12, y, cl.w - 24, list_h};
+        int box_w = cl.w - 24;
+        g.provider_list_r = {cl.x + 12, y, box_w - kScrollbarW, list_h};
+        g.provider_sbar = {g.provider_list_r.right(), y, kScrollbarW, list_h};
+        int row_h = lh + 4;
+        int content_h = (int)g.providers.size() * row_h;
+        g.provider_page = std::max(1, list_h - 4);
+        g.provider_max = std::max(0, content_h - g.provider_page);
+        g.provider_scroll = std::clamp(g.provider_scroll, 0, g.provider_max);
         cv.fill(g.provider_list_r, g.ap.c("list.background"));
         {
             CanvasClip clip(cv, g.provider_list_r);
-            int row_h = lh + 4;
             int yy = g.provider_list_r.y + 2 - g.provider_scroll;
             for (int i = 0; i < (int)g.providers.size(); ++i) {
                 Rect row{g.provider_list_r.x + 2, yy, g.provider_list_r.w - 4, row_h};
@@ -929,6 +1031,8 @@ void paint_dialog(Canvas &cv) {
                 yy += row_h;
             }
         }
+        paint_v_sbar(cv, g.provider_sbar, g.provider_scroll, g.provider_max,
+                     g.provider_page, DragThumbProvider, DragArrowProvider);
         y = g.provider_list_r.bottom() + 10;
 
         cv.text(cl.x + 12, y, "Password", g.ap.c("primary.label"));
@@ -958,11 +1062,17 @@ void paint_dialog(Canvas &cv) {
     } else if (g.dialog == DlgBrowseMuc) {
         int list_h = cl.h - 8 - 30 - 40 - lh - 8;
         if (list_h < 80) list_h = 80;
-        g.browse_list_r = {cl.x + 12, y, cl.w - 24, list_h};
+        int box_w = cl.w - 24;
+        g.browse_list_r = {cl.x + 12, y, box_w - kScrollbarW, list_h};
+        g.browse_sbar = {g.browse_list_r.right(), y, kScrollbarW, list_h};
+        int row_h = lh + 4;
+        int content_h = (int)g.browse_rows.size() * row_h;
+        g.browse_page = std::max(1, list_h - 4);
+        g.browse_max = std::max(0, content_h - g.browse_page);
+        g.browse_scroll = std::clamp(g.browse_scroll, 0, g.browse_max);
         cv.fill(g.browse_list_r, g.ap.c("list.background"));
         {
             CanvasClip clip(cv, g.browse_list_r);
-            int row_h = lh + 4;
             int yy = g.browse_list_r.y + 2 - g.browse_scroll;
             for (int i = 0; i < (int)g.browse_rows.size(); ++i) {
                 const auto &row = g.browse_rows[i];
@@ -981,6 +1091,8 @@ void paint_dialog(Canvas &cv) {
                 yy += row_h;
             }
         }
+        paint_v_sbar(cv, g.browse_sbar, g.browse_scroll, g.browse_max, g.browse_page,
+                     DragThumbBrowse, DragArrowBrowse);
         y = g.browse_list_r.bottom() + 8;
         field("Nickname", g.field_nick, 0, false);
     }
@@ -1058,17 +1170,24 @@ void paint() {
                         g.status_field_focus, true);
     }
 
-    // Roster
+    // Roster + kit V scrollbar
     cv.fill(g.roster_r, g.ap.c("list.background"));
     cv.vline(g.roster_r.right() - 1, g.identity_r.y, g.roster_r.bottom(),
              g.ap.c("list.separator"));
     cv.text(g.roster_r.x + 8, g.roster_r.y + 4, "Buddies", g.ap.c("primary.label"));
     auto buddies = roster_sorted();
-    int y = g.roster_r.y + 22 - g.roster_scroll;
+    int list_top = g.roster_r.y + 22;
+    int list_w = g.roster_sbar.w > 0 ? g.roster_r.w - kScrollbarW : g.roster_r.w;
+    Rect roster_body{g.roster_r.x, list_top, list_w, g.roster_r.bottom() - list_top};
+    int content_h = (int)buddies.size() * kBuddyRowH;
+    g.roster_page = std::max(1, roster_body.h);
+    g.roster_max = std::max(0, content_h - g.roster_page);
+    g.roster_scroll = std::clamp(g.roster_scroll, 0, g.roster_max);
+    int y = list_top - g.roster_scroll;
     int lh = kBuddyRowH;
     for (int i = 0; i < (int)buddies.size(); ++i) {
-        Rect row{g.roster_r.x + 2, y, g.roster_r.w - 4, lh};
-        if (row.bottom() < g.roster_r.y + 20) {
+        Rect row{roster_body.x + 2, y, roster_body.w - 4, lh};
+        if (row.bottom() < list_top) {
             y += lh;
             continue;
         }
@@ -1081,7 +1200,7 @@ void paint() {
         if (i == g.roster_hot ||
             (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddies[i].jid))
             ink = g.ap.c("list.hilite_foreground");
-        CanvasClip clip(cv, g.roster_r);
+        CanvasClip clip(cv, roster_body);
         constexpr int kAv = 28;
         Rect av{row.x + 4, row.y + (row.h - kAv) / 2, kAv, kAv};
         std::string initials =
@@ -1107,6 +1226,8 @@ void paint() {
         }
         y += lh;
     }
+    paint_v_sbar(cv, g.roster_sbar, g.roster_scroll, g.roster_max, g.roster_page,
+                 DragThumbRoster, DragArrowRoster);
 
     // Tabs
     cv.fill(g.tabs_r, g.ap.c("primary.background"));
@@ -1174,39 +1295,48 @@ void paint() {
             content_h += text_content_height(layout_lines(cv, text, wrap_w, true), lh);
             content_h += 2; // gap between messages
         }
-        int max_scroll = std::max(0, content_h - std::max(0, body.h));
-        g.chat_scroll = std::clamp(g.chat_scroll, 0, max_scroll);
+        g.chat_page = std::max(1, body.h);
+        g.chat_max = std::max(0, content_h - g.chat_page);
+        g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
 
-        CanvasClip clip(cv, body);
-        int ty = body.y - g.chat_scroll;
-        for (auto &ln : lines) {
-            Color ink = ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
-            if (ln.file) ink = g.ap.c("menu.hilite_label");
-            if (ln.system) ink = g.ap.c("menu.disable_label");
-            std::string text;
-            if (ln.system) {
-                text = ln.body;
-            } else if (muc) {
-                std::string who = ln.mine ? "You" : ln.from;
-                if (who.empty()) who = "?";
-                text = who + ": " + ln.body;
-            } else {
-                std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-                text = who + ": " + ln.body;
+        {
+            CanvasClip clip(cv, body);
+            int ty = body.y - g.chat_scroll;
+            for (auto &ln : lines) {
+                Color ink =
+                    ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
+                if (ln.file) ink = g.ap.c("menu.hilite_label");
+                if (ln.system) ink = g.ap.c("menu.disable_label");
+                std::string text;
+                if (ln.system) {
+                    text = ln.body;
+                } else if (muc) {
+                    std::string who = ln.mine ? "You" : ln.from;
+                    if (who.empty()) who = "?";
+                    text = who + ": " + ln.body;
+                } else {
+                    std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+                    text = who + ": " + ln.body;
+                }
+                auto vlines = layout_lines(cv, text, wrap_w, true);
+                for (const auto &vl : vlines) {
+                    if (ty + lh > body.y && ty < body.bottom())
+                        cv.text(body.x + pad, ty,
+                                text.substr(vl.start, vl.len).c_str(), ink);
+                    ty += lh;
+                }
+                ty += 2;
             }
-            auto vlines = layout_lines(cv, text, wrap_w, true);
-            for (const auto &vl : vlines) {
-                if (ty + lh > body.y && ty < body.bottom())
-                    cv.text(body.x + pad, ty, text.substr(vl.start, vl.len).c_str(),
-                            ink);
-                ty += lh;
-            }
-            ty += 2;
         }
     } else {
+        g.chat_page = 1;
+        g.chat_max = 0;
+        g.chat_scroll = 0;
         cv.text(g.transcript_r.x + 12, g.transcript_r.y + 12,
                 "Select a buddy or open a chat.", g.ap.c("menu.disable_label"));
     }
+    paint_v_sbar(cv, g.chat_sbar, g.chat_scroll, g.chat_max, g.chat_page,
+                 DragThumbChat, DragArrowChat);
 
     // Occupants
     if (g.occ_r.w > 0) {
@@ -1616,9 +1746,23 @@ void mouse_down(int x, int y) {
             redraw();
             return;
         }
+        int step = g.canvas.line_height() + 4;
+        if (g.dialog == DlgRegister &&
+            sbar_mouse_down(g.provider_sbar, x, y, g.provider_scroll, g.provider_max,
+                            g.provider_page, step, DragThumbProvider,
+                            DragArrowProvider))
+            return;
+        if (g.dialog == DlgSignOn &&
+            sbar_mouse_down(g.recent_sbar, x, y, g.recent_scroll, g.recent_max,
+                            g.recent_page, step, DragThumbRecent, DragArrowRecent))
+            return;
+        if (g.dialog == DlgBrowseMuc &&
+            sbar_mouse_down(g.browse_sbar, x, y, g.browse_scroll, g.browse_max,
+                            g.browse_page, step, DragThumbBrowse, DragArrowBrowse))
+            return;
         if (g.dialog == DlgRegister && g.provider_list_r.contains(x, y)) {
-            int lh = g.canvas.line_height() + 6;
-            int idx = (y - (g.provider_list_r.y + 2 - g.provider_scroll)) / lh;
+            int row_h = g.canvas.line_height() + 4;
+            int idx = (y - (g.provider_list_r.y + 2 - g.provider_scroll)) / row_h;
             if (idx >= 0 && idx < (int)g.providers.size()) {
                 select_provider(idx);
                 redraw();
@@ -1774,7 +1918,18 @@ void mouse_down(int x, int y) {
     }
     if (g.status_field_focus) commit_status_message();
 
-    if (g.roster_r.contains(x, y)) {
+    if (sbar_mouse_down(g.chat_sbar, x, y, g.chat_scroll, g.chat_max, g.chat_page,
+                        g.canvas.line_height(), DragThumbChat, DragArrowChat))
+        return;
+    if (sbar_mouse_down(g.roster_sbar, x, y, g.roster_scroll, g.roster_max,
+                        g.roster_page, kBuddyRowH, DragThumbRoster, DragArrowRoster))
+        return;
+
+    int roster_body_w =
+        g.roster_sbar.w > 0 ? g.roster_r.w - kScrollbarW : g.roster_r.w;
+    Rect roster_body{g.roster_r.x, g.roster_r.y + 22, roster_body_w,
+                     g.roster_r.h - 22};
+    if (roster_body.contains(x, y)) {
         auto buddies = roster_sorted();
         int y0 = g.roster_r.y + 22 - g.roster_scroll;
         int lh = kBuddyRowH;
@@ -1840,12 +1995,38 @@ void mouse_up(int x, int y) {
         return;
     }
     g.drag = DragNone;
+    g.arrow_hot = ScrollArrowHot::None;
+    g.arrow_dir = 0;
     g.pressed_box = 0;
 }
 
 void mouse_move(int x, int y) {
     if (g.drag == DragSize) {
         apply_size_drag();
+        return;
+    }
+    if (g.drag == DragThumbChat) {
+        sbar_thumb_drag(g.chat_sbar, y, g.chat_scroll, g.chat_max, g.chat_page);
+        return;
+    }
+    if (g.drag == DragThumbRoster) {
+        sbar_thumb_drag(g.roster_sbar, y, g.roster_scroll, g.roster_max,
+                        g.roster_page);
+        return;
+    }
+    if (g.drag == DragThumbBrowse) {
+        sbar_thumb_drag(g.browse_sbar, y, g.browse_scroll, g.browse_max,
+                        g.browse_page);
+        return;
+    }
+    if (g.drag == DragThumbProvider) {
+        sbar_thumb_drag(g.provider_sbar, y, g.provider_scroll, g.provider_max,
+                        g.provider_page);
+        return;
+    }
+    if (g.drag == DragThumbRecent) {
+        sbar_thumb_drag(g.recent_sbar, y, g.recent_scroll, g.recent_max,
+                        g.recent_page);
         return;
     }
     if (g.menu_open >= 0) {
@@ -1867,7 +2048,11 @@ void mouse_move(int x, int y) {
         if (need) redraw();
         return;
     }
-    if (g.roster_r.contains(x, y)) {
+    int roster_body_w =
+        g.roster_sbar.w > 0 ? g.roster_r.w - kScrollbarW : g.roster_r.w;
+    Rect roster_body{g.roster_r.x, g.roster_r.y + 22, roster_body_w,
+                     g.roster_r.h - 22};
+    if (roster_body.contains(x, y)) {
         int y0 = g.roster_r.y + 22 - g.roster_scroll;
         int lh = kBuddyRowH;
         int idx = (y - y0) / lh;
@@ -2124,16 +2309,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -24 : 24;
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
-        if (g.dialog == DlgRegister && g.provider_list_r.contains(pt.x, pt.y)) {
-            g.provider_scroll = std::max(0, g.provider_scroll + d);
-        } else if (g.dialog == DlgSignOn && g.recent_list_r.contains(pt.x, pt.y)) {
-            g.recent_scroll = std::max(0, g.recent_scroll + d);
-        } else if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(pt.x, pt.y)) {
-            g.browse_scroll = std::max(0, g.browse_scroll + d);
-        } else if (g.roster_r.contains(pt.x, pt.y))
-            g.roster_scroll = std::max(0, g.roster_scroll + d);
+        auto in_list = [&](const Rect &list, const Rect &sbar) {
+            return list.contains(pt.x, pt.y) ||
+                   (sbar.w > 0 && sbar.contains(pt.x, pt.y));
+        };
+        if (g.dialog == DlgRegister &&
+            in_list(g.provider_list_r, g.provider_sbar)) {
+            g.provider_scroll =
+                std::clamp(g.provider_scroll + d, 0, g.provider_max);
+        } else if (g.dialog == DlgSignOn &&
+                   in_list(g.recent_list_r, g.recent_sbar)) {
+            g.recent_scroll = std::clamp(g.recent_scroll + d, 0, g.recent_max);
+        } else if (g.dialog == DlgBrowseMuc &&
+                   in_list(g.browse_list_r, g.browse_sbar)) {
+            g.browse_scroll = std::clamp(g.browse_scroll + d, 0, g.browse_max);
+        } else if (g.roster_r.contains(pt.x, pt.y) ||
+                   (g.roster_sbar.w > 0 && g.roster_sbar.contains(pt.x, pt.y)))
+            g.roster_scroll = std::clamp(g.roster_scroll + d, 0, g.roster_max);
         else
-            g.chat_scroll = std::max(0, g.chat_scroll + d);
+            g.chat_scroll = std::clamp(g.chat_scroll + d, 0, g.chat_max);
         redraw();
         return 0;
     }
