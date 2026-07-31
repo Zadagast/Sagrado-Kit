@@ -320,18 +320,42 @@ inline std::string stanza_id_by(const std::string &st, const std::string &by) {
     return {};
 }
 
+// True when `p` is `<reaction` / `<reaction>` / `<reaction …`, not `<reactions`.
+inline bool is_reaction_open_tag(const std::string &st, size_t p) {
+    if (st.compare(p, 9, "<reaction") != 0) return false;
+    if (p + 9 >= st.size()) return false;
+    char c = st[p + 9];
+    return c == '>' || c == '/' || c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+// `</reaction>` but not the `</reaction` prefix of `</reactions>`.
+inline size_t find_reaction_close_tag(const std::string &st, size_t from) {
+    size_t p = from;
+    while ((p = st.find("</reaction>", p)) != std::string::npos) {
+        size_t after = p + 11;
+        if (after >= st.size() || st[after] != 's') return p;
+        p = after;
+    }
+    return std::string::npos;
+}
+
 // Parse <reaction>…</reaction> children inside a reactions payload.
+// Must not treat <reactions> / </reactions> as a reaction element (prefix trap).
 inline std::vector<std::string> parse_reaction_emojis(const std::string &st) {
     std::vector<std::string> out;
     size_t p = 0;
     while ((p = st.find("<reaction", p)) != std::string::npos) {
+        if (!is_reaction_open_tag(st, p)) {
+            p += 9;
+            continue;
+        }
         size_t gt = st.find('>', p);
         if (gt == std::string::npos) break;
         if (gt > 0 && st[gt - 1] == '/') {
             p = gt + 1;
             continue;
         }
-        size_t end = st.find("</reaction>", gt);
+        size_t end = find_reaction_close_tag(st, gt);
         if (end == std::string::npos) break;
         std::string emoji = xml_unescape(st.substr(gt + 1, end - gt - 1));
         while (!emoji.empty() &&
@@ -340,7 +364,8 @@ inline std::vector<std::string> parse_reaction_emojis(const std::string &st) {
         while (!emoji.empty() &&
                (emoji.back() == ' ' || emoji.back() == '\n' || emoji.back() == '\r'))
             emoji.pop_back();
-        if (!emoji.empty()) {
+        // Ignore accidental nested markup (bad parse residue).
+        if (!emoji.empty() && emoji.find('<') == std::string::npos) {
             bool dup = false;
             for (const auto &e : out)
                 if (e == emoji) {
