@@ -15,10 +15,13 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Identity strip (you) | Left column above Buddies | Own nick/avatar + `<presence>` |
 | Custom status line | Editable field under your name | `<presence><status>` |
 | Available / Away / Busy / Invisible | Click presence mark (or Buddy menu); marks are fixed green / amber / red / grey (not skin roles) | `<show>` / unavailable |
-| Buddy list | Two-line rows: name + status | Roster IQ + presence |
+| Buddy list | Group headers + two-line rows (name + status); new adds land in **Buddies** | Roster IQ + `<group>` + presence |
+| Authorize / deny add | Gel Accept/Deny sheet (“X wants to add you”); tray balloon if hidden | Inbound `subscribe` / `subscribed` / `unsubscribed` |
+| Remove buddy | Buddy → Remove Buddy… (active 1:1 tab or roster selection) | Roster `subscription='remove'` + unsubscribe |
 | Buddy signed on / off | Status strip alert | Presence stanzas |
 | Avatar / display name | Tile + nick; Buddy → Set Picture… (or click your tile) | [XEP-0054](https://xmpp.org/extensions/xep-0054.html) vCard PHOTO (+ [XEP-0153](https://xmpp.org/extensions/xep-0153.html) update) |
-| IM windows / tabs | Center tab strip + transcript | `<message type='chat'>` |
+| IM windows / tabs | Center tab strip + transcript; **x** closes a tab | `<message type='chat'>` |
+| Typing | “X is typing…” above compose | [XEP-0085](https://xmpp.org/extensions/xep-0085.html) chat states |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
 | Chat rooms | Chat → Browse Chat Rooms… / Join… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
@@ -34,8 +37,10 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    When signed off but a JID is remembered, the strip still shows you (`Signed off`;
    click → Sign On). When online, click your avatar (or Buddy → Set Picture…) to
    change your icon — published as your vCard photo (max ~96 KB).
-2. **Left Buddies** — online first; buddy icon + presence mark + name + status text
-3. **Center** — IM tabs, soft-wrapped transcript (kit `layout_lines`), compose + Send
+2. **Left Buddies** — roster groups (default **Buddies**); online-first within each group;
+   buddy icon + presence mark + name + status text
+3. **Center** — IM tabs (close with **x**), soft-wrapped transcript (kit `layout_lines`),
+   compose + Send; peer typing line when composing
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs (wheel + thumb/arrows)
 5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 6. **Status strip** — “Signed on as …”, presence alerts, upload progress
@@ -119,5 +124,6 @@ Recent account JIDs live in `accounts.txt` beside the exe (written on successful
 - Matrix / Spaces / Discord server rail
 - Browser or OOB web registration as a supported path
 - Saved passwords / keyring
-- OMEMO, Jingle, full MAM browser, Adium HTML message styles
+- OMEMO, Jingle, full MAM browser, message carbons, delivery receipts, Adium HTML message styles
+- Move-to-group UI (groups display from roster; adds use **Buddies**)
 - libpurple multi-protocol

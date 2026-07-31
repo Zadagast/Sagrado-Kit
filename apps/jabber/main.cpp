@@ -33,6 +33,9 @@ constexpr int kTabH = 22;
 constexpr int kComposeH = 56;
 constexpr int kTextPad = 4;
 constexpr int kBuddyRowH = 36;
+constexpr int kGroupHeaderH = 20;
+constexpr UINT_PTR kTypingTimerId = 1;
+constexpr UINT kTypingPauseMs = 2000;
 constexpr int kMaxRecentAccounts = 8; // JIDs only — never passwords
 
 enum : UINT {
@@ -55,7 +58,8 @@ static const char *kFileItems[] = {
     "Sign On...", "Get an Account...", "Sign Off", "-", "Quit",
 };
 static const char *kBuddyItems[] = {
-    "Add Buddy...", "Set Picture...", "-", "Available", "Away", "Busy", "Invisible",
+    "Add Buddy...", "Remove Buddy...", "Set Picture...", "-",
+    "Available", "Away", "Busy", "Invisible",
 };
 static const char *kChatItems[] = {
     "Send File...",
@@ -79,7 +83,7 @@ struct MenuDef {
     int count;
 };
 static const MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 7}, {kChatItems, 7},
+    {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 7},
     {kAppearanceItems, 2}, {kHelpItems, 1},
 };
 
@@ -143,9 +147,18 @@ struct App {
     std::string status = "Signed off — File → Sign On or Get an Account";
     std::vector<Tab> tabs;
     int active_tab = -1;
-    int roster_hot = -1;
+    int roster_hot = -1; // index into roster_rows_
     int roster_scroll = 0; // pixels
     int chat_scroll = 0;   // pixels
+    // Subscribe ask (Accept / Deny) — gel sheet, not MessageBox.
+    bool sub_ask_open = false;
+    std::string sub_ask_jid;
+    Rect sub_accept_r{}, sub_deny_r{};
+    // XEP-0085 outbound composing for the active 1:1 tab.
+    bool typing_sent = false;
+    std::string typing_peer; // bare JID we last sent composing to
+    // Cached peer “is typing…” for the active tab (from client.chat_states).
+    std::string peer_typing;
     int thumb_grab = 0;
     ScrollArrowHot arrow_hot = ScrollArrowHot::None;
     int arrow_dir = 0;
@@ -250,6 +263,9 @@ void tray_update_tip();
 void tray_balloon(const std::string &title, const std::string &body);
 void open_sign_on();
 void redraw();
+void stop_typing_indicator();
+void open_subscribe_ask(const std::string &jid);
+void close_subscribe_ask(bool accepted);
 
 void set_status(const std::string &s) {
     g.status = s;
@@ -317,8 +333,11 @@ void hide_to_tray() {
     g.dialog = DlgNone;
     g.captcha_visible = false;
     g.about_open = false;
+    g.sub_ask_open = false;
+    g.sub_ask_jid.clear();
     g.menu_open = -1;
     g.presence_menu = false;
+    stop_typing_indicator();
     ShowWindow(g.hwnd, SW_HIDE);
     g.in_tray = true;
     g.pressed_box = 0;
@@ -790,17 +809,103 @@ void open_presence_menu() {
     g.menu_item_hot = -1;
 }
 
-std::vector<jabber::Buddy> roster_sorted() {
+struct RosterRow {
+    bool section = false;
+    std::string group; // section label, or buddy's group
+    jabber::Buddy buddy;
+};
+
+std::vector<RosterRow> build_roster_rows() {
     std::vector<jabber::Buddy> v;
-    std::lock_guard<std::mutex> lock(g.client.mu);
-    for (auto &kv : g.client.roster) v.push_back(kv.second);
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        for (auto &kv : g.client.roster) v.push_back(kv.second);
+    }
+    for (auto &b : v)
+        if (b.group.empty()) b.group = "Buddies";
     std::sort(v.begin(), v.end(), [](const jabber::Buddy &a, const jabber::Buddy &b) {
+        if (a.group != b.group) return a.group < b.group;
         bool ao = a.show != jabber::Show::Unavailable;
         bool bo = b.show != jabber::Show::Unavailable;
         if (ao != bo) return ao > bo;
         return a.name < b.name;
     });
-    return v;
+    std::vector<RosterRow> rows;
+    std::string cur;
+    for (auto &b : v) {
+        if (b.group != cur) {
+            cur = b.group;
+            rows.push_back({true, cur, {}});
+        }
+        rows.push_back({false, b.group, b});
+    }
+    return rows;
+}
+
+std::string selected_buddy_jid() {
+    if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
+        !g.tabs[g.active_tab].muc)
+        return g.tabs[g.active_tab].jid;
+    auto rows = build_roster_rows();
+    if (g.roster_hot >= 0 && g.roster_hot < (int)rows.size() &&
+        !rows[g.roster_hot].section)
+        return rows[g.roster_hot].buddy.jid;
+    return {};
+}
+
+void open_subscribe_ask(const std::string &jid) {
+    if (jid.empty()) return;
+    if (g.sub_ask_open && !g.sub_ask_jid.empty() &&
+        !jabber::jid_ieq(g.sub_ask_jid, jid)) {
+        // Keep queue in client; show next when this sheet closes.
+        return;
+    }
+    g.sub_ask_open = true;
+    g.sub_ask_jid = jid;
+    if (g.in_tray || !IsWindowVisible(g.hwnd))
+        tray_balloon("Buddy request",
+                     jabber::jid_node(jid) + " wants to add you");
+}
+
+void close_subscribe_ask(bool accepted) {
+    std::string jid = g.sub_ask_jid;
+    g.sub_ask_open = false;
+    g.sub_ask_jid.clear();
+    g.sub_accept_r = {};
+    g.sub_deny_r = {};
+    if (!jid.empty()) {
+        if (accepted) g.client.authorize_buddy(jid);
+        else g.client.deny_buddy(jid);
+    }
+    // Show next pending ask if any.
+    std::string next;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        if (!g.client.pending_subscribe.empty())
+            next = g.client.pending_subscribe.front();
+    }
+    if (!next.empty()) open_subscribe_ask(next);
+}
+
+void stop_typing_indicator() {
+    if (g.typing_sent && !g.typing_peer.empty())
+        g.client.send_chat_state(g.typing_peer, "active");
+    g.typing_sent = false;
+    g.typing_peer.clear();
+    if (g.hwnd) KillTimer(g.hwnd, kTypingTimerId);
+}
+
+void bump_typing_composing() {
+    if (g.active_tab < 0 || g.active_tab >= (int)g.tabs.size()) return;
+    if (g.tabs[g.active_tab].muc) return;
+    if (g.client.state != jabber::ConnState::Online) return;
+    std::string to = g.tabs[g.active_tab].jid;
+    if (!g.typing_sent || !jabber::jid_ieq(g.typing_peer, to)) {
+        g.client.send_chat_state(to, "composing");
+        g.typing_sent = true;
+        g.typing_peer = to;
+    }
+    if (g.hwnd) SetTimer(g.hwnd, kTypingTimerId, kTypingPauseMs, nullptr);
 }
 
 const char *show_label(jabber::Show s) {
@@ -818,12 +923,14 @@ void open_tab(const std::string &jid, bool muc) {
     for (int i = 0; i < (int)g.tabs.size(); ++i) {
         if (g.tabs[i].jid == bare) {
             if (muc) g.tabs[i].muc = true;
+            if (g.active_tab != i) stop_typing_indicator();
             g.active_tab = i;
             g.chat_scroll = 0;
             redraw();
             return;
         }
     }
+    stop_typing_indicator();
     g.tabs.push_back({bare, muc});
     g.active_tab = (int)g.tabs.size() - 1;
     g.chat_scroll = 0;
@@ -1170,77 +1277,82 @@ void paint() {
                         g.status_field_focus, true);
     }
 
-    // Roster + kit V scrollbar
+    // Roster + kit V scrollbar (group headers + buddy rows)
     cv.fill(g.roster_r, g.ap.c("list.background"));
     cv.vline(g.roster_r.right() - 1, g.identity_r.y, g.roster_r.bottom(),
              g.ap.c("list.separator"));
     cv.text(g.roster_r.x + 8, g.roster_r.y + 4, "Buddies", g.ap.c("primary.label"));
-    auto buddies = roster_sorted();
+    auto rows = build_roster_rows();
     int list_top = g.roster_r.y + 22;
     int list_w = g.roster_sbar.w > 0 ? g.roster_r.w - kScrollbarW : g.roster_r.w;
     Rect roster_body{g.roster_r.x, list_top, list_w, g.roster_r.bottom() - list_top};
-    int content_h = (int)buddies.size() * kBuddyRowH;
+    int content_h = 0;
+    for (const auto &rr : rows)
+        content_h += rr.section ? kGroupHeaderH : kBuddyRowH;
     g.roster_page = std::max(1, roster_body.h);
     g.roster_max = std::max(0, content_h - g.roster_page);
     g.roster_scroll = std::clamp(g.roster_scroll, 0, g.roster_max);
     int y = list_top - g.roster_scroll;
-    int lh = kBuddyRowH;
-    for (int i = 0; i < (int)buddies.size(); ++i) {
-        Rect row{roster_body.x + 2, y, roster_body.w - 4, lh};
+    for (int i = 0; i < (int)rows.size(); ++i) {
+        int rh = rows[i].section ? kGroupHeaderH : kBuddyRowH;
+        Rect row{roster_body.x + 2, y, roster_body.w - 4, rh};
         if (row.bottom() < list_top) {
-            y += lh;
+            y += rh;
             continue;
         }
         if (row.y > g.roster_r.bottom()) break;
-        bool online = buddies[i].show != jabber::Show::Unavailable;
-        if (i == g.roster_hot ||
-            (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddies[i].jid))
-            cv.fill(row, g.ap.c("list.hilite_background"));
-        Color ink = online ? g.ap.c("list.label") : g.ap.c("menu.disable_label");
-        if (i == g.roster_hot ||
-            (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddies[i].jid))
-            ink = g.ap.c("list.hilite_foreground");
         CanvasClip clip(cv, roster_body);
+        if (rows[i].section) {
+            cv.text_elided(row.x + 6, row.y + 3, rows[i].group.c_str(), row.w - 12,
+                           g.ap.c("menu.disable_label"));
+            y += rh;
+            continue;
+        }
+        const auto &buddy = rows[i].buddy;
+        bool online = buddy.show != jabber::Show::Unavailable;
+        bool hilite =
+            i == g.roster_hot ||
+            (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddy.jid);
+        if (hilite) cv.fill(row, g.ap.c("list.hilite_background"));
+        Color ink = online ? g.ap.c("list.label") : g.ap.c("menu.disable_label");
+        if (hilite) ink = g.ap.c("list.hilite_foreground");
         constexpr int kAv = 28;
         Rect av{row.x + 4, row.y + (row.h - kAv) / 2, kAv, kAv};
         std::string initials =
-            buddies[i].name.empty()
-                ? jabber::jid_node(buddies[i].jid).substr(0, 1)
-                : buddies[i].name.substr(0, 1);
-        const SkinImage *aimg =
-            buddies[i].avatar.empty() ? nullptr : &buddies[i].avatar;
+            buddy.name.empty() ? jabber::jid_node(buddy.jid).substr(0, 1)
+                               : buddy.name.substr(0, 1);
+        const SkinImage *aimg = buddy.avatar.empty() ? nullptr : &buddy.avatar;
         paint_avatar_tile(cv, g.ap, av, aimg, initials);
         Rect dot{av.right() - 8, av.bottom() - 8, 8, 8};
-        cv.fill(dot, presence_color(g.ap, buddies[i].show));
+        cv.fill(dot, presence_color(g.ap, buddy.show));
         cv.frame(dot, g.ap.c("list.separator"));
-        std::string lab =
-            buddies[i].name.empty() ? buddies[i].jid : buddies[i].name;
+        std::string lab = buddy.name.empty() ? buddy.jid : buddy.name;
         int text_x = av.right() + 6;
         int text_w = row.right() - 4 - text_x;
         cv.text_elided(text_x, row.y + 4, lab.c_str(), text_w, ink);
-        if (!buddies[i].status.empty()) {
-            Color stink = g.ap.c("menu.disable_label");
-            if (i == g.roster_hot) stink = ink;
+        if (!buddy.status.empty()) {
+            Color stink = hilite ? ink : g.ap.c("menu.disable_label");
             cv.text_elided(text_x, row.y + 4 + cv.line_height(),
-                           buddies[i].status.c_str(), text_w, stink);
+                           buddy.status.c_str(), text_w, stink);
         }
-        y += lh;
+        y += rh;
     }
     paint_v_sbar(cv, g.roster_sbar, g.roster_scroll, g.roster_max, g.roster_page,
                  DragThumbRoster, DragArrowRoster);
 
-    // Tabs
+    // Tabs (label + close ×)
     cv.fill(g.tabs_r, g.ap.c("primary.background"));
     int tx = g.tabs_r.x + 4;
     for (int i = 0; i < (int)g.tabs.size(); ++i) {
         std::string lab = jabber::jid_node(g.tabs[i].jid);
-        int tw = cv.text_width(lab.c_str()) + 16;
+        int tw = cv.text_width(lab.c_str()) + 28;
         Rect tr{tx, g.tabs_r.y + 2, tw, g.tabs_r.h - 3};
         if (i == g.active_tab)
             cv.fill(tr, g.ap.c("list.hilite_background"));
-        cv.text(tr.x + 8, tr.y + 3, lab.c_str(),
-                i == g.active_tab ? g.ap.c("list.hilite_foreground")
-                                  : g.ap.c("primary.label"));
+        Color ink = i == g.active_tab ? g.ap.c("list.hilite_foreground")
+                                      : g.ap.c("primary.label");
+        cv.text(tr.x + 8, tr.y + 3, lab.c_str(), ink);
+        cv.text(tr.right() - 14, tr.y + 3, "x", ink);
         tx += tw + 4;
     }
 
@@ -1356,6 +1468,20 @@ void paint() {
         }
     }
 
+    // Peer typing (XEP-0085) — subtle line above compose, not a card.
+    g.peer_typing.clear();
+    if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
+        !g.tabs[g.active_tab].muc) {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        auto it = g.client.chat_states.find(g.tabs[g.active_tab].jid);
+        if (it != g.client.chat_states.end() && it->second == "composing")
+            g.peer_typing = jabber::jid_node(g.tabs[g.active_tab].jid) + " is typing…";
+    }
+    if (!g.peer_typing.empty() && g.transcript_r.h > 16) {
+        cv.text(g.transcript_r.x + 8, g.compose_r.y - cv.line_height() - 2,
+                g.peer_typing.c_str(), g.ap.c("menu.disable_label"));
+    }
+
     // Compose
     cv.fill(g.compose_r, g.ap.c("primary.background"));
     Rect field{g.compose_r.x + 8, g.compose_r.y + 8,
@@ -1425,6 +1551,32 @@ void paint() {
             "By Zadagast",
             AlertKind::Note, g.focused, g.pressed_box, g.about_ok_pressed);
     }
+
+    if (g.sub_ask_open && !g.sub_ask_jid.empty()) {
+        for (int y = 0; y < cv.height(); ++y)
+            for (int x = 0; x < cv.width(); ++x) {
+                uint32_t p = cv.data()[size_t(y) * cv.width() + x];
+                int r = int((p >> 16) & 255) / 2;
+                int gc = int((p >> 8) & 255) / 2;
+                int b = int(p & 255) / 2;
+                cv.data()[size_t(y) * cv.width() + x] =
+                    (uint32_t(r) << 16) | (uint32_t(gc) << 8) | uint32_t(b);
+            }
+        const int dw = 340, dh = 160;
+        Rect box{(cv.width() - dw) / 2, (cv.height() - dh) / 2, dw, dh};
+        paint_gel(cv, g.ap, box, "Buddy request", true, 0, GelStyle::Dialog);
+        GelLayout gl =
+            gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
+        Rect cl = gl.client;
+        std::string who = jabber::jid_node(g.sub_ask_jid);
+        std::string body = who + " wants to add you.\n\n" + g.sub_ask_jid;
+        paint_wrapped_text(cv, {cl.x + 12, cl.y + 10, cl.w - 24, cl.h - 56},
+                           body.c_str(), g.ap.c("primary.label"));
+        g.sub_deny_r = {cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
+        g.sub_accept_r = {cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
+        paint_button(cv, g.ap, g.sub_deny_r, "Deny", false, false);
+        paint_button(cv, g.ap, g.sub_accept_r, "Accept", false, true);
+    }
 }
 
 void close_menu() {
@@ -1481,14 +1633,23 @@ void run_menu(int menu, int row) {
             g.dialog = DlgAddBuddy;
             g.focus_field = 0;
         } else if (row == 1) {
+            std::string jid = selected_buddy_jid();
+            if (jid.empty()) {
+                set_status("Select a buddy or open their chat first");
+            } else {
+                g.client.remove_buddy(jid);
+                close_tab_jid(jid);
+                set_status("Removed " + jabber::jid_node(jid));
+            }
+        } else if (row == 2) {
             pick_and_set_picture();
-        } else if (row == 3)
+        } else if (row == 4)
             g.client.set_show(jabber::Show::Chat);
-        else if (row == 4)
-            g.client.set_show(jabber::Show::Away);
         else if (row == 5)
-            g.client.set_show(jabber::Show::Dnd);
+            g.client.set_show(jabber::Show::Away);
         else if (row == 6)
+            g.client.set_show(jabber::Show::Dnd);
+        else if (row == 7)
             g.client.set_show(jabber::Show::Unavailable);
     } else if (menu == MenuChat) {
         if (row == 0) {
@@ -1707,6 +1868,28 @@ void mouse_down(int x, int y) {
         redraw();
         return;
     }
+    if (g.sub_ask_open) {
+        if (g.sub_accept_r.contains(x, y)) {
+            close_subscribe_ask(true);
+            redraw();
+            return;
+        }
+        if (g.sub_deny_r.contains(x, y)) {
+            close_subscribe_ask(false);
+            redraw();
+            return;
+        }
+        // Gel X on the sheet = Deny (dismiss without accepting).
+        const int dw = 340, dh = 160;
+        Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
+        GelLayout gl =
+            gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
+        if (gl.close_box.w > 0 && gl.close_box.contains(x, y)) {
+            close_subscribe_ask(false);
+            redraw();
+        }
+        return;
+    }
     if (g.about_open) {
         if (g.about_lay.btn_ok.contains(x, y) ||
             g.about_lay.gel.close_box.contains(x, y)) {
@@ -1884,8 +2067,10 @@ void mouse_down(int x, int y) {
         auto &tab = g.tabs[g.active_tab];
         if (tab.muc)
             g.client.send_muc_message(tab.jid, g.compose);
-        else
+        else {
+            stop_typing_indicator();
             g.client.send_message(tab.jid, g.compose);
+        }
         g.compose.clear();
         redraw();
         return;
@@ -1930,13 +2115,19 @@ void mouse_down(int x, int y) {
     Rect roster_body{g.roster_r.x, g.roster_r.y + 22, roster_body_w,
                      g.roster_r.h - 22};
     if (roster_body.contains(x, y)) {
-        auto buddies = roster_sorted();
+        auto rows = build_roster_rows();
         int y0 = g.roster_r.y + 22 - g.roster_scroll;
-        int lh = kBuddyRowH;
-        int idx = (y - y0) / lh;
-        if (idx >= 0 && idx < (int)buddies.size()) {
-            open_tab(buddies[idx].jid, false);
-            g.roster_hot = idx;
+        int yy = y0;
+        for (int i = 0; i < (int)rows.size(); ++i) {
+            int rh = rows[i].section ? kGroupHeaderH : kBuddyRowH;
+            if (y >= yy && y < yy + rh) {
+                if (!rows[i].section) {
+                    open_tab(rows[i].buddy.jid, false);
+                    g.roster_hot = i;
+                }
+                break;
+            }
+            yy += rh;
         }
         return;
     }
@@ -1945,8 +2136,18 @@ void mouse_down(int x, int y) {
         int tx = g.tabs_r.x + 4;
         for (int i = 0; i < (int)g.tabs.size(); ++i) {
             std::string lab = jabber::jid_node(g.tabs[i].jid);
-            int tw = g.canvas.text_width(lab.c_str()) + 16;
+            int tw = g.canvas.text_width(lab.c_str()) + 28;
             if (x >= tx && x < tx + tw) {
+                // Close hit on the trailing "x" — hides the tab; Leave Room still
+                // does MUC unavailable. 1:1 just closes the transcript tab.
+                if (x >= tx + tw - 16) {
+                    std::string jid = g.tabs[i].jid;
+                    if (!g.tabs[i].muc) stop_typing_indicator();
+                    close_tab_jid(jid);
+                    redraw();
+                    return;
+                }
+                if (g.active_tab != i) stop_typing_indicator();
                 g.active_tab = i;
                 g.chat_scroll = 0;
                 redraw();
@@ -2053,9 +2254,18 @@ void mouse_move(int x, int y) {
     Rect roster_body{g.roster_r.x, g.roster_r.y + 22, roster_body_w,
                      g.roster_r.h - 22};
     if (roster_body.contains(x, y)) {
+        auto rows = build_roster_rows();
         int y0 = g.roster_r.y + 22 - g.roster_scroll;
-        int lh = kBuddyRowH;
-        int idx = (y - y0) / lh;
+        int yy = y0;
+        int idx = -1;
+        for (int i = 0; i < (int)rows.size(); ++i) {
+            int rh = rows[i].section ? kGroupHeaderH : kBuddyRowH;
+            if (y >= yy && y < yy + rh) {
+                idx = rows[i].section ? -1 : i;
+                break;
+            }
+            yy += rh;
+        }
         if (idx != g.roster_hot) {
             g.roster_hot = idx;
             redraw();
@@ -2112,19 +2322,25 @@ void handle_char(WPARAM wp) {
         return;
     }
     if (g.menu_open >= 0) return;
+    if (g.sub_ask_open || g.about_open) return;
     if (wp == 8) {
         if (!g.compose.empty()) g.compose.pop_back();
+        if (g.compose.empty()) stop_typing_indicator();
+        else bump_typing_composing();
     } else if (wp == '\r') {
         if (g.active_tab >= 0 && !g.compose.empty()) {
             auto &tab = g.tabs[g.active_tab];
             if (tab.muc)
                 g.client.send_muc_message(tab.jid, g.compose);
-            else
+            else {
+                stop_typing_indicator();
                 g.client.send_message(tab.jid, g.compose);
+            }
             g.compose.clear();
         }
     } else if (wp >= 32 && wp < 127) {
         g.compose.push_back(char(wp));
+        bump_typing_composing();
     }
     redraw();
 }
@@ -2169,6 +2385,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.focus_field = 2;
             g.field_captcha.clear();
             set_status("Solve the CAPTCHA in this window — no browser needed");
+        }
+        if (e->type == jabber::ClientEvent::SubscribeAsk) {
+            open_subscribe_ask(e->jid);
+            set_status(e->text.empty()
+                           ? jabber::jid_node(e->jid) + " wants to add you"
+                           : e->text);
+        }
+        if (e->type == jabber::ClientEvent::ChatState) {
+            // Peer composing/paused — paint reads client.chat_states.
+            (void)e;
         }
         if (e->type == jabber::ClientEvent::Message) {
             bool muc = false;
@@ -2223,6 +2449,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.status_msg.clear();
             g.status_field_focus = false;
             g.presence_menu = false;
+            g.sub_ask_open = false;
+            g.sub_ask_jid.clear();
+            stop_typing_indicator();
         }
         delete e;
         redraw();
@@ -2337,9 +2566,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CHAR:
         handle_char(wp);
         return 0;
+    case WM_TIMER:
+        if (wp == kTypingTimerId) {
+            if (g.typing_sent && !g.typing_peer.empty()) {
+                g.client.send_chat_state(g.typing_peer, "paused");
+                g.typing_sent = false;
+            }
+            KillTimer(hwnd, kTypingTimerId);
+            return 0;
+        }
+        break;
     case WM_KEYDOWN:
         if (wp == VK_ESCAPE) {
-            if (g.about_open) {
+            if (g.sub_ask_open) {
+                close_subscribe_ask(false);
+                redraw();
+            } else if (g.about_open) {
                 g.about_open = false;
                 redraw();
             } else if (g.dialog != DlgNone) {

@@ -11,6 +11,7 @@
 #include <cctype>
 #include <condition_variable>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -84,7 +85,9 @@ struct ClientEvent {
         MucRooms,
         MucSubject,
         Bookmarks,
-        Identity
+        Identity,
+        SubscribeAsk, // inbound presence type=subscribe
+        ChatState     // XEP-0085; text = composing|paused|active|inactive|gone
     } type = State;
     std::string text;
     std::string jid;
@@ -297,6 +300,8 @@ public:
     std::string jid;
     std::string resource = "SagradoJabber";
     std::map<std::string, Buddy> roster;
+    std::vector<std::string> pending_subscribe; // bare JIDs waiting for Accept/Deny
+    std::map<std::string, std::string> chat_states; // bare → composing|paused|…
     std::map<std::string, std::vector<ChatLine>> chats;
     std::map<std::string, std::vector<std::string>> muc_occupants;
     std::map<std::string, std::string> muc_nicks;     // room → our nick
@@ -340,6 +345,8 @@ public:
             muc_subjects.clear();
             muc_rooms.clear();
             conference_host.clear();
+            pending_subscribe.clear();
+            chat_states.clear();
             own_vcard_xml_.clear();
             own_photo_hash_.clear();
             pending_photo_bytes_.clear();
@@ -388,10 +395,19 @@ public:
         captcha_ready_cv_.notify_all();
     }
 
+    void send_chat_state(const std::string &to, const char *state) {
+        if (!to.empty() && state && *state)
+            queue_send("<message to='" + xml_escape(to) +
+                       "' type='chat'><" + std::string(state) +
+                       " xmlns='http://jabber.org/protocol/chatstates'/></message>");
+    }
+
     void send_message(const std::string &to, const std::string &body) {
         std::string stanza =
             "<message to='" + xml_escape(to) + "' type='chat'><body>" +
-            xml_escape(body) + "</body></message>";
+            xml_escape(body) +
+            "</body><active xmlns='http://jabber.org/protocol/chatstates'/>"
+            "</message>";
         {
             std::lock_guard<std::mutex> lock(mu);
             chats[bare_jid(to)].push_back({jid, body, true, false});
@@ -641,10 +657,64 @@ public:
     }
 
     void add_buddy(const std::string &buddy) {
+        std::string bare = bare_jid(buddy);
+        if (bare.empty()) return;
         queue_send("<iq type='set' id='roster_add'><query xmlns='jabber:iq:roster'>"
                    "<item jid='" +
-                   xml_escape(buddy) + "'/></query></iq>");
-        queue_send("<presence to='" + xml_escape(buddy) + "' type='subscribe'/>");
+                   xml_escape(bare) + "'><group>Buddies</group></item></query></iq>");
+        queue_send("<presence to='" + xml_escape(bare) + "' type='subscribe'/>");
+    }
+
+    // Accept inbound subscribe: allow them + ask back (AIM “authorize”).
+    void authorize_buddy(const std::string &buddy) {
+        std::string bare = bare_jid(buddy);
+        if (bare.empty()) return;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            pending_subscribe.erase(
+                std::remove_if(pending_subscribe.begin(), pending_subscribe.end(),
+                               [&](const std::string &j) { return jid_ieq(j, bare); }),
+                pending_subscribe.end());
+        }
+        queue_send("<presence to='" + xml_escape(bare) + "' type='subscribed'/>");
+        queue_send("<iq type='set' id='roster_auth'><query xmlns='jabber:iq:roster'>"
+                   "<item jid='" +
+                   xml_escape(bare) + "'><group>Buddies</group></item></query></iq>");
+        queue_send("<presence to='" + xml_escape(bare) + "' type='subscribe'/>");
+        emit(make_event(ClientEvent::StatusText,
+                        jid_node(bare) + " can see you — asked them back"));
+    }
+
+    void deny_buddy(const std::string &buddy) {
+        std::string bare = bare_jid(buddy);
+        if (bare.empty()) return;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            pending_subscribe.erase(
+                std::remove_if(pending_subscribe.begin(), pending_subscribe.end(),
+                               [&](const std::string &j) { return jid_ieq(j, bare); }),
+                pending_subscribe.end());
+        }
+        queue_send("<presence to='" + xml_escape(bare) + "' type='unsubscribed'/>");
+        emit(make_event(ClientEvent::StatusText,
+                        "Denied " + jid_node(bare)));
+    }
+
+    void remove_buddy(const std::string &buddy) {
+        std::string bare = bare_jid(buddy);
+        if (bare.empty()) return;
+        queue_send("<iq type='set' id='roster_rm'><query xmlns='jabber:iq:roster'>"
+                   "<item jid='" +
+                   xml_escape(bare) + "' subscription='remove'/></query></iq>");
+        queue_send("<presence to='" + xml_escape(bare) + "' type='unsubscribe'/>");
+        queue_send("<presence to='" + xml_escape(bare) + "' type='unsubscribed'/>");
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            roster.erase(bare);
+            chat_states.erase(bare);
+        }
+        emit(make_event(ClientEvent::Roster));
+        emit(make_event(ClientEvent::StatusText, "Removed " + jid_node(bare)));
     }
 
     bool send_file(const std::string &to, const std::string &path,
@@ -925,6 +995,15 @@ private:
                 std::lock_guard<std::mutex> lock(mu);
                 is_muc = muc_joined.count(key) != 0;
             }
+            // XEP-0085 chat states (1:1 only).
+            const char *cs = nullptr;
+            if (!is_muc) {
+                if (st.find("<composing") != std::string::npos) cs = "composing";
+                else if (st.find("<paused") != std::string::npos) cs = "paused";
+                else if (st.find("<active") != std::string::npos) cs = "active";
+                else if (st.find("<inactive") != std::string::npos) cs = "inactive";
+                else if (st.find("<gone") != std::string::npos) cs = "gone";
+            }
             if (!subject.empty()) {
                 {
                     std::lock_guard<std::mutex> lock(mu);
@@ -934,7 +1013,19 @@ private:
                 }
                 emit(make_event(ClientEvent::MucSubject, subject, key));
             }
-            if (body.empty()) return;
+            if (body.empty()) {
+                if (cs) {
+                    {
+                        std::lock_guard<std::mutex> lock(mu);
+                        if (std::strcmp(cs, "composing") == 0)
+                            chat_states[key] = cs;
+                        else
+                            chat_states.erase(key);
+                    }
+                    emit(make_event(ClientEvent::ChatState, cs, key));
+                }
+                return;
+            }
             // Prefer occupant nick for MUC lines.
             std::string who = is_muc ? jid_resource(from) : from;
             if (who.empty()) who = from;
@@ -951,6 +1042,7 @@ private:
                     }
                 }
                 chats[key].push_back({who, body, false, false, false});
+                chat_states.erase(key);
             }
             emit(make_event(ClientEvent::Message, body, key));
             return;
@@ -958,6 +1050,44 @@ private:
         if (st.find("<presence") == 0) {
             std::string from = attr(st, "from");
             std::string type = attr(st, "type");
+            std::string bare = bare_jid(from);
+            if (type == "subscribe") {
+                bool queued = false;
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    bool have = false;
+                    for (const auto &j : pending_subscribe)
+                        if (jid_ieq(j, bare)) {
+                            have = true;
+                            break;
+                        }
+                    if (!have) {
+                        pending_subscribe.push_back(bare);
+                        queued = true;
+                    }
+                }
+                if (queued) {
+                    emit(make_event(ClientEvent::SubscribeAsk,
+                                    jid_node(bare) + " wants to add you", bare));
+                    emit(make_event(ClientEvent::StatusText,
+                                    jid_node(bare) + " wants to add you"));
+                }
+                return;
+            }
+            if (type == "subscribed") {
+                emit(make_event(ClientEvent::StatusText,
+                                jid_node(bare) + " accepted your request"));
+                return;
+            }
+            if (type == "unsubscribed") {
+                emit(make_event(ClientEvent::StatusText,
+                                jid_node(bare) + " removed or denied you"));
+                return;
+            }
+            if (type == "unsubscribe") {
+                // They stopped watching us — no UI dialog this pass.
+                return;
+            }
             std::string show_s, status_s;
             extract_tag(st, "show", &show_s);
             extract_tag(st, "status", &status_s);
@@ -966,7 +1096,6 @@ private:
             else if (show_s == "away") sh = Show::Away;
             else if (show_s == "xa") sh = Show::Xa;
             else if (show_s == "dnd") sh = Show::Dnd;
-            std::string bare = bare_jid(from);
             bool muc = false;
             {
                 std::lock_guard<std::mutex> lock(mu);
@@ -1282,12 +1411,34 @@ private:
                 size_t end = st.find('>', pos);
                 if (end == std::string::npos) break;
                 std::string tag = st.substr(pos, end - pos + 1);
+                bool self_close =
+                    tag.size() >= 2 && tag[tag.size() - 2] == '/';
                 Buddy b;
                 b.jid = attr(tag, "jid");
                 b.name = attr(tag, "name");
                 if (b.name.empty()) b.name = jid_node(b.jid);
                 std::string sub = attr(tag, "subscription");
+                if (sub == "remove") {
+                    if (!b.jid.empty()) roster.erase(b.jid);
+                    pos = end + 1;
+                    continue;
+                }
                 b.subscription_to = (sub == "both" || sub == "to");
+                if (!self_close) {
+                    size_t close = st.find("</item>", end);
+                    if (close != std::string::npos) {
+                        std::string body = st.substr(end + 1, close - (end + 1));
+                        std::string grp;
+                        if (extract_tag(body, "group", &grp) && !grp.empty())
+                            b.group = xml_unescape(grp);
+                        pos = close + 7;
+                    } else {
+                        pos = end + 1;
+                    }
+                } else {
+                    pos = end + 1;
+                }
+                if (b.group.empty()) b.group = "Buddies";
                 if (!b.jid.empty()) {
                     auto it = roster.find(b.jid);
                     if (it != roster.end()) {
@@ -1299,7 +1450,6 @@ private:
                     if (!b.vcard_fetched) need_vcard.push_back(b.jid);
                     roster[b.jid] = std::move(b);
                 }
-                pos = end + 1;
             }
         }
         for (auto &j : need_vcard) request_vcard(j);
