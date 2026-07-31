@@ -328,9 +328,10 @@ inline int emoji_nav_count() { return 1 + int(emoji_pack().cats.size()); }
 
 // --- Paint -------------------------------------------------------------------
 
-inline EmojiPickerLayout paint_emoji_picker(Canvas &cv, const Appearance &ap,
-                                            Rect box, EmojiPickerState &st,
-                                            bool focused) {
+inline EmojiPickerLayout paint_emoji_picker(
+    Canvas &cv, const Appearance &ap, Rect box, EmojiPickerState &st,
+    bool focused, bool sbar_thumb_hot = false,
+    ScrollArrowHot sbar_arrow_hot = ScrollArrowHot::None) {
     EmojiPickerLayout lay;
     lay.gel = box;
     lay.gel_lay =
@@ -352,13 +353,18 @@ inline EmojiPickerLayout paint_emoji_picker(Canvas &cv, const Appearance &ap,
     int body_bottom = cl.bottom() - footer_h;
     lay.btn_cancel = {cl.right() - pad - 70, cl.bottom() - 32, 70, 26};
 
-    // Nav rail
+    // Nav rail — row height fits all categories without overlap; icons scale down.
     lay.nav = {cl.x + pad, y, kEmojiNavW, body_bottom - y};
     cv.fill(lay.nav, ap.c("list.background"));
     cv.frame(lay.nav, ap.c("primary.frame"));
 
     int nav_n = emoji_nav_count();
+    int avail_h = std::max(0, lay.nav.h - 4);
     int row_h = lh + 8;
+    if (nav_n > 0)
+        row_h = std::min(row_h, std::max(lh + 2, avail_h / nav_n));
+    if (row_h < lh + 2) row_h = lh + 2;
+    int icon_px = std::min(20, std::max(12, row_h - 4));
     lay.nav_rows.clear();
     {
         CanvasClip clip(cv, lay.nav);
@@ -374,19 +380,16 @@ inline EmojiPickerLayout paint_emoji_picker(Canvas &cv, const Appearance &ap,
                 cv.fill(row, ap.c("primary.light"));
             Color ink = sel ? ap.c("list.hilite_foreground")
                             : label_ink(ap, ap.c("list.label"));
-            // Category icon (small)
             int tx = row.x + 6;
-            if (i == 0) {
-                // Recents — no pack icon required
-            } else {
+            if (i > 0) {
                 int ci = i - 1;
                 if (ci >= 0 && ci < int(emoji_pack().cats.size())) {
                     const SkinImage *ic = emoji_icon_by_seq(
                         emoji_pack().cats[size_t(ci)].icon_seq, kEmojiGlyph32);
                     if (ic && !ic->empty()) {
-                        int iy = row.y + (row.h - ic->h) / 2;
-                        cv.blit_image(*ic, tx, iy);
-                        tx += ic->w + 6;
+                        int iy = row.y + (row.h - icon_px) / 2;
+                        cv.blit_image_scaled(*ic, tx, iy, icon_px, icon_px);
+                        tx += icon_px + 6;
                     }
                 }
             }
@@ -470,7 +473,7 @@ inline EmojiPickerLayout paint_emoji_picker(Canvas &cv, const Appearance &ap,
 
     if (lay.sbar.w > 0)
         paint_scrollbar(cv, ap, lay.sbar, st.scroll, lay.grid_max, lay.grid_page,
-                        false, false, false, ScrollArrowHot::None);
+                        sbar_thumb_hot, false, false, sbar_arrow_hot);
 
     if (filtered.empty()) {
         const char *empty = st.category == 0 && st.query.empty()

@@ -189,6 +189,22 @@ struct Canvas {
                 blend_put(dx + x, dy + y, img.at(x, y));
     }
 
+    // Nearest-neighbour scale with src-over (nav marks, etc.).
+    void blit_image_scaled(const SkinImage &img, int dx, int dy, int dw, int dh) {
+        if (img.empty() || dw <= 0 || dh <= 0) return;
+        if (dw == img.w && dh == img.h) {
+            blit_image(img, dx, dy);
+            return;
+        }
+        for (int y = 0; y < dh; ++y) {
+            int sy = y * img.h / dh;
+            for (int x = 0; x < dw; ++x) {
+                int sx = x * img.w / dw;
+                blend_put(dx + x, dy + y, img.at(sx, sy));
+            }
+        }
+    }
+
     // Place a symbol (popup arrow, etc.) — same as blit_image.
     void place(const SkinImage &img, int dx, int dy) { blit_image(img, dx, dy); }
 

@@ -105,11 +105,13 @@ enum Drag : int {
     DragThumbBrowse,
     DragThumbProvider,
     DragThumbRecent,
+    DragThumbEmoji,
     DragArrowChat,
     DragArrowRoster,
     DragArrowBrowse,
     DragArrowProvider,
     DragArrowRecent,
+    DragArrowEmoji,
 };
 enum SizeEdge : int {
     SizeLeft = 1,
@@ -1336,7 +1338,11 @@ void paint_dialog(Canvas &cv) {
         sagrado::emoji_picker_size(&dw, &dh);
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     if (g.dialog == DlgReact) {
-        g.emoji_lay = sagrado::paint_emoji_picker(cv, g.ap, box, g.emoji_st, true);
+        bool thumb = (g.drag == DragThumbEmoji);
+        ScrollArrowHot ah =
+            (g.drag == DragArrowEmoji) ? g.arrow_hot : ScrollArrowHot::None;
+        g.emoji_lay = sagrado::paint_emoji_picker(cv, g.ap, box, g.emoji_st,
+                                                  true, thumb, ah);
         return;
     }
     const char *title = "Sign On";
@@ -2434,15 +2440,12 @@ void mouse_down(int x, int y) {
                 redraw();
                 return;
             }
-            if (hit.kind == HK::Sbar && g.emoji_lay.grid_max > 0) {
-                // Page jump toward click in track.
-                Rect bar = g.emoji_lay.sbar;
-                float t = float(y - bar.y) / float(std::max(1, bar.h));
-                g.emoji_st.scroll =
-                    std::clamp(int(t * g.emoji_lay.grid_max), 0, g.emoji_lay.grid_max);
-                redraw();
+            if (hit.kind == HK::Sbar &&
+                sbar_mouse_down(g.emoji_lay.sbar, x, y, g.emoji_st.scroll,
+                                g.emoji_lay.grid_max, g.emoji_lay.grid_page,
+                                sagrado::kEmojiCell, DragThumbEmoji,
+                                DragArrowEmoji))
                 return;
-            }
             return;
         }
         GelLayout gl =
@@ -2839,6 +2842,11 @@ void mouse_move(int x, int y) {
                         g.recent_page);
         return;
     }
+    if (g.drag == DragThumbEmoji) {
+        sbar_thumb_drag(g.emoji_lay.sbar, y, g.emoji_st.scroll,
+                        g.emoji_lay.grid_max, g.emoji_lay.grid_page);
+        return;
+    }
     if (g.dialog == DlgReact) {
         auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
         int hot_cell = -1, hot_nav = -1;
@@ -3205,20 +3213,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g.drag == DragSize || g.drag == DragThumbChat ||
             g.drag == DragThumbRoster || g.drag == DragThumbBrowse ||
             g.drag == DragThumbProvider || g.drag == DragThumbRecent ||
+            g.drag == DragThumbEmoji || g.dialog == DlgReact ||
             (wp & MK_LBUTTON) || g.menu_open >= 0)
             mouse_move(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEWHEEL: {
-        int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -24 : 24;
+        int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -sagrado::kEmojiCell
+                                               : sagrado::kEmojiCell;
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
         auto in_list = [&](const Rect &list, const Rect &sbar) {
             return list.contains(pt.x, pt.y) ||
                    (sbar.w > 0 && sbar.contains(pt.x, pt.y));
         };
-        if (g.dialog == DlgReact &&
-            (g.emoji_lay.grid.contains(pt.x, pt.y) ||
-             (g.emoji_lay.sbar.w > 0 && g.emoji_lay.sbar.contains(pt.x, pt.y)))) {
+        if (g.dialog == DlgReact && g.emoji_lay.gel.contains(pt.x, pt.y) &&
+            g.emoji_lay.grid_max > 0) {
             g.emoji_st.scroll =
                 std::clamp(g.emoji_st.scroll + d, 0, g.emoji_lay.grid_max);
         } else if (g.dialog == DlgRegister &&
