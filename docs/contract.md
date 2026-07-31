@@ -146,7 +146,7 @@ Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 14. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
 15. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
 16. **Alert / About** — gel dialog with optional alert icon + wrapped body + default OK (`paint_alert`). Apps own the HWND; never `MessageBox` / OS widgets for in-app chrome.
-17. **Emoji Picker** — Ubuntu Characters–style IA in Sagrado gel (`paint_emoji_picker`): title **Emoji**, search field (`paint_field`), left rail (Recently Used + categories), 6-column scrollable grid of 48px glyphs, Cancel + gel X. Category labels are ASCII (kit font is Latin-1 — emoji are **not** drawn as Unicode text glyphs); on-screen tiles come from an **on-disk Noto Color Emoji pack** (`build/emoji_pack/` via `make emoji-pack` — `catalog.txt` + `png48/` / `png32/`), blit with src-over alpha. Apps call `emoji_pack_set_root` then host the dialog; `emoji_icon` / `paint_emoji_marks` blit sharp PNGs into other surfaces. Wire/apps may still use UTF-8 emoji. No new Hap art slots — compose from existing kit paint.
+17. **Emoji Picker** — Ubuntu Characters–style IA (`paint_emoji_picker_client` into a Gel Host client): search field, left rail (Recently Used + categories), 6-column scrollable grid of 48px glyphs, Cancel. Category labels are ASCII (kit font is Latin-1 — emoji are **not** drawn as Unicode text glyphs); on-screen tiles come from an **on-disk Noto Color Emoji pack** (`build/emoji_pack/` via `make emoji-pack`). Host with `gel_host_create` (`GelHostKind::Floating`) so the window moves and resizes; `paint_emoji_picker` remains for kit preview self-framing. `emoji_icon` / `paint_emoji_marks` blit PNGs into other surfaces. No new Hap art slots.
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.
@@ -194,9 +194,17 @@ layout (`paint_text_view` / `layout_lines`), not `text_elided`.
 | Pattern tiles clip | Tiled art (`menu.background_pattern`, primary pattern, …) must clip to the destination — never spill past the control. |
 | Soft-complete is fill-only | Never invent open-menu plates over a colour-path theme; ignore unusable `popup_frame` stubs. |
 | Alerts are gel | About / notes use `paint_alert`, not `MessageBox`. |
+| Floating windows use Gel Host | Find, About, Emoji, and future tools are real HWNDs via `engine/gel_host.h` — title drag (move), grip/edges (resize when `Floating`), min size, close. Do not re-copy `WM_NCHITTEST` / size-drag per sheet. |
+| Overlays are modal-only | Fixed overlays that dim the parent are only for true blocking sheets (e.g. Sign On). New interactive tools must not ship as non-movable overlays. |
+
+### New app checklist
+
+1. Main gel shell (borderless `WS_POPUP`, shared `Appearance`, kit `paint_*`).
+2. Every extra window → `gel_host_create` (`Dialog` or `Floating`); paint client contents only.
+3. Pass `make smoke` (load skin → paint gel → no clip spill).
 
 New apps land under `apps/` and pass `make smoke` patterns established by
-TextEdit / Jabber (load skin → paint gel → no clip spill).
+TextEdit / Jabber.
 
 ## Label ink (do not invent a private palette)
 
@@ -230,3 +238,12 @@ white on light pills — the kit remaps that.
 Each Win32 gel is its own `Canvas` + blit. Skin lives in one shared
 `Appearance`; faces must be applied per canvas. Incomplete skins remain valid —
 art → colour → stock still fills every hole.
+
+**Gel Host** (`engine/gel_host.h`) is the foundation for secondary windows:
+
+| Kind | Chrome | Move | Resize |
+|---|---|---|---|
+| `GelHostKind::Dialog` | close + hatch + min (`GelStyle::Dialog`) | title → `HTCAPTION` | no |
+| `GelHostKind::Floating` | + grip (`GelStyle::Floating`) | title → `HTCAPTION` | grip + edges |
+
+Apps supply paint/input callbacks; the host owns Ooze Gel chrome behavior.

@@ -389,17 +389,24 @@ inline int emoji_nav_count() { return 1 + int(emoji_pack().cats.size()); }
 
 // --- Paint -------------------------------------------------------------------
 
-inline EmojiPickerLayout paint_emoji_picker(
-    Canvas &cv, const Appearance &ap, Rect box, EmojiPickerState &st,
-    bool focused, bool sbar_thumb_hot = false,
-    ScrollArrowHot sbar_arrow_hot = ScrollArrowHot::None) {
+// Client contents only (search / rail / grid / Cancel). Host paints Ooze Gel.
+// `host_gel` supplies close-box geometry for hit-testing when non-null.
+inline EmojiPickerLayout paint_emoji_picker_client(
+    Canvas &cv, const Appearance &ap, Rect client, EmojiPickerState &st,
+    bool /*focused*/, bool sbar_thumb_hot = false,
+    ScrollArrowHot sbar_arrow_hot = ScrollArrowHot::None,
+    const GelLayout *host_gel = nullptr) {
     EmojiPickerLayout lay;
-    lay.gel = box;
-    lay.gel_lay =
-        gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &ap, focused);
-    paint_gel(cv, ap, box, "Emoji", focused, 0, GelStyle::Dialog);
+    if (host_gel) {
+        lay.gel_lay = *host_gel;
+        lay.gel = host_gel->window;
+    } else {
+        lay.gel = client;
+        lay.gel_lay.client = client;
+        lay.gel_lay.window = client;
+    }
 
-    Rect cl = lay.gel_lay.client;
+    Rect cl = client;
     const int pad = 10;
     const int lh = cv.line_height();
     int y = cl.y + pad;
@@ -546,6 +553,20 @@ inline EmojiPickerLayout paint_emoji_picker(
 
     paint_button(cv, ap, lay.btn_cancel, "Cancel", false, false);
     return lay;
+}
+
+// Self-framed picker (kit preview / overlay). Prefer Gel Host + client paint
+// for real floating windows.
+inline EmojiPickerLayout paint_emoji_picker(
+    Canvas &cv, const Appearance &ap, Rect box, EmojiPickerState &st,
+    bool focused, bool sbar_thumb_hot = false,
+    ScrollArrowHot sbar_arrow_hot = ScrollArrowHot::None) {
+    GelLayout gel =
+        gel_layout(box.x, box.y, box.w, box.h, GelStyle::Floating, &ap, focused);
+    paint_gel(cv, ap, box, "Emoji", focused, 0, GelStyle::Floating);
+    if (gel.grip.w > 0) paint_gel_grip(cv, ap, gel.grip, focused);
+    return paint_emoji_picker_client(cv, ap, gel.client, st, focused,
+                                     sbar_thumb_hot, sbar_arrow_hot, &gel);
 }
 
 inline EmojiPickerHit emoji_picker_hit(const EmojiPickerLayout &lay, int x,

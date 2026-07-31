@@ -27,7 +27,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Recent history | Opening an empty 1:1 chat loads the last ~40 lines | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
-| React to a line | Click a transcript line → Chat → React… (full kit emoji picker) | [XEP-0444](https://xmpp.org/extensions/xep-0444.html) Message Reactions |
+| React to a line | Click a transcript line → Chat → React… (floating gel emoji window) | [XEP-0444](https://xmpp.org/extensions/xep-0444.html) Message Reactions |
 | Chat rooms | Chat → Browse… / Join… / Set Topic… / Invite… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
 | Room invite | Gel Accept/Decline sheet (Join prefills room + nick); tray balloon if hidden | Mediated `muc#user` `<invite>` |
 | Room bookmarks + autojoin | Chat → Bookmark Room / Autojoin Room | [XEP-0402](https://xmpp.org/extensions/xep-0402.html) PEP + [XEP-0048](https://xmpp.org/extensions/xep-0048.html) fallback |
@@ -86,13 +86,13 @@ AIM-shaped chat rooms in gel — not a Discord server rail. Wire is XEP-0045.
   server supports it, with Private XML `storage:bookmarks` as fallback. Autojoin
   rooms rejoin on Sign On.
 
-**React…** — select a line (or the last reactable one), then Chat → React… opens the
-kit **Emoji Picker** (search, categories, recently used, scrollable grid). Choosing a
-cell sends the reaction (XEP-0444); pick the same emoji again to clear yours. Recent
-picks persist in `emoji_recent.txt` beside the exe. The Noto pack must sit at
-`emoji_pack/` next to `SagradoJabber.exe` (`make` copies it). Rooms use the MUC
-`stanza-id` when the server provides one. Interoperable with Gajim/Conversations on
-the wire.
+**React…** — select a line (or the last reactable one), then Chat → React… opens a
+**floating gel window** (`gel_host` + emoji picker client): drag the title to move,
+grip/edges to resize, search/categories/recents/grid as usual. Choosing a cell sends
+the reaction (XEP-0444); pick the same emoji again to clear yours. Recent picks
+persist in `emoji_recent.txt` beside the exe. The Noto pack must sit at
+`emoji_pack/` next to `SagradoJabber.exe`. Rooms use the MUC `stanza-id` when the
+server provides one. Interoperable with Gajim/Conversations on the wire.
 
 Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, or MAM history
 browser in this pass.

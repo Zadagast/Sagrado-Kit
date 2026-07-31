@@ -271,8 +271,9 @@ struct GelLayout {
 };
 
 enum class GelStyle {
-    Main,   // TextEdit main: close + Window Menu + max + min + grip
-    Dialog, // Find-style: close + Window Menu + min (no max/grip)
+    Main,     // TextEdit main: close + Window Menu + max + min + grip
+    Dialog,   // Find-style: close + Window Menu + min (no max/grip)
+    Floating, // Tool window: close + Window Menu + min + grip (no max)
 };
 
 // Title-button place from art Positions (Sagrado chrome_layout).
@@ -405,6 +406,9 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         // Dialogs still get the Window Menu rectangle (Haxial); no max / grip.
         lay.max_box = {0, 0, 0, 0};
         lay.grip = {0, 0, 0, 0};
+    } else if (style == GelStyle::Floating) {
+        // Floating tools: move + resize grip; no maximize.
+        lay.max_box = {0, 0, 0, 0};
     }
     return lay;
 }

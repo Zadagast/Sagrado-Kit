@@ -17,6 +17,7 @@
 
 #include "../../engine/appearance.h"
 #include "../../engine/emoji_picker.h"
+#include "../../engine/gel_host.h"
 #include "../../engine/hfnt.h"
 #include "xmpp/client.h"
 
@@ -105,13 +106,11 @@ enum Drag : int {
     DragThumbBrowse,
     DragThumbProvider,
     DragThumbRecent,
-    DragThumbEmoji,
     DragArrowChat,
     DragArrowRoster,
     DragArrowBrowse,
     DragArrowProvider,
     DragArrowRecent,
-    DragArrowEmoji,
 };
 enum SizeEdge : int {
     SizeLeft = 1,
@@ -129,7 +128,6 @@ enum DialogKind {
     DlgBrowseMuc,
     DlgSetTopic,
     DlgInvite,
-    DlgReact,
 };
 
 struct Tab {
@@ -201,10 +199,14 @@ struct App {
     std::string field_topic;
     std::string field_invite;
     std::string field_invite_reason;
-    std::string react_target_id; // XEP-0444 id for DlgReact
+    std::string react_target_id; // XEP-0444 target for floating emoji host
     sagrado::EmojiPickerState emoji_st{};
     sagrado::EmojiPickerLayout emoji_lay{};
+    sagrado::GelHost emoji_host{};
     bool emoji_pack_ok = false;
+    bool emoji_sbar_thumb = false;
+    bool emoji_sbar_arrow = false;
+    ScrollArrowHot emoji_sbar_ah = ScrollArrowHot::None;
     int focus_field = 0; // which dialog field
     bool captcha_visible = false;
     bool about_open = false;
@@ -1212,6 +1214,181 @@ bool pick_react_target(std::string *react_id_out) {
     return false;
 }
 
+void close_emoji_host() {
+    g.react_target_id.clear();
+    g.emoji_sbar_thumb = false;
+    g.emoji_sbar_arrow = false;
+    g.emoji_sbar_ah = ScrollArrowHot::None;
+    g.emoji_st.hot_cell = -1;
+    g.emoji_st.hot_nav = -1;
+    g.emoji_st.pressed_cell = -1;
+    sagrado::gel_host_show(g.emoji_host, false);
+    if (g.hwnd) SetForegroundWindow(g.hwnd);
+}
+
+void emoji_host_paint(sagrado::GelHost &host, Canvas &cv, const Appearance &ap,
+                      Rect client, void *) {
+    g.emoji_lay = sagrado::paint_emoji_picker_client(
+        cv, ap, client, g.emoji_st, host.focused, g.emoji_sbar_thumb,
+        g.emoji_sbar_ah, &host.gel);
+}
+
+void emoji_host_close(sagrado::GelHost &, void *) { close_emoji_host(); }
+
+bool emoji_host_input(sagrado::GelHost &host, UINT msg, WPARAM wp, LPARAM lp,
+                      void *) {
+    using HK = sagrado::EmojiPickerHitKind;
+    if (msg == WM_MOUSEMOVE) {
+        if (g.emoji_sbar_thumb && g.emoji_lay.grid_max > 0) {
+            int y = GET_Y_LPARAM(lp);
+            ScrollLayout sl =
+                scroll_layout(g.ap, g.emoji_lay.sbar, g.emoji_st.scroll,
+                              g.emoji_lay.grid_max, g.emoji_lay.grid_page);
+            int track = sl.track.h - sl.thumb.h;
+            if (track > 0) {
+                int ty = y - g.thumb_grab - sl.track.y;
+                g.emoji_st.scroll =
+                    std::clamp(ty * g.emoji_lay.grid_max / track, 0,
+                               g.emoji_lay.grid_max);
+            }
+            return true;
+        }
+        int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+        auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
+        int hot_cell = -1, hot_nav = -1;
+        if (hit.kind == HK::Cell) hot_cell = hit.index;
+        if (hit.kind == HK::Nav) hot_nav = hit.index;
+        if (hot_cell != g.emoji_st.hot_cell || hot_nav != g.emoji_st.hot_nav) {
+            g.emoji_st.hot_cell = hot_cell;
+            g.emoji_st.hot_nav = hot_nav;
+            return true;
+        }
+        return false;
+    }
+    if (msg == WM_LBUTTONUP) {
+        g.emoji_sbar_thumb = false;
+        g.emoji_sbar_arrow = false;
+        g.emoji_sbar_ah = ScrollArrowHot::None;
+        g.emoji_st.pressed_cell = -1;
+        return true;
+    }
+    if (msg == WM_LBUTTONDOWN) {
+        int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+        auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
+        if (hit.kind == HK::Cancel || hit.kind == HK::Close) {
+            close_emoji_host();
+            return true;
+        }
+        if (hit.kind == HK::Search) {
+            g.emoji_st.search_focus = true;
+            return true;
+        }
+        if (hit.kind == HK::Nav && hit.index >= 0) {
+            g.emoji_st.category = hit.index;
+            g.emoji_st.query.clear();
+            g.emoji_st.scroll = 0;
+            g.emoji_st.search_focus = false;
+            return true;
+        }
+        if (hit.kind == HK::Cell && hit.index >= 0) {
+            std::string wire =
+                sagrado::emoji_picker_wire_at(g.emoji_st, hit.index);
+            if (!wire.empty() && g.active_tab >= 0 &&
+                !g.react_target_id.empty()) {
+                bool muc = g.tabs[g.active_tab].muc;
+                g.client.send_reaction(g.tabs[g.active_tab].jid,
+                                       g.react_target_id, wire, muc);
+                sagrado::emoji_recent_push(g.emoji_st, wire);
+                save_emoji_recent();
+                set_status("Reacted");
+            }
+            close_emoji_host();
+            redraw();
+            return true;
+        }
+        if (hit.kind == HK::Sbar && g.emoji_lay.grid_max > 0) {
+            ScrollLayout sl =
+                scroll_layout(g.ap, g.emoji_lay.sbar, g.emoji_st.scroll,
+                              g.emoji_lay.grid_max, g.emoji_lay.grid_page);
+            ScrollArrowHot ah = scroll_arrow_hit(sl, x, y);
+            if (ah != ScrollArrowHot::None) {
+                g.emoji_sbar_arrow = true;
+                g.emoji_sbar_ah = ah;
+                int dir = scroll_arrow_dir(ah);
+                g.emoji_st.scroll =
+                    std::clamp(g.emoji_st.scroll + dir * sagrado::kEmojiCell, 0,
+                               g.emoji_lay.grid_max);
+                return true;
+            }
+            if (sl.thumb.contains(x, y)) {
+                g.emoji_sbar_thumb = true;
+                g.thumb_grab = y - sl.thumb.y;
+                return true;
+            }
+            if (y < sl.thumb.y)
+                g.emoji_st.scroll =
+                    std::max(0, g.emoji_st.scroll - g.emoji_lay.grid_page);
+            else
+                g.emoji_st.scroll =
+                    std::min(g.emoji_lay.grid_max,
+                             g.emoji_st.scroll + g.emoji_lay.grid_page);
+            return true;
+        }
+        (void)host;
+        return false;
+    }
+    if (msg == WM_MOUSEWHEEL) {
+        if (g.emoji_lay.grid_max <= 0) return false;
+        int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -sagrado::kEmojiCell
+                                               : sagrado::kEmojiCell;
+        g.emoji_st.scroll =
+            std::clamp(g.emoji_st.scroll + d, 0, g.emoji_lay.grid_max);
+        return true;
+    }
+    if (msg == WM_CHAR) {
+        if (wp == 27) {
+            close_emoji_host();
+            return true;
+        }
+        if (wp == 8) {
+            if (!g.emoji_st.query.empty()) g.emoji_st.query.pop_back();
+            g.emoji_st.scroll = 0;
+            return true;
+        }
+        if (wp >= 32 && wp < 127 && g.emoji_st.query.size() < 40) {
+            g.emoji_st.query.push_back(char(wp));
+            g.emoji_st.scroll = 0;
+            g.emoji_st.search_focus = true;
+            return true;
+        }
+        return false;
+    }
+    if (msg == WM_KEYDOWN && wp == VK_ESCAPE) {
+        close_emoji_host();
+        return true;
+    }
+    return false;
+}
+
+void ensure_emoji_host() {
+    if (g.emoji_host.hwnd) return;
+    int dw = 520, dh = 400;
+    sagrado::emoji_picker_size(&dw, &dh);
+    sagrado::GelHostDesc desc{};
+    desc.title = "Emoji";
+    desc.class_name = "SagradoJabberEmoji";
+    desc.kind = sagrado::GelHostKind::Floating;
+    desc.w = dw;
+    desc.h = dh;
+    desc.min_w = 400;
+    desc.min_h = 280;
+    desc.owner = g.hwnd;
+    desc.ap = &g.ap;
+    if (!sagrado::gel_host_create(g.emoji_host, g.hinst, desc)) return;
+    sagrado::gel_host_set_handlers(g.emoji_host, emoji_host_paint,
+                                   emoji_host_input, nullptr, emoji_host_close);
+}
+
 void open_react_dialog() {
     if (g.active_tab < 0) {
         set_status("Open a chat first");
@@ -1225,8 +1402,12 @@ void open_react_dialog() {
         set_status("No message to react to yet");
         return;
     }
-    g.dialog = DlgReact;
-    g.focus_field = 0;
+    ensure_emoji_host();
+    if (!g.emoji_host.hwnd) {
+        set_status("Could not open emoji window");
+        g.react_target_id.clear();
+        return;
+    }
     g.emoji_st.query.clear();
     g.emoji_st.category = 0;
     g.emoji_st.scroll = 0;
@@ -1234,6 +1415,10 @@ void open_react_dialog() {
     g.emoji_st.pressed_cell = -1;
     g.emoji_st.hot_nav = -1;
     g.emoji_st.search_focus = true;
+    g.emoji_sbar_thumb = false;
+    g.emoji_sbar_arrow = false;
+    g.emoji_sbar_ah = ScrollArrowHot::None;
+    sagrado::gel_host_show(g.emoji_host, true);
 }
 
 bool tab_is_muc(int idx) {
@@ -1334,17 +1519,8 @@ void paint_dialog(Canvas &cv) {
     else if (g.dialog == DlgSetTopic) {
         dw = 360;
         dh = 180;
-    } else if (g.dialog == DlgReact)
-        sagrado::emoji_picker_size(&dw, &dh);
-    Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
-    if (g.dialog == DlgReact) {
-        bool thumb = (g.drag == DragThumbEmoji);
-        ScrollArrowHot ah =
-            (g.drag == DragArrowEmoji) ? g.arrow_hot : ScrollArrowHot::None;
-        g.emoji_lay = sagrado::paint_emoji_picker(cv, g.ap, box, g.emoji_st,
-                                                  true, thumb, ah);
-        return;
     }
+    Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
     if (g.dialog == DlgRegister) title = "Get an Account";
     if (g.dialog == DlgAddBuddy) title = "Add Buddy";
@@ -2170,11 +2346,16 @@ void run_menu(int menu, int row) {
             ofn.nMaxFile = MAX_PATH;
             ofn.lpstrFilter = "Appearances (*.hap;*.sap)\0*.hap;*.sap\0";
             ofn.Flags = OFN_FILEMUSTEXIST;
-            if (GetOpenFileNameA(&ofn) && g.ap.load(file))
+            if (GetOpenFileNameA(&ofn) && g.ap.load(file)) {
                 set_status(std::string("Appearance: ") + g.ap.skin.meta.name);
+                if (sagrado::gel_host_is_visible(g.emoji_host))
+                    sagrado::gel_host_invalidate(g.emoji_host);
+            }
         } else if (row == 1) {
             g.ap.set_skin(stock_skin());
             set_status("Stock appearance");
+            if (sagrado::gel_host_is_visible(g.emoji_host))
+                sagrado::gel_host_invalidate(g.emoji_host);
         }
     } else if (menu == MenuHelp) {
         g.about_open = true;
@@ -2398,56 +2579,7 @@ void mouse_down(int x, int y) {
             dw = 360;
             dh = 180;
         }
-        if (g.dialog == DlgReact) sagrado::emoji_picker_size(&dw, &dh);
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
-        if (g.dialog == DlgReact) {
-            // Layout was painted last frame into g.emoji_lay.
-            auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
-            using HK = sagrado::EmojiPickerHitKind;
-            if (hit.kind == HK::Close || hit.kind == HK::Cancel) {
-                g.dialog = DlgNone;
-                g.react_target_id.clear();
-                redraw();
-                return;
-            }
-            if (hit.kind == HK::Search) {
-                g.emoji_st.search_focus = true;
-                redraw();
-                return;
-            }
-            if (hit.kind == HK::Nav && hit.index >= 0) {
-                g.emoji_st.category = hit.index;
-                g.emoji_st.query.clear();
-                g.emoji_st.scroll = 0;
-                g.emoji_st.search_focus = false;
-                redraw();
-                return;
-            }
-            if (hit.kind == HK::Cell && hit.index >= 0) {
-                std::string wire =
-                    sagrado::emoji_picker_wire_at(g.emoji_st, hit.index);
-                if (!wire.empty() && g.active_tab >= 0 &&
-                    !g.react_target_id.empty()) {
-                    bool muc = g.tabs[g.active_tab].muc;
-                    g.client.send_reaction(g.tabs[g.active_tab].jid,
-                                           g.react_target_id, wire, muc);
-                    sagrado::emoji_recent_push(g.emoji_st, wire);
-                    save_emoji_recent();
-                    set_status("Reacted");
-                }
-                g.dialog = DlgNone;
-                g.react_target_id.clear();
-                redraw();
-                return;
-            }
-            if (hit.kind == HK::Sbar &&
-                sbar_mouse_down(g.emoji_lay.sbar, x, y, g.emoji_st.scroll,
-                                g.emoji_lay.grid_max, g.emoji_lay.grid_page,
-                                sagrado::kEmojiCell, DragThumbEmoji,
-                                DragArrowEmoji))
-                return;
-            return;
-        }
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
         Rect cl = gl.client;
@@ -2457,7 +2589,6 @@ void mouse_down(int x, int y) {
             g.dialog = DlgNone;
             g.captcha_visible = false;
             g.field_room_pass.clear();
-            g.react_target_id.clear();
             maybe_show_next_muc_invite();
             redraw();
             return;
@@ -2842,23 +2973,6 @@ void mouse_move(int x, int y) {
                         g.recent_page);
         return;
     }
-    if (g.drag == DragThumbEmoji) {
-        sbar_thumb_drag(g.emoji_lay.sbar, y, g.emoji_st.scroll,
-                        g.emoji_lay.grid_max, g.emoji_lay.grid_page);
-        return;
-    }
-    if (g.dialog == DlgReact) {
-        auto hit = sagrado::emoji_picker_hit(g.emoji_lay, x, y);
-        int hot_cell = -1, hot_nav = -1;
-        if (hit.kind == sagrado::EmojiPickerHitKind::Cell) hot_cell = hit.index;
-        if (hit.kind == sagrado::EmojiPickerHitKind::Nav) hot_nav = hit.index;
-        if (hot_cell != g.emoji_st.hot_cell || hot_nav != g.emoji_st.hot_nav) {
-            g.emoji_st.hot_cell = hot_cell;
-            g.emoji_st.hot_nav = hot_nav;
-            redraw();
-        }
-        return;
-    }
     if (g.menu_open >= 0) {
         int row = menu_hit_row(g.popup, x, y);
         int title = menu_bar_hit(x, y);
@@ -2937,24 +3051,6 @@ void handle_char(WPARAM wp) {
         else if (g.dialog == DlgSetTopic) f = &g.field_topic;
         else if (g.dialog == DlgInvite)
             f = g.focus_field == 0 ? &g.field_invite : &g.field_invite_reason;
-        else if (g.dialog == DlgReact) {
-            if (wp == 27) {
-                g.dialog = DlgNone;
-                g.react_target_id.clear();
-                redraw();
-                return;
-            }
-            if (wp == 8) {
-                if (!g.emoji_st.query.empty()) g.emoji_st.query.pop_back();
-                g.emoji_st.scroll = 0;
-            } else if (wp >= 32 && wp < 127 && g.emoji_st.query.size() < 40) {
-                g.emoji_st.query.push_back(char(wp));
-                g.emoji_st.scroll = 0;
-                g.emoji_st.search_focus = true;
-            }
-            redraw();
-            return;
-        }
         if (wp == 8) {
             if (!f->empty()) f->pop_back();
         } else if (wp == '\r') {
@@ -3213,25 +3309,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g.drag == DragSize || g.drag == DragThumbChat ||
             g.drag == DragThumbRoster || g.drag == DragThumbBrowse ||
             g.drag == DragThumbProvider || g.drag == DragThumbRecent ||
-            g.drag == DragThumbEmoji || g.dialog == DlgReact ||
             (wp & MK_LBUTTON) || g.menu_open >= 0)
             mouse_move(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEWHEEL: {
-        int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -sagrado::kEmojiCell
-                                               : sagrado::kEmojiCell;
+        int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -24 : 24;
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
         auto in_list = [&](const Rect &list, const Rect &sbar) {
             return list.contains(pt.x, pt.y) ||
                    (sbar.w > 0 && sbar.contains(pt.x, pt.y));
         };
-        if (g.dialog == DlgReact && g.emoji_lay.gel.contains(pt.x, pt.y) &&
-            g.emoji_lay.grid_max > 0) {
-            g.emoji_st.scroll =
-                std::clamp(g.emoji_st.scroll + d, 0, g.emoji_lay.grid_max);
-        } else if (g.dialog == DlgRegister &&
-                   in_list(g.provider_list_r, g.provider_sbar)) {
+        if (g.dialog == DlgRegister &&
+            in_list(g.provider_list_r, g.provider_sbar)) {
             g.provider_scroll =
                 std::clamp(g.provider_scroll + d, 0, g.provider_max);
         } else if (g.dialog == DlgSignOn &&
@@ -3269,7 +3359,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
     case WM_KEYDOWN:
         if (wp == VK_ESCAPE) {
-            if (g.sub_ask_open) {
+            if (sagrado::gel_host_is_visible(g.emoji_host)) {
+                close_emoji_host();
+            } else if (g.sub_ask_open) {
                 close_subscribe_ask(false);
                 redraw();
             } else if (g.muc_invite_open) {
@@ -3283,7 +3375,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 g.dialog = DlgNone;
                 g.captcha_visible = false;
                 g.field_room_pass.clear();
-                g.react_target_id.clear();
                 maybe_show_next_muc_invite();
                 redraw();
             } else if (g.menu_open >= 0) {
@@ -3326,6 +3417,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_DESTROY:
         tray_remove();
+        sagrado::gel_host_destroy(g.emoji_host);
         g.client.disconnect();
         PostQuitMessage(0);
         return 0;
