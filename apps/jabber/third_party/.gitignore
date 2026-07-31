@@ -1,0 +1,17 @@
+# Keep only the vendored sources we build against; leave clone leftovers untracked.
+libomemo-c/.gitattributes
+libomemo-c/.github/
+libomemo-c/.gitignore
+libomemo-c/CMakeLists.txt
+libomemo-c/CMakeModules/
+libomemo-c/meson.build
+libomemo-c/meson_options.txt
+libomemo-c/protobuf/
+libomemo-c/subprojects/
+libomemo-c/tests/
+protobuf-c/*
+!protobuf-c/LICENSE
+!protobuf-c/protobuf-c/
+protobuf-c/protobuf-c/*
+!protobuf-c/protobuf-c/protobuf-c.c
+!protobuf-c/protobuf-c/protobuf-c.h
