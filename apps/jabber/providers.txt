@@ -1,0 +1,10 @@
+# Curated XMPP providers for Sagrado Jabber Get an Account (IBR + HTTP Upload).
+# Format: host | display name | signup notes
+# Re-verify IBR before each release — public policy changes often.
+#
+# Prosody dogfood (local demos — enable allow_registration):
+localhost|Local Prosody|Enable allow_registration in Prosody
+#
+# Public examples (may require CAPTCHA; prefer hosts that keep IBR on):
+# conversations.im|Conversations|May present CAPTCHA form
+# jabber.fr|jabber.fr|Check current registration policy

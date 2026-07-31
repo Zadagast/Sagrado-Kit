@@ -13,7 +13,9 @@ theirs.
   (`editor/`), like AppearanceEdit. **Load** accepts `.hap` or `.sap`.
 - **Sagrado Apps standard** — Sagrado TextEdit (`apps/textedit/`) is the
   reference consumer: Haxial-shaped gel, kit-only paint, clip-don’t-hide,
-  live `.hap`/`.sap`. Later apps copy that bar ([`docs/contract.md`](docs/contract.md)).
+  live `.hap`/`.sap`. Sagrado Jabber (`apps/jabber/`) is the second consumer
+  (AIM-era IM on XMPP). Later apps copy that bar
+  ([`docs/contract.md`](docs/contract.md), [`docs/jabber.md`](docs/jabber.md)).
 
 Incomplete skins are valid. Token resolution: **art → colour → stock**.
 
@@ -26,6 +28,7 @@ format/          schema + stock / example skins
 engine/          Appearance Engine (load, resolve, paint)
 editor/          Win32 SagradoKit Editor
 apps/textedit/   Sagrado TextEdit — reference Sagrado App
+apps/jabber/     Sagrado Jabber — “You’ve Got Mail” IM (XMPP)
 docs/            contract + lessons from HAP
 ```
 
@@ -52,9 +55,10 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 # Debian/Ubuntu
 sudo apt install g++-mingw-w64-i686 wine
 
-make               # → Editor + TextEdit + example skins
+make               # → Editor + TextEdit + Jabber + example skins
 make run           # kit editor under Wine (prefers `wine64`, then `wine`)
 make run-textedit  # Sagrado TextEdit under Wine
+make run-jabber    # Sagrado Jabber under Wine
 # without Wine: copy the .exe to Windows, or install WineHQ and use wine64
 ```
 
@@ -108,6 +112,17 @@ later apps follow).
 ```sh
 make run-textedit
 # or: build/SagradoTextEdit.exe [file.txt] [--font face.fnt]
+```
+
+## Sagrado Jabber
+
+AIM-era “You’ve Got Mail” IM on Jabber/XMPP — buddy list, presence, tabbed
+chats, HTTP Upload files, and **Get an Account** with CAPTCHA painted in gel
+(no browser signup). See [`docs/jabber.md`](docs/jabber.md).
+
+```sh
+make run-jabber
+# or: build/SagradoJabber.exe
 ```
 
 Shortcuts: `Ctrl+N/O/S`, `Ctrl+F` find, `Ctrl+H` replace, `Ctrl+G` find again,

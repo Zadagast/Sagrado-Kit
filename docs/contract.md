@@ -175,6 +175,8 @@ Same shape as Haxial and Sagrado `native/`. No OS widgets, no CSS, no web host.
 
 **Sagrado TextEdit** (`apps/textedit/`) is the reference consumer — the bar for
 every later Sagrado app. Copy its shape; do not invent a parallel UI stack.
+**Sagrado Jabber** (`apps/jabber/`) is the second consumer (IM + XMPP); see
+[`docs/jabber.md`](jabber.md).
 
 | Rule | Meaning |
 |---|---|
@@ -189,7 +191,7 @@ every later Sagrado app. Copy its shape; do not invent a parallel UI stack.
 | Alerts are gel | About / notes use `paint_alert`, not `MessageBox`. |
 
 New apps land under `apps/` and pass `make smoke` patterns established by
-TextEdit (load skin → paint gel → no clip spill).
+TextEdit / Jabber (load skin → paint gel → no clip spill).
 
 ## Label ink (do not invent a private palette)
 
