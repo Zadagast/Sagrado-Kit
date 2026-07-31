@@ -13,12 +13,14 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <queue>
 #include <set>
 #include <sstream>
 #include <thread>
+#include <vector>
 
 namespace jabber {
 
@@ -478,8 +480,11 @@ public:
             chat_states.clear();
             reaction_sets.clear();
             mam_available = false;
-            mam_fetched_.clear();
+            mam_initial_done_.clear();
+            mam_complete_.clear();
+            mam_oldest_.clear();
             mam_pending_.clear();
+            mam_inflight_.clear();
             own_vcard_xml_.clear();
             own_photo_hash_.clear();
             pending_photo_bytes_.clear();
@@ -535,8 +540,8 @@ public:
                        " xmlns='http://jabber.org/protocol/chatstates'/></message>");
     }
 
-    // XEP-0313 — last `max` messages with this bare JID (1:1). No-op if already
-    // fetched this session or local transcript already has lines.
+    // XEP-0313 — cold open: last `max` messages with this bare JID (1:1).
+    // Results are buffered then merged on IQ fin (dedupe with any live lines).
     void request_mam_history(const std::string &with_bare, int max = 40) {
         std::string with = bare_jid(with_bare);
         if (with.empty() || state != ConnState::Online) return;
@@ -545,27 +550,47 @@ public:
         {
             std::lock_guard<std::mutex> lock(mu);
             if (!mam_available) return;
-            if (mam_fetched_.count(with)) return;
-            if (!chats[with].empty()) {
-                mam_fetched_.insert(with);
-                return;
-            }
-            mam_fetched_.insert(with);
+            if (mam_initial_done_.count(with) || mam_inflight_.count(with)) return;
+            mam_initial_done_.insert(with);
+            mam_inflight_.insert(with);
         }
-        std::string id = "mam" + std::to_string(iq_seq_++);
+        send_mam_query(with, max, /*older=*/false, {});
+    }
+
+    // XEP-0313 — page older than the current window (RSM before=oldest archive id).
+    void request_mam_older(const std::string &with_bare, int max = 40) {
+        std::string with = bare_jid(with_bare);
+        if (with.empty() || state != ConnState::Online) return;
+        if (max < 1) max = 1;
+        if (max > 100) max = 100;
+        std::string before;
         {
             std::lock_guard<std::mutex> lock(mu);
-            mam_pending_[id] = with;
+            if (!mam_available) return;
+            if (mam_complete_.count(with) && mam_complete_[with]) return;
+            if (mam_inflight_.count(with)) return;
+            auto it = mam_oldest_.find(with);
+            if (it == mam_oldest_.end() || it->second.empty()) return;
+            before = it->second;
+            mam_inflight_.insert(with);
         }
-        // Empty <before/> = last page (most recent N).
-        queue_send(
-            "<iq type='set' id='" + id + "'><query xmlns='urn:xmpp:mam:2' queryid='" +
-            id + "'><x xmlns='jabber:x:data' type='submit'>"
-            "<field var='FORM_TYPE' type='hidden'><value>urn:xmpp:mam:2</value></field>"
-            "<field var='with'><value>" + xml_escape(with) +
-            "</value></field></x>"
-            "<set xmlns='http://jabber.org/protocol/rsm'><max>" +
-            std::to_string(max) + "</max><before/></set></query></iq>");
+        send_mam_query(with, max, /*older=*/true, before);
+    }
+
+    bool mam_can_load_older(const std::string &with_bare) {
+        std::string with = bare_jid(with_bare);
+        std::lock_guard<std::mutex> lock(mu);
+        if (!mam_available || with.empty()) return false;
+        if (mam_inflight_.count(with)) return false;
+        if (mam_complete_.count(with) && mam_complete_[with]) return false;
+        auto it = mam_oldest_.find(with);
+        return it != mam_oldest_.end() && !it->second.empty();
+    }
+
+    bool mam_loading(const std::string &with_bare) {
+        std::string with = bare_jid(with_bare);
+        std::lock_guard<std::mutex> lock(mu);
+        return mam_inflight_.count(with) != 0;
     }
 
     void send_message(const std::string &to, const std::string &body) {
@@ -1035,8 +1060,18 @@ private:
     std::string stream_buf_;
     int iq_seq_ = 1;
     int msg_seq_ = 1;
-    std::set<std::string> mam_fetched_;              // bare JIDs queried this session
-    std::map<std::string, std::string> mam_pending_; // iq id → with bare
+    struct MamPending {
+        std::string with;
+        bool older = false;
+        std::vector<ChatLine> buf;
+        std::string first_uid; // archive result ids (RSM)
+        std::string last_uid;
+    };
+    std::set<std::string> mam_initial_done_;           // cold-open attempted
+    std::map<std::string, bool> mam_complete_;         // with → fin complete
+    std::map<std::string, std::string> mam_oldest_;    // with → RSM <first> (page up)
+    std::map<std::string, MamPending> mam_pending_;    // query/iq id → batch
+    std::set<std::string> mam_inflight_;               // with currently querying
     std::string pending_upload_to_, pending_upload_mime_, pending_upload_name_;
     std::vector<uint8_t> pending_upload_data_;
     std::set<std::string> vcard_inflight_;
@@ -1308,6 +1343,149 @@ private:
         size_t end = st.find("</message>", m);
         if (end == std::string::npos) return {};
         return st.substr(m, end + 10 - m);
+    }
+
+    static std::string extract_open_tag(const std::string &st, const char *name) {
+        std::string open = std::string("<") + name;
+        size_t a = st.find(open);
+        if (a == std::string::npos) return {};
+        size_t gt = st.find('>', a);
+        if (gt == std::string::npos) return {};
+        return st.substr(a, gt - a + 1);
+    }
+
+    static bool mam_attr_true(const std::string &tag, const char *key) {
+        std::string v = attr(tag, key);
+        return v == "true" || v == "1";
+    }
+
+    void send_mam_query(const std::string &with, int max, bool older,
+                        const std::string &before_uid) {
+        std::string id = "mam" + std::to_string(iq_seq_++);
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            MamPending pend;
+            pend.with = with;
+            pend.older = older;
+            mam_pending_[id] = std::move(pend);
+        }
+        std::string before_xml =
+            before_uid.empty() ? "<before/>"
+                               : ("<before>" + xml_escape(before_uid) + "</before>");
+        queue_send(
+            "<iq type='set' id='" + id + "'><query xmlns='urn:xmpp:mam:2' queryid='" +
+            id + "'><x xmlns='jabber:x:data' type='submit'>"
+            "<field var='FORM_TYPE' type='hidden'><value>urn:xmpp:mam:2</value></field>"
+            "<field var='with'><value>" + xml_escape(with) +
+            "</value></field></x>"
+            "<set xmlns='http://jabber.org/protocol/rsm'><max>" +
+            std::to_string(max) + "</max>" + before_xml + "</set></query></iq>");
+    }
+
+    // Build a transcript line from an archive/carbon message. Returns false if
+    // there is no body line to store (reactions applied separately).
+    bool make_archive_chat_line(const std::string &st, bool sent_carbon,
+                                std::string *key_out, ChatLine *ln_out) {
+        if (!key_out || !ln_out) return false;
+        std::string from = attr(st, "from");
+        std::string to = attr(st, "to");
+        std::string type = attr(st, "type");
+        std::string mid = attr(st, "id");
+        std::string body;
+        extract_tag(st, "body", &body);
+        body = xml_unescape(body);
+        if (body.empty()) return false;
+
+        bool mine = sent_carbon;
+        std::string key;
+        if (!sent_carbon) {
+            mine = jid_ieq(bare_jid(from), bare_jid(jid));
+            key = mine ? bare_jid(to) : bare_jid(from);
+        } else {
+            key = bare_jid(to);
+        }
+        if (key.empty()) key = bare_jid(from);
+        bool is_muc = (type == "groupchat");
+        if (!is_muc) {
+            std::lock_guard<std::mutex> lock(mu);
+            is_muc = muc_joined.count(key) != 0;
+        }
+        std::string who =
+            is_muc ? (mine ? jid_node(jid) : jid_resource(from)) : (mine ? jid : from);
+        if (who.empty()) who = from;
+        std::string react_id = is_muc ? stanza_id_by(st, key) : mid;
+        if (react_id.empty() && !is_muc) react_id = mid;
+
+        ChatLine ln;
+        ln.from = who;
+        ln.body = body;
+        ln.mine = mine;
+        ln.id = mid;
+        ln.react_id = react_id;
+        *key_out = key;
+        *ln_out = std::move(ln);
+        return true;
+    }
+
+    // Merge a finished MAM page into chats[with]. Returns lines prepended (older)
+    // or 0 for initial merge. Caller holds mu.
+    int finish_mam_locked(MamPending &pend, bool complete, const std::string &rsm_first,
+                          const std::string &rsm_last) {
+        const std::string &with = pend.with;
+        std::string oldest = !rsm_first.empty() ? rsm_first : pend.first_uid;
+        if (!oldest.empty()) mam_oldest_[with] = oldest;
+        else if (!rsm_last.empty())
+            mam_oldest_[with] = rsm_last;
+        mam_complete_[with] = complete || pend.buf.empty();
+        mam_inflight_.erase(with);
+
+        if (pend.older) {
+            if (pend.buf.empty()) {
+                mam_complete_[with] = true;
+                return 0;
+            }
+            auto &lines = chats[with];
+            std::set<std::string> have;
+            for (const auto &ln : lines)
+                if (!ln.id.empty()) have.insert(ln.id);
+            std::vector<ChatLine> add;
+            add.reserve(pend.buf.size());
+            for (auto &ln : pend.buf) {
+                if (!ln.id.empty() && have.count(ln.id)) continue;
+                if (!ln.id.empty()) have.insert(ln.id);
+                add.push_back(std::move(ln));
+            }
+            if (add.empty()) {
+                mam_complete_[with] = true;
+                return 0;
+            }
+            int n = (int)add.size();
+            lines.insert(lines.begin(), std::make_move_iterator(add.begin()),
+                         std::make_move_iterator(add.end()));
+            for (auto &ln : lines)
+                if (!ln.react_id.empty())
+                    refresh_line_reactions_locked(with, ln.react_id);
+            return n;
+        }
+
+        // Initial (last page): buffer is the authoritative recent window.
+        auto &lines = chats[with];
+        std::set<std::string> in_buf;
+        for (const auto &ln : pend.buf)
+            if (!ln.id.empty()) in_buf.insert(ln.id);
+        std::vector<ChatLine> live_extra;
+        for (auto &ln : lines) {
+            if (!ln.id.empty() && in_buf.count(ln.id)) continue;
+            live_extra.push_back(std::move(ln));
+        }
+        const bool buf_was_empty = pend.buf.empty();
+        lines = std::move(pend.buf);
+        for (auto &ln : live_extra) lines.push_back(std::move(ln));
+        for (auto &ln : lines)
+            if (!ln.react_id.empty())
+                refresh_line_reactions_locked(with, ln.react_id);
+        if (buf_was_empty && lines.empty()) mam_complete_[with] = true;
+        return 0;
     }
 
     void mark_delivered(const std::string &peer, const std::string &rid) {
@@ -1598,13 +1776,45 @@ private:
 
     void handle_stanza(const std::string &st) {
         if (st.find("<message") == 0) {
-            // XEP-0313 MAM result — unwrap, quiet ingest.
+            // XEP-0313 MAM result — unwrap into the pending query buffer.
             if (st.find("urn:xmpp:mam:2") != std::string::npos &&
                 st.find("<result") != std::string::npos) {
+                std::string rtag = extract_open_tag(st, "result");
+                std::string qid = attr(rtag, "queryid");
+                std::string archive_id = attr(rtag, "id");
                 std::string inner = extract_forwarded_message(st);
-                if (!inner.empty()) {
-                    bool sent = jid_ieq(bare_jid(attr(inner, "from")), bare_jid(jid));
-                    ingest_message(inner, sent, true);
+                if (inner.empty()) return;
+                bool sent = jid_ieq(bare_jid(attr(inner, "from")), bare_jid(jid));
+                if (try_apply_reactions(inner, sent)) return;
+                std::string key;
+                ChatLine ln;
+                if (!make_archive_chat_line(inner, sent, &key, &ln)) return;
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    MamPending *pend = nullptr;
+                    if (!qid.empty()) {
+                        auto it = mam_pending_.find(qid);
+                        if (it != mam_pending_.end()) pend = &it->second;
+                    }
+                    if (!pend) {
+                        // Orphan result — quiet append (legacy path).
+                        if (!ln.id.empty()) {
+                            for (const auto &e : chats[key])
+                                if (!e.id.empty() && e.id == ln.id) return;
+                        }
+                        chats[key].push_back(std::move(ln));
+                        return;
+                    }
+                    if (pend->first_uid.empty() && !archive_id.empty())
+                        pend->first_uid = archive_id;
+                    if (!archive_id.empty()) pend->last_uid = archive_id;
+                    // Prefer the query's with= peer as the chat key.
+                    if (!pend->with.empty()) key = pend->with;
+                    if (!ln.id.empty()) {
+                        for (const auto &e : pend->buf)
+                            if (!e.id.empty() && e.id == ln.id) return;
+                    }
+                    pend->buf.push_back(std::move(ln));
                 }
                 return;
             }
@@ -1750,23 +1960,43 @@ private:
                 st.find("storage:bookmarks") != std::string::npos)
                 handle_bookmarks_iq(st);
             if (iq_id.rfind("mam", 0) == 0) {
-                std::string with;
+                MamPending pend;
+                bool have = false;
                 {
                     std::lock_guard<std::mutex> lock(mu);
                     auto it = mam_pending_.find(iq_id);
                     if (it != mam_pending_.end()) {
-                        with = it->second;
+                        pend = std::move(it->second);
                         mam_pending_.erase(it);
+                        have = true;
                     }
                 }
                 if (iq_type == "error") {
                     {
                         std::lock_guard<std::mutex> lock(mu);
-                        mam_available = false;
-                        if (!with.empty()) mam_fetched_.erase(with);
+                        if (have) {
+                            mam_inflight_.erase(pend.with);
+                            if (!pend.older) mam_initial_done_.erase(pend.with);
+                        }
                     }
-                } else if (!with.empty()) {
-                    emit(make_event(ClientEvent::History, {}, with));
+                    if (have && !pend.with.empty())
+                        emit(make_event(ClientEvent::History, "error", pend.with));
+                } else if (have && !pend.with.empty()) {
+                    bool complete = false;
+                    std::string fin_tag = extract_open_tag(st, "fin");
+                    if (!fin_tag.empty()) complete = mam_attr_true(fin_tag, "complete");
+                    std::string rsm_first, rsm_last;
+                    extract_tag(st, "first", &rsm_first);
+                    extract_tag(st, "last", &rsm_last);
+                    int prepended = 0;
+                    {
+                        std::lock_guard<std::mutex> lock(mu);
+                        prepended =
+                            finish_mam_locked(pend, complete, rsm_first, rsm_last);
+                    }
+                    std::string kind =
+                        pend.older ? ("older:" + std::to_string(prepended)) : "initial";
+                    emit(make_event(ClientEvent::History, kind, pend.with));
                 }
             }
             if (st.find("jabber:iq:register") != std::string::npos) {
