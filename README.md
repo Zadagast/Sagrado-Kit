@@ -84,6 +84,8 @@ i686-w64-mingw32-g++ -std=c++17 -O2 -Iengine editor/main.cpp \
 Run `build/SagradoKitEditor.exe`. Example skins are in
 `build/format/skins/` (and `format/skins/` in the repo). The editor prefers
 `milk-redux/milk-redux.sap` when that folder was copied by `make skins`.
+Also ships `ooze/ooze.sap` — aluminum gel, pinstripes, and traffic lights
+(`python3 research/build_ooze_theme.py` to regenerate).
 
 ## Editor
 
