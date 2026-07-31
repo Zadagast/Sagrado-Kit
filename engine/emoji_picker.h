@@ -227,6 +227,19 @@ inline EmojiCache &emoji_cache() {
     return c;
 }
 
+inline bool emoji_load_png(const std::string &seq, int px, SkinImage &img) {
+    if (seq.empty() || emoji_pack().root.empty()) return false;
+    // Wine/Win32 accept '/'; try '\\' too for stubborn hosts.
+    const char *a = (px == kEmojiGlyph32) ? "/png32/" : "/png48/";
+    const char *b = (px == kEmojiGlyph32) ? "\\png32\\" : "\\png48\\";
+    const char *folders[] = {a, b};
+    for (const char *folder : folders) {
+        std::string path = emoji_pack().root + folder + seq + ".png";
+        if (decode_png_file(path.c_str(), img) && !img.empty()) return true;
+    }
+    return false;
+}
+
 inline const SkinImage *emoji_icon_by_seq(const std::string &seq, int px) {
     if (seq.empty() || !emoji_pack().loaded) return nullptr;
     if (px != kEmojiGlyph32 && px != kEmojiGlyph48) px = kEmojiGlyph48;
@@ -238,10 +251,8 @@ inline const SkinImage *emoji_icon_by_seq(const std::string &seq, int px) {
         c.order.push_front(key);
         return &it->second;
     }
-    std::string folder = px == kEmojiGlyph32 ? "/png32/" : "/png48/";
-    std::string path = emoji_pack().root + folder + seq + ".png";
     SkinImage img;
-    if (!decode_png_file(path.c_str(), img) || img.empty()) return nullptr;
+    if (!emoji_load_png(seq, px, img)) return nullptr;
     while (int(c.images.size()) >= kEmojiCacheMax && !c.order.empty()) {
         c.images.erase(c.order.back());
         c.order.pop_back();
@@ -252,14 +263,64 @@ inline const SkinImage *emoji_icon_by_seq(const std::string &seq, int px) {
     return &slot;
 }
 
+inline std::string emoji_strip_vs16(const std::string &wire) {
+    // Drop U+FE0F bytes EF B8 8F so ❤ and ❤️ share a lookup.
+    std::string o;
+    o.reserve(wire.size());
+    for (size_t i = 0; i < wire.size();) {
+        if (i + 2 < wire.size() && (unsigned char)wire[i] == 0xEF &&
+            (unsigned char)wire[i + 1] == 0xB8 &&
+            (unsigned char)wire[i + 2] == 0x8F) {
+            i += 3;
+            continue;
+        }
+        o.push_back(wire[i++]);
+    }
+    return o;
+}
+
+inline const SkinImage *emoji_icon_resolve(const std::string &wire, int px) {
+    if (wire.empty() || !emoji_pack().loaded) return nullptr;
+    auto by_wire = [&](const std::string &w) -> const SkinImage * {
+        auto it = emoji_pack().wire_to_index.find(w);
+        if (it != emoji_pack().wire_to_index.end())
+            return emoji_icon_by_seq(
+                emoji_pack().entries[size_t(it->second)].seq, px);
+        std::string seq = utf8_to_seq(w);
+        if (const SkinImage *ic = emoji_icon_by_seq(seq, px)) return ic;
+        // Retry without emoji-presentation VS16 in the seq filename.
+        std::string stripped;
+        for (size_t i = 0; i < seq.size();) {
+            if (seq.compare(i, 5, "-FE0F") == 0) {
+                i += 5;
+                continue;
+            }
+            if (seq.compare(i, 4, "FE0F") == 0 && (i == 0 || seq[i - 1] == '-')) {
+                i += 4;
+                if (i < seq.size() && seq[i] == '-') ++i;
+                continue;
+            }
+            stripped.push_back(seq[i++]);
+        }
+        while (!stripped.empty() && stripped.back() == '-') stripped.pop_back();
+        if (!stripped.empty() && stripped != seq)
+            return emoji_icon_by_seq(stripped, px);
+        return nullptr;
+    };
+    if (const SkinImage *ic = by_wire(wire)) return ic;
+    std::string stripped = emoji_strip_vs16(wire);
+    if (stripped != wire)
+        if (const SkinImage *ic = by_wire(stripped)) return ic;
+    return nullptr;
+}
+
 inline const SkinImage *emoji_icon(const std::string &wire, int px) {
     if (wire.empty()) return nullptr;
-    auto it = emoji_pack().wire_to_index.find(wire);
-    if (it == emoji_pack().wire_to_index.end()) {
-        // Try seq form
-        return emoji_icon_by_seq(utf8_to_seq(wire), px);
-    }
-    return emoji_icon_by_seq(emoji_pack().entries[size_t(it->second)].seq, px);
+    if (px != kEmojiGlyph32 && px != kEmojiGlyph48) px = kEmojiGlyph48;
+    if (const SkinImage *ic = emoji_icon_resolve(wire, px)) return ic;
+    // Transcript marks ask for 32; pack/deploy may only have 48 (or vice versa).
+    int other = (px == kEmojiGlyph32) ? kEmojiGlyph48 : kEmojiGlyph32;
+    return emoji_icon_resolve(wire, other);
 }
 
 inline void emoji_recent_push(EmojiPickerState &st, const std::string &wire) {
@@ -532,23 +593,27 @@ inline std::string emoji_picker_wire_at(const EmojiPickerState &st, int filt_i) 
 }
 
 // Transcript reaction marks — returns pixels advanced in y.
+// mine_flags: when true and count==1, still just the glyph (no ASCII "*").
 inline int paint_emoji_marks(Canvas &cv, int x, int y, int row_h,
                              const std::vector<std::pair<std::string, int>> &marks,
                              Color count_ink, const std::vector<bool> &mine_flags) {
     if (marks.empty()) return 0;
     const int lh = cv.line_height();
+    const int draw = kEmojiGlyph32;
     int px = x;
     for (size_t i = 0; i < marks.size(); ++i) {
-        const SkinImage *ic = emoji_icon(marks[i].first, kEmojiGlyph32);
+        (void)mine_flags;
+        const SkinImage *ic = emoji_icon(marks[i].first, draw);
         if (ic && !ic->empty()) {
-            int iy = y + (row_h - ic->h) / 2;
-            cv.blit_image(*ic, px, iy);
-            px += ic->w + 2;
+            int iy = y + (row_h - draw) / 2;
+            if (ic->w == draw && ic->h == draw)
+                cv.blit_image(*ic, px, iy);
+            else
+                cv.blit_image_scaled(*ic, px, iy, draw, draw);
+            px += draw + 2;
         }
-        if (marks[i].second > 1 || (i < mine_flags.size() && mine_flags[i])) {
-            std::string tail;
-            if (marks[i].second > 1) tail += std::to_string(marks[i].second);
-            if (i < mine_flags.size() && mine_flags[i]) tail += "*";
+        if (marks[i].second > 1) {
+            std::string tail = std::to_string(marks[i].second);
             cv.text(px, y + (row_h - lh) / 2, tail.c_str(), count_ink);
             px += cv.text_width(tail.c_str()) + 8;
         } else {
