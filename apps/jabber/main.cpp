@@ -119,7 +119,7 @@ struct App {
     DialogKind dialog = DlgNone;
     std::string field_jid;
     std::string field_pass;
-    std::string field_server = "localhost";
+    std::string field_server = "yax.im";
     std::string field_user;
     std::string field_captcha;
     std::string field_buddy;
@@ -131,6 +131,16 @@ struct App {
     bool about_ok_pressed = false;
     AlertLayout about_lay{};
     int file_progress = -1; // -1 hidden, else 0..100
+
+    struct Provider {
+        std::string host;
+        std::string name;
+        std::string notes;
+    };
+    std::vector<Provider> providers;
+    int provider_sel = 0;
+    int provider_scroll = 0;
+    Rect provider_list_r{};
 
     std::string compose;
     Rect roster_r{}, tabs_r{}, transcript_r{}, compose_r{}, status_r{};
@@ -184,21 +194,54 @@ std::string find_providers_path() {
     return "apps/jabber/providers.txt";
 }
 
-void load_default_server() {
+void trim_inplace(std::string &s) {
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\r' || s.back() == '\t'))
+        s.pop_back();
+    size_t i = 0;
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+    if (i) s.erase(0, i);
+}
+
+void load_providers() {
+    g.providers.clear();
     std::ifstream in(find_providers_path());
-    if (!in) return;
-    std::string line;
-    while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        auto bar = line.find('|');
-        std::string host = bar == std::string::npos ? line : line.substr(0, bar);
-        while (!host.empty() && (host.back() == ' ' || host.back() == '\r'))
-            host.pop_back();
-        if (!host.empty()) {
-            g.field_server = host;
-            return;
+    if (in) {
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            auto p1 = line.find('|');
+            std::string host =
+                p1 == std::string::npos ? line : line.substr(0, p1);
+            std::string name, notes;
+            if (p1 != std::string::npos) {
+                auto p2 = line.find('|', p1 + 1);
+                name = p2 == std::string::npos ? line.substr(p1 + 1)
+                                               : line.substr(p1 + 1, p2 - p1 - 1);
+                if (p2 != std::string::npos) notes = line.substr(p2 + 1);
+            }
+            trim_inplace(host);
+            trim_inplace(name);
+            trim_inplace(notes);
+            if (host.empty()) continue;
+            if (name.empty()) name = host;
+            g.providers.push_back({host, name, notes});
         }
     }
+    if (g.providers.empty()) {
+        // Hard fallback — public Category A IBR hosts (no localhost).
+        g.providers.push_back({"yax.im", "yax.im", "Public · usually no CAPTCHA"});
+        g.providers.push_back({"jabber.fr", "jabber.fr", "Public · usually no CAPTCHA"});
+        g.providers.push_back({"xmpp.party", "xmpp.party", "Public · usually no CAPTCHA"});
+    }
+    g.provider_sel = 0;
+    g.provider_scroll = 0;
+    g.field_server = g.providers[0].host;
+}
+
+void select_provider(int idx) {
+    if (idx < 0 || idx >= (int)g.providers.size()) return;
+    g.provider_sel = idx;
+    g.field_server = g.providers[idx].host;
 }
 
 void blit(HWND hwnd, Canvas &cv) {
@@ -299,6 +342,11 @@ void open_tab(const std::string &jid, bool muc) {
 
 void ding() { MessageBeep(MB_OK); }
 
+void register_dialog_size(int *dw, int *dh) {
+    *dw = 420;
+    *dh = g.captcha_visible ? 420 : 360;
+}
+
 void paint_dialog(Canvas &cv) {
     if (g.dialog == DlgNone) return;
     Rect win{0, 0, cv.width(), cv.height()};
@@ -313,7 +361,7 @@ void paint_dialog(Canvas &cv) {
                 (uint32_t(r) << 16) | (uint32_t(gch) << 8) | uint32_t(b);
         }
     int dw = 360, dh = 220;
-    if (g.dialog == DlgRegister) dh = g.captcha_visible ? 320 : 260;
+    if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
     if (g.dialog == DlgRegister) title = "Get an Account";
@@ -337,19 +385,65 @@ void paint_dialog(Canvas &cv) {
         field("JID (you@server)", g.field_jid, 0, false);
         field("Password", g.field_pass, 1, true);
     } else if (g.dialog == DlgRegister) {
-        field("Server", g.field_server, 0, false);
-        field("Username", g.field_user, 1, false);
-        field("Password", g.field_pass, 2, true);
+        cv.text(cl.x + 12, y, "Pick a public server — no local hosting",
+                g.ap.c("primary.label"));
+        y += lh + 4;
+        int list_h = g.captcha_visible ? 88 : 120;
+        g.provider_list_r = {cl.x + 12, y, cl.w - 24, list_h};
+        cv.fill(g.provider_list_r, g.ap.c("list.background"));
+        {
+            CanvasClip clip(cv, g.provider_list_r);
+            int row_h = lh + 6;
+            int yy = g.provider_list_r.y + 2 - g.provider_scroll;
+            for (int i = 0; i < (int)g.providers.size(); ++i) {
+                Rect row{g.provider_list_r.x + 2, yy, g.provider_list_r.w - 4, row_h};
+                if (i == g.provider_sel)
+                    cv.fill(row, g.ap.c("list.hilite_background"));
+                Color ink = i == g.provider_sel ? g.ap.c("list.hilite_foreground")
+                                                : g.ap.c("list.label");
+                std::string lab = g.providers[i].name;
+                if (!g.providers[i].notes.empty())
+                    lab += "  —  " + g.providers[i].notes;
+                cv.text_elided(row.x + 6, row.y + 3, lab.c_str(), row.w - 12, ink);
+                yy += row_h;
+            }
+        }
+        y = g.provider_list_r.bottom() + 8;
+        cv.text(cl.x + 12, y,
+                ("Screen name will be: " +
+                 (g.field_user.empty() ? "you" : g.field_user) + "@" + g.field_server)
+                    .c_str(),
+                g.ap.c("menu.disable_label"));
+        y += lh + 6;
+        // Username = focus 0, password = 1, captcha = 2
+        {
+            cv.text(cl.x + 12, y, "Username", g.ap.c("primary.label"));
+            y += lh + 2;
+            Rect fr{cl.x + 12, y, cl.w - 24, 24};
+            paint_field(cv, g.ap, fr, g.field_user.c_str(), g.focus_field == 0, true);
+            y += 30;
+            cv.text(cl.x + 12, y, "Password", g.ap.c("primary.label"));
+            y += lh + 2;
+            fr = {cl.x + 12, y, cl.w - 24, 24};
+            paint_field(cv, g.ap, fr, std::string(g.field_pass.size(), '*').c_str(),
+                        g.focus_field == 1, true);
+            y += 30;
+        }
         if (g.captcha_visible && !g.client.captcha_image.empty()) {
-            cv.text(cl.x + 12, y, "CAPTCHA", g.ap.c("primary.label"));
+            cv.text(cl.x + 12, y, "CAPTCHA (solved here — no browser)",
+                    g.ap.c("primary.label"));
             y += lh + 2;
             SkinImage &img = g.client.captcha_image;
             int iw = std::min(img.w, cl.w - 24);
-            int ih = std::min(img.h, 64);
+            int ih = std::min(img.h, 56);
             CanvasClip clip(cv, {cl.x + 12, y, iw, ih});
             cv.blit_image(img, cl.x + 12, y);
             y += ih + 6;
-            field("Answer", g.field_captcha, 3, false);
+            cv.text(cl.x + 12, y, "Answer", g.ap.c("primary.label"));
+            y += lh + 2;
+            Rect fr{cl.x + 12, y, cl.w - 24, 24};
+            paint_field(cv, g.ap, fr, g.field_captcha.c_str(), g.focus_field == 2,
+                        true);
         }
     } else if (g.dialog == DlgAddBuddy) {
         field("Buddy JID", g.field_buddy, 0, false);
@@ -554,10 +648,16 @@ void run_menu(int menu, int row) {
             g.focus_field = 0;
             g.captcha_visible = false;
         } else if (row == 1) {
+            if (g.providers.empty()) load_providers();
             g.dialog = DlgRegister;
             g.focus_field = 0;
             g.captcha_visible = false;
             g.field_captcha.clear();
+            g.provider_scroll = 0;
+            if (g.provider_sel < 0 || g.provider_sel >= (int)g.providers.size())
+                select_provider(0);
+            else
+                select_provider(g.provider_sel);
         } else if (row == 2) {
             g.client.disconnect();
             set_status("Signed off");
@@ -646,7 +746,7 @@ void dialog_ok() {
             g.client.begin_register(g.field_server, g.field_user, g.field_pass);
             g.field_jid = g.field_user + "@" + g.field_server;
             g.dialog = DlgNone;
-            set_status("Creating account…");
+            set_status("Creating " + g.field_jid + " on " + g.field_server + "…");
         }
     } else if (g.dialog == DlgAddBuddy) {
         if (!g.field_buddy.empty()) g.client.add_buddy(g.field_buddy);
@@ -722,9 +822,8 @@ void mouse_down(int x, int y) {
         return;
     }
     if (g.dialog != DlgNone) {
-        // crude: OK / Cancel at bottom of dialog
         int dw = 360, dh = 220;
-        if (g.dialog == DlgRegister) dh = g.captcha_visible ? 320 : 260;
+        if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
@@ -742,9 +841,18 @@ void mouse_down(int x, int y) {
             redraw();
             return;
         }
-        // focus fields by Y bands — simplified: cycle on click in client
+        if (g.dialog == DlgRegister && g.provider_list_r.contains(x, y)) {
+            int lh = g.canvas.line_height() + 6;
+            int idx = (y - (g.provider_list_r.y + 2 - g.provider_scroll)) / lh;
+            if (idx >= 0 && idx < (int)g.providers.size()) {
+                select_provider(idx);
+                redraw();
+            }
+            return;
+        }
         if (cl.contains(x, y)) {
-            g.focus_field = (g.focus_field + 1) % 4;
+            int n = g.dialog == DlgRegister ? (g.captcha_visible ? 3 : 2) : 4;
+            g.focus_field = (g.focus_field + 1) % n;
             redraw();
         }
         return;
@@ -928,9 +1036,8 @@ void handle_char(WPARAM wp) {
         std::string *f = &g.field_jid;
         if (g.dialog == DlgSignOn) f = g.focus_field == 0 ? &g.field_jid : &g.field_pass;
         else if (g.dialog == DlgRegister) {
-            if (g.focus_field == 0) f = &g.field_server;
-            else if (g.focus_field == 1) f = &g.field_user;
-            else if (g.focus_field == 2) f = &g.field_pass;
+            if (g.focus_field == 0) f = &g.field_user;
+            else if (g.focus_field == 1) f = &g.field_pass;
             else f = &g.field_captcha;
         } else if (g.dialog == DlgAddBuddy) f = &g.field_buddy;
         else if (g.dialog == DlgJoinMuc)
@@ -941,7 +1048,8 @@ void handle_char(WPARAM wp) {
             dialog_ok();
             return;
         } else if (wp == '\t') {
-            g.focus_field = (g.focus_field + 1) % 4;
+            int n = g.dialog == DlgRegister ? (g.captcha_visible ? 3 : 2) : 4;
+            g.focus_field = (g.focus_field + 1) % n;
         } else if (wp >= 32 && wp < 127) {
             f->push_back(char(wp));
         }
@@ -977,7 +1085,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         else
             g.ap.set_skin(stock_skin());
         g.client.on_event = [](const jabber::ClientEvent &e) { post_client_event(e); };
-        load_default_server();
+        load_providers();
         return 0;
     }
     case WM_JABBER_EVENT: {
@@ -989,7 +1097,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (e->type == jabber::ClientEvent::CaptchaReady) {
             g.captcha_visible = true;
             g.dialog = DlgRegister;
-            g.focus_field = 3;
+            g.focus_field = 2;
             g.field_captcha.clear();
             set_status("Solve the CAPTCHA in this window — no browser needed");
         }
@@ -1078,7 +1186,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -24 : 24;
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
-        if (g.roster_r.contains(pt.x, pt.y))
+        if (g.dialog == DlgRegister && g.provider_list_r.contains(pt.x, pt.y)) {
+            g.provider_scroll = std::max(0, g.provider_scroll + d);
+        } else if (g.roster_r.contains(pt.x, pt.y))
             g.roster_scroll = std::max(0, g.roster_scroll + d);
         else
             g.chat_scroll = std::max(0, g.chat_scroll + d);

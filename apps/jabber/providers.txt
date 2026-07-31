@@ -1,10 +1,16 @@
-# Curated XMPP providers for Sagrado Jabber Get an Account (IBR + HTTP Upload).
-# Format: host | display name | signup notes
-# Re-verify IBR before each release — public policy changes often.
+# Recommended public XMPP providers for Sagrado Jabber Get an Account.
+# Category A from providers.xmpp.net — in-band registration (app signup), free.
+# Format: host | display name | notes
+# Re-verify before each release — public policy changes.
 #
-# Prosody dogfood (local demos — enable allow_registration):
-localhost|Local Prosody|Enable allow_registration in Prosody
-#
-# Public examples (may require CAPTCHA; prefer hosts that keep IBR on):
-# conversations.im|Conversations|May present CAPTCHA form
-# jabber.fr|jabber.fr|Check current registration policy
+# Prefer hosts with IBR; CAPTCHA is painted in gel when the server asks.
+yax.im|yax.im|Public · usually no CAPTCHA
+jabber.fr|jabber.fr|Public · usually no CAPTCHA
+xmpp.party|xmpp.party|Public · usually no CAPTCHA
+jabber.vg|jabber.vg|Public · usually no CAPTCHA
+chat.between-us.online|between-us|Public · usually no CAPTCHA
+07f.de|07f.de|Public · CAPTCHA in gel
+magicbroccoli.de|magicbroccoli|Public · CAPTCHA in gel
+jabjab.de|jabjab.de|Public · CAPTCHA in gel
+hookipa.net|hookipa|Public · CAPTCHA in gel
+chatterboxtown.us|chatterboxtown|Public · CAPTCHA in gel

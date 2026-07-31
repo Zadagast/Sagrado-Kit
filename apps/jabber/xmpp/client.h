@@ -647,7 +647,7 @@ private:
         if (!read_until("jabber:iq:register")) {
             set_state(ConnState::Error,
                       "This server doesn’t allow creating accounts in-app. "
-                      "Pick a recommended server.");
+                      "Pick another public server from the list.");
             return false;
         }
         std::string iq = first_element(stream_buf_, "iq");
@@ -655,7 +655,7 @@ private:
             iq.find("type=\"error\"") != std::string::npos) {
             set_state(ConnState::Error,
                       "This server doesn’t allow creating accounts in-app. "
-                      "Pick a recommended server.");
+                      "Pick another public server from the list.");
             return false;
         }
         // CAPTCHA / data form?
@@ -829,8 +829,9 @@ private:
     void run() {
         set_state(ConnState::Connecting, "Connecting to " + host_ + "…");
         if (!sock_.connect_tcp(host_, 5222)) {
-            // Try domain as-is; some need same
-            set_state(ConnState::Error, "Could not connect to " + host_ + ":5222");
+            set_state(ConnState::Error,
+                      "Could not reach " + host_ +
+                          ". Check your network, or pick another public server.");
             return;
         }
         stream_buf_.clear();

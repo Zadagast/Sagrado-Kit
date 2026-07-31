@@ -138,12 +138,18 @@ int main(int argc, char **argv) {
         }
     }
 
-    // Get an Account dialog gel (CAPTCHA placeholder area).
-    Rect dlg{(W - 360) / 2, (H - 260) / 2, 360, 260};
+    // Get an Account dialog gel — public server list + username.
+    Rect dlg{(W - 420) / 2, (H - 360) / 2, 420, 360};
     paint_gel(cv, ap, dlg, "Get an Account", true, 0, GelStyle::Dialog);
     GelLayout dgl = gel_layout(dlg.x, dlg.y, dlg.w, dlg.h, GelStyle::Dialog, &ap, true);
-    paint_field(cv, ap, {dgl.client.x + 12, dgl.client.y + 28, dgl.client.w - 24, 24},
-                "localhost", true, true);
+    Rect list{dgl.client.x + 12, dgl.client.y + 28, dgl.client.w - 24, 100};
+    cv.fill(list, ap.c("list.background"));
+    cv.fill({list.x + 2, list.y + 2, list.w - 4, cv.line_height() + 6},
+            ap.c("list.hilite_background"));
+    cv.text(list.x + 8, list.y + 5, "yax.im  —  Public · usually no CAPTCHA",
+            ap.c("list.hilite_foreground"));
+    paint_field(cv, ap, {dgl.client.x + 12, list.bottom() + 24, dgl.client.w - 24, 24},
+                "screenname", true, true);
 
     size_t lit = 0;
     for (int i = 0; i < W * H; ++i)
