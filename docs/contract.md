@@ -171,8 +171,25 @@ Same shape as Haxial and Sagrado `native/`. No OS widgets, no CSS, no web host.
 4. When adding a new control, extend the skin schema + engine helpers — do not
    invent a private colour table.
 
-Reference consumer: **Sagrado TextEdit** (`apps/textedit/`) — Haxial TextEdit-
-shaped gel + menu bar + text view + Find dialog, all painted through the kit.
+## Sagrado Apps standard
+
+**Sagrado TextEdit** (`apps/textedit/`) is the reference consumer — the bar for
+every later Sagrado app. Copy its shape; do not invent a parallel UI stack.
+
+| Rule | Meaning |
+|---|---|
+| Kit paints everything | Gel, menus, fields, scrollbars, alerts — `paint_*` into a `Canvas`, then blit. No OS widgets, no private colour tables. |
+| One shared `Appearance` | All gels in the process load the same skin; switch live when the user picks one. |
+| Ooze Gel owns the frame | Title / hatch / Window Menu / close·zoom·min / grow box are kit chrome. Host decorations stay off (especially under Wine). |
+| Clip, don’t hide | Narrow windows clip menu titles and title text. No hamburger / overflow chrome. |
+| App min size | Outer window clamps so gel stays usable (TextEdit matches Haxial TextEdit **212×128**). |
+| Popups stay on-screen | Use `menu_place` (right-anchored Window Menus flip/clamp inside the window). |
+| Pattern tiles clip | Tiled art (`menu.background_pattern`, primary pattern, …) must clip to the destination — never spill past the control. |
+| Soft-complete is fill-only | Never invent open-menu plates over a colour-path theme; ignore unusable `popup_frame` stubs. |
+| Alerts are gel | About / notes use `paint_alert`, not `MessageBox`. |
+
+New apps land under `apps/` and pass `make smoke` patterns established by
+TextEdit (load skin → paint gel → no clip spill).
 
 ## Label ink (do not invent a private palette)
 

@@ -11,8 +11,9 @@ theirs.
   (colour table + image slots mapped into the same painters).
 - **One editor** that authors that format against a live kit preview
   (`editor/`), like AppearanceEdit. **Load** accepts `.hap` or `.sap`.
-- **First app** — Sagrado TextEdit (`apps/textedit/`), a Haxial TextEdit-shaped
-  plain-text editor that paints only through the Appearance Engine.
+- **Sagrado Apps standard** — Sagrado TextEdit (`apps/textedit/`) is the
+  reference consumer: Haxial-shaped gel, kit-only paint, clip-don’t-hide,
+  live `.hap`/`.sap`. Later apps copy that bar ([`docs/contract.md`](docs/contract.md)).
 
 Incomplete skins are valid. Token resolution: **art → colour → stock**.
 
@@ -24,11 +25,12 @@ This is not an Ooze project and not a web/Electron/npm app.
 format/          schema + stock / example skins
 engine/          Appearance Engine (load, resolve, paint)
 editor/          Win32 SagradoKit Editor
-apps/textedit/   Sagrado TextEdit — first consumer app
+apps/textedit/   Sagrado TextEdit — reference Sagrado App
 docs/            contract + lessons from HAP
 ```
 
-Read [`docs/contract.md`](docs/contract.md) for the system contract.
+Read [`docs/contract.md`](docs/contract.md) for the system contract and
+**Sagrado Apps standard**.
 Haxial surface map (how colours + images plug into controls — research before
 art paint): [`docs/haxial-surface-map.md`](docs/haxial-surface-map.md).
 Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
@@ -94,7 +96,8 @@ move; the close box quits.
 
 ## Sagrado TextEdit
 
-Haxial TextEdit-shaped plain-text editor — first real app on the kit.
+Haxial TextEdit-shaped plain-text editor — reference Sagrado App (the standard
+later apps follow).
 
 - Gel main window (close / Window Menu → Minimize·Zoom·Close / max / min / grow box)
 - Menu bar: File, Edit, Find, Appearance, Help
@@ -111,6 +114,9 @@ Shortcuts: `Ctrl+N/O/S`, `Ctrl+F` find, `Ctrl+H` replace, `Ctrl+G` find again,
 `Ctrl+Z/X/C/V/A`. Esc quits (or closes Find / menu).
 
 ## For app authors
+
+Start from Sagrado TextEdit’s patterns (`apps/textedit/`) and the
+[Sagrado Apps standard](docs/contract.md#sagrado-apps-standard).
 
 1. Include `engine/appearance.h` (pulls in canvas + skin).
 2. Hold an `Appearance`, `load("path.sap")` or `load("path.hap")`, or start from `stock_skin()`.
