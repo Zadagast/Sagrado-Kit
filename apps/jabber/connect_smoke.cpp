@@ -94,6 +94,35 @@ int main(int argc, char **argv) {
         std::printf("FAIL no register form\n%s\n", buf.c_str());
         return 1;
     }
+    std::printf("disco#items (unauth probe)…\n");
+    if (!sock.send_all((std::string("<iq type='get' id='disco1' to='") + host +
+                        "'><query xmlns='http://jabber.org/protocol/disco#items'/>"
+                        "</iq>")
+                           .c_str())) {
+        std::printf("FAIL disco send: %s\n", sock.last_error.c_str());
+        return 1;
+    }
+    buf.clear();
+    for (int i = 0; i < 40; ++i) {
+        int n = sock.recv_some(tmp, sizeof(tmp));
+        if (n <= 0) break;
+        buf.append(tmp, tmp + n);
+        if (buf.find("id='disco1'") != std::string::npos ||
+            buf.find("id=\"disco1\"") != std::string::npos)
+            break;
+    }
+    bool has_conf = buf.find("conference.") != std::string::npos ||
+                    buf.find("muc.") != std::string::npos ||
+                    buf.find("chat.") != std::string::npos;
+    if (buf.find("disco#items") == std::string::npos &&
+        buf.find("type='error'") == std::string::npos &&
+        buf.find("type=\"error\"") == std::string::npos) {
+        std::printf("WARN disco: no reply (ok — some hosts need auth)\n");
+    } else if (has_conf) {
+        std::printf("OK disco saw a conference-looking item\n");
+    } else {
+        std::printf("OK disco reply (conference host may need auth+disco#info)\n");
+    }
     std::printf("OK connect+TLS+register form on %s\n", host);
     sock.close();
     return 0;

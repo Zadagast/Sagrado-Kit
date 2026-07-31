@@ -21,7 +21,8 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | IM windows / tabs | Center tab strip + transcript | `<message type='chat'>` |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
-| Chat rooms | Chat → Join Chat Room… | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
+| Chat rooms | Chat → Browse Chat Rooms… / Join… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
+| Room bookmarks + autojoin | Chat → Bookmark Room / Autojoin Room | [XEP-0402](https://xmpp.org/extensions/xep-0402.html) PEP + [XEP-0048](https://xmpp.org/extensions/xep-0048.html) fallback |
 | Get a screen name | File → Get an Account… | [XEP-0077](https://xmpp.org/extensions/xep-0077.html) + [XEP-0158](https://xmpp.org/extensions/xep-0158.html) CAPTCHA **in gel** |
 
 There is **no browser signup happy path**. If a server only offers a website, the
@@ -36,9 +37,28 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 3. **Center** — IM tabs, transcript, compose + Send
 4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 5. **Status strip** — “Signed on as …”, presence alerts, upload progress
-6. **MUC** — optional occupants column when a room tab is focused
+6. **MUC** — occupants column on room tabs; sticky topic under the transcript top;
+   Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
 
 Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_menu` — no OS widgets for identity.
+
+## Chat rooms (everyday MUC)
+
+Day-to-day room parity (Psi/Gajim/Conversations shape) — not operator tools.
+
+- **Browse Chat Rooms…** — disco finds the conference service, then lists public rooms;
+  Bookmarks section sits above the public list. Select + nick → Join (or double-click).
+- **Join Chat Room…** — type `room@conference.host` + nick by hand.
+- **Leave Room** — unavailable presence; closes the room tab.
+- **Topic** — `<subject>` shown as a sticky line + system transcript line.
+- **Nicks** — groupchat lines and the occupants column use the resource (`room/nick`),
+  not the room localpart.
+- **Bookmark Room / Autojoin Room** — saved via PEP `urn:xmpp:bookmarks:1` when the
+  server supports it, with Private XML `storage:bookmarks` as fallback. Autojoin
+  rooms rejoin on Sign On.
+
+Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, invites, or MAM
+history browser in this pass.
 
 ## Accounts
 

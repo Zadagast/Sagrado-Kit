@@ -54,7 +54,13 @@ static const char *kBuddyItems[] = {
     "Add Buddy...", "-", "Available", "Away", "Busy", "Invisible",
 };
 static const char *kChatItems[] = {
-    "Send File...", "Join Chat Room...",
+    "Send File...",
+    "Browse Chat Rooms...",
+    "Join Chat Room...",
+    "-",
+    "Leave Room",
+    "Bookmark Room",
+    "Autojoin Room",
 };
 static const char *kAppearanceItems[] = {
     "Load Appearance...", "Stock Appearance",
@@ -69,7 +75,7 @@ struct MenuDef {
     int count;
 };
 static const MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 6}, {kChatItems, 2},
+    {kFileItems, 5}, {kBuddyItems, 6}, {kChatItems, 7},
     {kAppearanceItems, 2}, {kHelpItems, 1},
 };
 
@@ -88,7 +94,14 @@ enum SizeEdge : int {
     SizeBottom = 8,
 };
 
-enum DialogKind { DlgNone = 0, DlgSignOn, DlgRegister, DlgAddBuddy, DlgJoinMuc };
+enum DialogKind {
+    DlgNone = 0,
+    DlgSignOn,
+    DlgRegister,
+    DlgAddBuddy,
+    DlgJoinMuc,
+    DlgBrowseMuc,
+};
 
 struct Tab {
     std::string jid;
@@ -151,6 +164,19 @@ struct App {
     int recent_sel = -1;
     int recent_scroll = 0;
     Rect recent_list_r{};
+
+    // Browse Chat Rooms dialog
+    int browse_sel = -1; // index into browse_rows
+    int browse_scroll = 0;
+    Rect browse_list_r{};
+    struct BrowseRow {
+        std::string jid;
+        std::string label;
+        bool bookmark = false;
+        bool autojoin = false;
+        bool section = false; // non-selectable header
+    };
+    std::vector<BrowseRow> browse_rows;
 
     std::string compose;
     std::string status_msg; // own presence <status> draft (identity field)
@@ -534,6 +560,7 @@ void open_tab(const std::string &jid, bool muc) {
     std::string bare = jabber::bare_jid(jid);
     for (int i = 0; i < (int)g.tabs.size(); ++i) {
         if (g.tabs[i].jid == bare) {
+            if (muc) g.tabs[i].muc = true;
             g.active_tab = i;
             g.chat_scroll = 0;
             redraw();
@@ -546,7 +573,79 @@ void open_tab(const std::string &jid, bool muc) {
     redraw();
 }
 
+void close_tab_jid(const std::string &jid) {
+    std::string bare = jabber::bare_jid(jid);
+    for (int i = 0; i < (int)g.tabs.size(); ++i) {
+        if (g.tabs[i].jid != bare) continue;
+        g.tabs.erase(g.tabs.begin() + i);
+        if (g.active_tab >= (int)g.tabs.size())
+            g.active_tab = (int)g.tabs.size() - 1;
+        else if (g.active_tab > i)
+            --g.active_tab;
+        g.chat_scroll = 0;
+        return;
+    }
+}
+
+bool tab_is_muc(int idx) {
+    return idx >= 0 && idx < (int)g.tabs.size() && g.tabs[idx].muc;
+}
+
+void rebuild_browse_rows() {
+    g.browse_rows.clear();
+    std::vector<jabber::MucBookmark> bms;
+    std::vector<jabber::MucRoomInfo> rooms;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        bms = g.client.muc_bookmarks;
+        rooms = g.client.muc_rooms;
+    }
+    if (!bms.empty()) {
+        g.browse_rows.push_back({"", "Bookmarks", false, false, true});
+        for (const auto &b : bms) {
+            std::string lab = b.name.empty() ? b.jid : b.name;
+            if (b.autojoin) lab += "  (autojoin)";
+            g.browse_rows.push_back({b.jid, lab, true, b.autojoin, false});
+        }
+    }
+    g.browse_rows.push_back({"", "Public rooms", false, false, true});
+    if (rooms.empty()) {
+        std::string conf;
+        {
+            std::lock_guard<std::mutex> lock(g.client.mu);
+            conf = g.client.conference_host;
+        }
+        if (conf.empty())
+            g.browse_rows.push_back(
+                {"", "(no chat service on this server yet)", false, false, true});
+        else
+            g.browse_rows.push_back({"", "(no public rooms listed)", false, false, true});
+    } else {
+        for (const auto &r : rooms) {
+            std::string lab = r.name.empty() ? r.jid : (r.name + "  —  " + r.jid);
+            g.browse_rows.push_back({r.jid, lab, false, false, false});
+        }
+    }
+    if (g.browse_sel >= (int)g.browse_rows.size()) g.browse_sel = -1;
+}
+
+void open_browse_muc() {
+    g.dialog = DlgBrowseMuc;
+    g.focus_field = 0;
+    g.browse_sel = -1;
+    g.browse_scroll = 0;
+    if (g.field_nick.empty() && !g.client.jid.empty())
+        g.field_nick = jabber::jid_node(g.client.jid);
+    rebuild_browse_rows();
+    g.client.refresh_muc_rooms();
+}
+
 void ding() { MessageBeep(MB_OK); }
+
+void browse_dialog_size(int *dw, int *dh) {
+    *dw = 440;
+    *dh = 380;
+}
 
 void register_dialog_size(int *dw, int *dh) {
     *dw = 400;
@@ -569,17 +668,20 @@ void paint_dialog(Canvas &cv) {
     int dw = 360, dh = 220;
     if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
     else if (g.dialog == DlgSignOn) sign_on_dialog_size(&dw, &dh);
+    else if (g.dialog == DlgBrowseMuc) browse_dialog_size(&dw, &dh);
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
     if (g.dialog == DlgRegister) title = "Get an Account";
     if (g.dialog == DlgAddBuddy) title = "Add Buddy";
     if (g.dialog == DlgJoinMuc) title = "Join Chat Room";
+    if (g.dialog == DlgBrowseMuc) title = "Browse Chat Rooms";
     paint_gel(cv, g.ap, box, title, true, 0, GelStyle::Dialog);
     GelLayout gl = gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
     Rect cl = gl.client;
     int y = cl.y + 8;
     int lh = cv.line_height();
     g.recent_list_r = {};
+    g.browse_list_r = {};
     auto field = [&](const char *lab, const std::string &val, int idx, bool secret) {
         cv.text(cl.x + 12, y, lab, g.ap.c("primary.label"));
         y += lh + 2;
@@ -680,11 +782,41 @@ void paint_dialog(Canvas &cv) {
     } else if (g.dialog == DlgJoinMuc) {
         field("Room (room@conference.server)", g.field_room, 0, false);
         field("Nickname", g.field_nick, 1, false);
+    } else if (g.dialog == DlgBrowseMuc) {
+        int list_h = cl.h - 8 - 30 - 40 - lh - 8;
+        if (list_h < 80) list_h = 80;
+        g.browse_list_r = {cl.x + 12, y, cl.w - 24, list_h};
+        cv.fill(g.browse_list_r, g.ap.c("list.background"));
+        {
+            CanvasClip clip(cv, g.browse_list_r);
+            int row_h = lh + 4;
+            int yy = g.browse_list_r.y + 2 - g.browse_scroll;
+            for (int i = 0; i < (int)g.browse_rows.size(); ++i) {
+                const auto &row = g.browse_rows[i];
+                Rect rr{g.browse_list_r.x + 2, yy, g.browse_list_r.w - 4, row_h};
+                if (row.section) {
+                    cv.text_elided(rr.x + 6, rr.y + 2, row.label.c_str(), rr.w - 12,
+                                   g.ap.c("menu.disable_label"));
+                } else {
+                    if (i == g.browse_sel)
+                        cv.fill(rr, g.ap.c("list.hilite_background"));
+                    Color ink = i == g.browse_sel ? g.ap.c("list.hilite_foreground")
+                                                  : g.ap.c("list.label");
+                    cv.text_elided(rr.x + 6, rr.y + 2, row.label.c_str(), rr.w - 12,
+                                   ink);
+                }
+                yy += row_h;
+            }
+        }
+        y = g.browse_list_r.bottom() + 8;
+        field("Nickname", g.field_nick, 0, false);
     }
     Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
     Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
-    paint_button(cv, g.ap, ok, g.dialog == DlgRegister ? "Create" : "OK", false,
-                 true);
+    const char *ok_lab = "OK";
+    if (g.dialog == DlgRegister) ok_lab = "Create";
+    else if (g.dialog == DlgBrowseMuc) ok_lab = "Join";
+    paint_button(cv, g.ap, ok, ok_lab, false, true);
     paint_button(cv, g.ap, cancel, "Cancel", false, false);
 }
 
@@ -805,23 +937,50 @@ void paint() {
         tx += tw + 4;
     }
 
-    // Transcript
+    // Transcript (+ sticky subject for MUC)
     cv.fill(g.transcript_r, g.ap.c("text.background"));
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) {
         std::string key = g.tabs[g.active_tab].jid;
+        bool muc = g.tabs[g.active_tab].muc;
         std::vector<jabber::ChatLine> lines;
+        std::string subject;
         {
             std::lock_guard<std::mutex> lock(g.client.mu);
             lines = g.client.chats[key];
+            if (muc) {
+                auto it = g.client.muc_subjects.find(key);
+                if (it != g.client.muc_subjects.end()) subject = it->second;
+            }
         }
-        CanvasClip clip(cv, g.transcript_r);
-        int ty = g.transcript_r.y + 4 - g.chat_scroll;
+        int top = g.transcript_r.y + 4;
+        if (muc && !subject.empty()) {
+            std::string sub = "Topic: " + subject;
+            cv.text_elided(g.transcript_r.x + 6, top, sub.c_str(),
+                           g.transcript_r.w - 12, g.ap.c("menu.disable_label"));
+            top += cv.line_height() + 4;
+            cv.hline(g.transcript_r.x + 4, g.transcript_r.right() - 4, top - 2,
+                     g.ap.c("list.separator"));
+        }
+        CanvasClip clip(cv, {g.transcript_r.x, top, g.transcript_r.w,
+                             g.transcript_r.bottom() - top});
+        int ty = top - g.chat_scroll;
         int clh = cv.line_height() + 2;
         for (auto &ln : lines) {
-            std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-            std::string text = who + ": " + ln.body;
             Color ink = ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
             if (ln.file) ink = g.ap.c("menu.hilite_label");
+            if (ln.system) ink = g.ap.c("menu.disable_label");
+            std::string text;
+            if (ln.system) {
+                text = ln.body;
+            } else if (muc) {
+                // from is already occupant nick for groupchat lines
+                std::string who = ln.mine ? "You" : ln.from;
+                if (who.empty()) who = "?";
+                text = who + ": " + ln.body;
+            } else {
+                std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+                text = who + ": " + ln.body;
+            }
             cv.text_elided(g.transcript_r.x + 6, ty, text.c_str(),
                            g.transcript_r.w - 12, ink);
             ty += clh;
@@ -1004,10 +1163,50 @@ void run_menu(int menu, int row) {
                 }
             }
         } else if (row == 1) {
+            if (g.client.state != jabber::ConnState::Online) {
+                set_status("Sign on first");
+            } else {
+                open_browse_muc();
+            }
+        } else if (row == 2) {
             g.dialog = DlgJoinMuc;
             g.focus_field = 0;
             if (g.field_nick.empty() && !g.client.jid.empty())
                 g.field_nick = jabber::jid_node(g.client.jid);
+        } else if (row == 4) {
+            if (!tab_is_muc(g.active_tab)) {
+                set_status("Leave Room is for chat rooms");
+            } else {
+                std::string room = g.tabs[g.active_tab].jid;
+                g.client.leave_muc(room);
+                close_tab_jid(room);
+                set_status("Left " + jabber::jid_node(room));
+            }
+        } else if (row == 5) {
+            if (!tab_is_muc(g.active_tab)) {
+                set_status("Bookmark a chat room tab");
+            } else {
+                std::string room = g.tabs[g.active_tab].jid;
+                std::string nick = jabber::jid_node(g.client.jid);
+                {
+                    std::lock_guard<std::mutex> lock(g.client.mu);
+                    auto it = g.client.muc_nicks.find(room);
+                    if (it != g.client.muc_nicks.end()) nick = it->second;
+                }
+                bool aj = g.client.bookmark_autojoin(room);
+                g.client.bookmark_muc(room, jabber::jid_node(room), nick, aj);
+                set_status("Bookmarked " + jabber::jid_node(room));
+            }
+        } else if (row == 6) {
+            if (!tab_is_muc(g.active_tab)) {
+                set_status("Autojoin is for chat rooms");
+            } else {
+                std::string room = g.tabs[g.active_tab].jid;
+                bool on = !g.client.bookmark_autojoin(room);
+                g.client.set_bookmark_autojoin(room, on);
+                set_status(on ? "Autojoin on for " + jabber::jid_node(room)
+                              : "Autojoin off for " + jabber::jid_node(room));
+            }
         }
     } else if (menu == MenuAppearance) {
         if (row == 0) {
@@ -1062,6 +1261,37 @@ void dialog_ok() {
             open_tab(g.field_room, true);
         }
         g.dialog = DlgNone;
+    } else if (g.dialog == DlgBrowseMuc) {
+        std::string room;
+        std::string nick = g.field_nick;
+        if (g.browse_sel >= 0 && g.browse_sel < (int)g.browse_rows.size() &&
+            !g.browse_rows[g.browse_sel].section)
+            room = g.browse_rows[g.browse_sel].jid;
+        if (room.empty()) {
+            set_status("Pick a room first");
+            return;
+        }
+        if (nick.empty() && !g.client.jid.empty())
+            nick = jabber::jid_node(g.client.jid);
+        if (nick.empty()) {
+            set_status("Enter a nickname");
+            return;
+        }
+        // Prefer bookmark nick when joining from Bookmarks.
+        if (g.browse_sel >= 0 && g.browse_rows[g.browse_sel].bookmark) {
+            std::lock_guard<std::mutex> lock(g.client.mu);
+            for (const auto &b : g.client.muc_bookmarks) {
+                if (jabber::jid_ieq(b.jid, room) && !b.nick.empty()) {
+                    nick = b.nick;
+                    break;
+                }
+            }
+        }
+        g.field_nick = nick;
+        g.client.join_muc(room, nick);
+        open_tab(room, true);
+        g.dialog = DlgNone;
+        set_status("Joined " + jabber::jid_node(room));
     }
     redraw();
 }
@@ -1130,6 +1360,7 @@ void mouse_down(int x, int y) {
         int dw = 360, dh = 220;
         if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
         else if (g.dialog == DlgSignOn) sign_on_dialog_size(&dw, &dh);
+        else if (g.dialog == DlgBrowseMuc) browse_dialog_size(&dw, &dh);
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
@@ -1165,10 +1396,31 @@ void mouse_down(int x, int y) {
             }
             return;
         }
+        if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(x, y)) {
+            int row_h = g.canvas.line_height() + 4;
+            int idx = (y - (g.browse_list_r.y + 2 - g.browse_scroll)) / row_h;
+            if (idx >= 0 && idx < (int)g.browse_rows.size() &&
+                !g.browse_rows[idx].section) {
+                g.browse_sel = idx;
+                g.field_room = g.browse_rows[idx].jid;
+                if (g.browse_rows[idx].bookmark) {
+                    std::lock_guard<std::mutex> lock(g.client.mu);
+                    for (const auto &b : g.client.muc_bookmarks) {
+                        if (jabber::jid_ieq(b.jid, g.field_room) && !b.nick.empty()) {
+                            g.field_nick = b.nick;
+                            break;
+                        }
+                    }
+                }
+                redraw();
+            }
+            return;
+        }
         if (cl.contains(x, y)) {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
             else if (g.dialog == DlgJoinMuc) n = 2;
+            else if (g.dialog == DlgBrowseMuc) n = 1;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
             g.focus_field = (g.focus_field + 1) % n;
@@ -1397,16 +1649,22 @@ void handle_char(WPARAM wp) {
             if (g.focus_field == 0) f = &g.field_user;
             else if (g.focus_field == 1) f = &g.field_pass;
             else f = &g.field_captcha;
-        } else if (g.dialog == DlgAddBuddy) f = &g.field_buddy;
+        }         else if (g.dialog == DlgAddBuddy) f = &g.field_buddy;
         else if (g.dialog == DlgJoinMuc)
             f = g.focus_field == 0 ? &g.field_room : &g.field_nick;
+        else if (g.dialog == DlgBrowseMuc) f = &g.field_nick;
         if (wp == 8) {
             if (!f->empty()) f->pop_back();
         } else if (wp == '\r') {
             dialog_ok();
             return;
         } else if (wp == '\t') {
-            int n = g.dialog == DlgRegister ? (g.captcha_visible ? 3 : 2) : 4;
+            int n = 2;
+            if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
+            else if (g.dialog == DlgJoinMuc) n = 2;
+            else if (g.dialog == DlgBrowseMuc) n = 1;
+            else if (g.dialog == DlgAddBuddy) n = 1;
+            else if (g.dialog == DlgSignOn) n = 2;
             g.focus_field = (g.focus_field + 1) % n;
         } else if (wp >= 32 && wp < 127) {
             f->push_back(char(wp));
@@ -1474,9 +1732,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             set_status("Solve the CAPTCHA in this window — no browser needed");
         }
         if (e->type == jabber::ClientEvent::Message) {
-            ding();
-            open_tab(e->jid, false);
-            set_status("You've got mail from " + jabber::jid_node(e->jid));
+            bool muc = false;
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                muc = g.client.muc_joined.count(e->jid) != 0;
+            }
+            open_tab(e->jid, muc);
+            if (!e->text.empty()) {
+                if (!muc) {
+                    ding();
+                    set_status("You've got mail from " + jabber::jid_node(e->jid));
+                } else {
+                    set_status(jabber::jid_node(e->jid) + ": " + e->text);
+                }
+            }
+        }
+        if (e->type == jabber::ClientEvent::MucSubject) {
+            open_tab(e->jid, true);
+        }
+        if (e->type == jabber::ClientEvent::MucRooms ||
+            e->type == jabber::ClientEvent::Bookmarks) {
+            if (g.dialog == DlgBrowseMuc) rebuild_browse_rows();
         }
         if (e->type == jabber::ClientEvent::Presence) {
             std::lock_guard<std::mutex> lock(g.client.mu);
@@ -1560,6 +1836,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetCapture(hwnd);
         mouse_down(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
+    case WM_LBUTTONDBLCLK: {
+        int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+        if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(x, y)) {
+            int row_h = g.canvas.line_height() + 4;
+            int idx = (y - (g.browse_list_r.y + 2 - g.browse_scroll)) / row_h;
+            if (idx >= 0 && idx < (int)g.browse_rows.size() &&
+                !g.browse_rows[idx].section) {
+                g.browse_sel = idx;
+                g.field_room = g.browse_rows[idx].jid;
+                dialog_ok();
+            }
+            return 0;
+        }
+        mouse_down(x, y);
+        return 0;
+    }
     case WM_LBUTTONUP:
         ReleaseCapture();
         mouse_up(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
@@ -1576,6 +1868,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.provider_scroll = std::max(0, g.provider_scroll + d);
         } else if (g.dialog == DlgSignOn && g.recent_list_r.contains(pt.x, pt.y)) {
             g.recent_scroll = std::max(0, g.recent_scroll + d);
+        } else if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(pt.x, pt.y)) {
+            g.browse_scroll = std::max(0, g.browse_scroll + d);
         } else if (g.roster_r.contains(pt.x, pt.y))
             g.roster_scroll = std::max(0, g.roster_scroll + d);
         else

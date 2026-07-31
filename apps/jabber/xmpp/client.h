@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <condition_variable>
 #include <functional>
 #include <map>
@@ -43,6 +44,21 @@ struct ChatLine {
     std::string body;
     bool mine = false;
     bool file = false;
+    bool system = false; // subject / join notices
+};
+
+struct MucRoomInfo {
+    std::string jid;
+    std::string name;
+    std::string description;
+    int occupants = -1; // -1 unknown
+};
+
+struct MucBookmark {
+    std::string jid;
+    std::string name;
+    std::string nick;
+    bool autojoin = false;
 };
 
 struct UploadSlot {
@@ -62,6 +78,9 @@ struct ClientEvent {
         CaptchaReady,
         FileProgress,
         MucOccupants,
+        MucRooms,
+        MucSubject,
+        Bookmarks,
         Identity
     } type = State;
     std::string text;
@@ -118,6 +137,21 @@ inline std::string jid_domain(const std::string &j) {
     if (a == std::string::npos) return j;
     size_t s = j.find('/', a);
     return s == std::string::npos ? j.substr(a + 1) : j.substr(a + 1, s - a - 1);
+}
+
+inline std::string jid_resource(const std::string &j) {
+    size_t s = j.find('/');
+    return s == std::string::npos ? std::string{} : j.substr(s + 1);
+}
+
+inline bool jid_ieq(const std::string &a, const std::string &b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+    return true;
 }
 
 inline ClientEvent make_event(ClientEvent::Type t, const std::string &text = {},
@@ -228,6 +262,12 @@ public:
     std::map<std::string, Buddy> roster;
     std::map<std::string, std::vector<ChatLine>> chats;
     std::map<std::string, std::vector<std::string>> muc_occupants;
+    std::map<std::string, std::string> muc_nicks;     // room → our nick
+    std::map<std::string, std::string> muc_subjects;  // room → subject
+    std::set<std::string> muc_joined;                 // rooms we have joined
+    std::string conference_host;                      // e.g. conference.yax.im
+    std::vector<MucRoomInfo> muc_rooms;               // public disco list
+    std::vector<MucBookmark> muc_bookmarks;
     SkinImage captcha_image;
     std::string captcha_sid;
     std::string captcha_form_type;
@@ -256,6 +296,12 @@ public:
         {
             std::lock_guard<std::mutex> lock(mu);
             own_show = Show::Unavailable;
+            muc_joined.clear();
+            muc_nicks.clear();
+            muc_occupants.clear();
+            muc_subjects.clear();
+            muc_rooms.clear();
+            conference_host.clear();
             vcard_inflight_.clear();
             while (!vcard_queue_.empty()) vcard_queue_.pop();
         }
@@ -317,17 +363,136 @@ public:
             xml_escape(body) + "</body></message>";
         {
             std::lock_guard<std::mutex> lock(mu);
-            chats[bare_jid(room)].push_back({jid, body, true, false});
+            chats[bare_jid(room)].push_back({jid, body, true, false, false});
         }
         queue_send(stanza);
     }
 
-    void join_muc(const std::string &room, const std::string &nick) {
+    void join_muc(const std::string &room_in, const std::string &nick_in) {
+        std::string room = bare_jid(room_in);
+        std::string nick = nick_in.empty() ? jid_node(jid) : nick_in;
+        if (room.empty() || nick.empty()) return;
         std::string to = room + "/" + nick;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            muc_nicks[room] = nick;
+            muc_joined.insert(room);
+            if (!chats.count(room)) chats[room] = {};
+            muc_occupants[room]; // ensure key
+        }
         queue_send("<presence to='" + xml_escape(to) +
                    "'><x xmlns='http://jabber.org/protocol/muc'/></presence>");
+    }
+
+    void leave_muc(const std::string &room_in) {
+        std::string room = bare_jid(room_in);
+        std::string nick;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            auto it = muc_nicks.find(room);
+            nick = it != muc_nicks.end() ? it->second : jid_node(jid);
+            muc_joined.erase(room);
+            muc_nicks.erase(room);
+            muc_occupants.erase(room);
+        }
+        if (!room.empty() && !nick.empty())
+            queue_send("<presence to='" + xml_escape(room + "/" + nick) +
+                       "' type='unavailable'/>");
+        emit(make_event(ClientEvent::MucOccupants, {}, room));
+    }
+
+    void refresh_muc_rooms() {
+        std::string conf;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            conf = conference_host;
+        }
+        if (conf.empty()) {
+            emit(make_event(ClientEvent::StatusText,
+                            "No chat service found on this server yet"));
+            return;
+        }
+        queue_send("<iq type='get' id='mucrooms1' to='" + xml_escape(conf) +
+                   "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
+        emit(make_event(ClientEvent::StatusText, "Fetching chat rooms…"));
+    }
+
+    void request_bookmarks() {
+        // Prefer PEP Native Bookmarks (XEP-0402); Private XML fallback follows if empty.
+        queue_send(
+            "<iq type='get' id='bmpep1'><pubsub xmlns='http://jabber.org/protocol/pubsub'>"
+            "<items node='urn:xmpp:bookmarks:1'/></pubsub></iq>");
+        queue_send(
+            "<iq type='get' id='bmpriv1'><query xmlns='jabber:iq:private'>"
+            "<storage xmlns='storage:bookmarks'/></query></iq>");
+    }
+
+    void bookmark_muc(const std::string &room_in, const std::string &name,
+                      const std::string &nick, bool autojoin) {
+        std::string room = bare_jid(room_in);
+        if (room.empty()) return;
+        MucBookmark bm;
+        bm.jid = room;
+        bm.name = name.empty() ? jid_node(room) : name;
+        bm.nick = nick.empty() ? jid_node(jid) : nick;
+        bm.autojoin = autojoin;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            bool found = false;
+            for (auto &b : muc_bookmarks) {
+                if (jid_ieq(b.jid, room)) {
+                    b = bm;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) muc_bookmarks.push_back(bm);
+        }
+        publish_bookmarks();
+        emit(make_event(ClientEvent::Bookmarks));
+    }
+
+    void set_bookmark_autojoin(const std::string &room_in, bool autojoin) {
+        std::string room = bare_jid(room_in);
+        std::string nick = jid_node(jid);
+        std::string name = jid_node(room);
+        bool found = false;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            auto nit = muc_nicks.find(room);
+            if (nit != muc_nicks.end()) nick = nit->second;
+            for (auto &b : muc_bookmarks) {
+                if (jid_ieq(b.jid, room)) {
+                    b.autojoin = autojoin;
+                    if (!b.nick.empty()) nick = b.nick;
+                    if (!b.name.empty()) name = b.name;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (found) {
+            publish_bookmarks();
+            emit(make_event(ClientEvent::Bookmarks));
+            return;
+        }
+        bookmark_muc(room, name, nick, autojoin);
+    }
+
+    bool is_bookmarked(const std::string &room_in) {
+        std::string room = bare_jid(room_in);
         std::lock_guard<std::mutex> lock(mu);
-        if (!chats.count(room)) chats[room] = {};
+        for (const auto &b : muc_bookmarks)
+            if (jid_ieq(b.jid, room)) return true;
+        return false;
+    }
+
+    bool bookmark_autojoin(const std::string &room_in) {
+        std::string room = bare_jid(room_in);
+        std::lock_guard<std::mutex> lock(mu);
+        for (const auto &b : muc_bookmarks)
+            if (jid_ieq(b.jid, room)) return b.autojoin;
+        return false;
     }
 
     void set_show(Show s) {
@@ -619,14 +784,43 @@ private:
         if (st.find("<message") == 0) {
             std::string from = attr(st, "from");
             std::string type = attr(st, "type");
-            std::string body;
+            std::string body, subject;
             extract_tag(st, "body", &body);
+            extract_tag(st, "subject", &subject);
             body = xml_unescape(body);
-            if (body.empty()) return;
+            subject = xml_unescape(subject);
             std::string key = bare_jid(from);
+            bool is_muc = (type == "groupchat");
+            if (!is_muc) {
+                std::lock_guard<std::mutex> lock(mu);
+                is_muc = muc_joined.count(key) != 0;
+            }
+            if (!subject.empty()) {
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    muc_subjects[key] = subject;
+                    chats[key].push_back(
+                        {"", "Topic: " + subject, false, false, true});
+                }
+                emit(make_event(ClientEvent::MucSubject, subject, key));
+            }
+            if (body.empty()) return;
+            // Prefer occupant nick for MUC lines.
+            std::string who = is_muc ? jid_resource(from) : from;
+            if (who.empty()) who = from;
             {
                 std::lock_guard<std::mutex> lock(mu);
-                chats[key].push_back({from, body, false, false});
+                // Skip echo of our own groupchat if we already appended locally.
+                if (is_muc && type == "groupchat") {
+                    auto nit = muc_nicks.find(key);
+                    if (nit != muc_nicks.end() && who == nit->second) {
+                        auto &lines = chats[key];
+                        if (!lines.empty() && lines.back().mine &&
+                            lines.back().body == body)
+                            return;
+                    }
+                }
+                chats[key].push_back({who, body, false, false, false});
             }
             emit(make_event(ClientEvent::Message, body, key));
             return;
@@ -657,13 +851,12 @@ private:
                         alert = jid_node(bare) + " signed off";
                     if (!alert.empty()) status_text = alert;
                 }
-                // MUC occupant: from = room/nick
+                // MUC occupant: from = room/nick (only for rooms we joined)
                 size_t slash = from.find('/');
-                if (slash != std::string::npos && chats.count(bare_jid(from))) {
+                if (slash != std::string::npos && muc_joined.count(bare)) {
                     muc = true;
-                    std::string room = bare_jid(from);
                     std::string nick = from.substr(slash + 1);
-                    auto &occ = muc_occupants[room];
+                    auto &occ = muc_occupants[bare];
                     if (type == "unavailable") {
                         occ.erase(std::remove(occ.begin(), occ.end(), nick), occ.end());
                     } else if (std::find(occ.begin(), occ.end(), nick) == occ.end()) {
@@ -680,24 +873,8 @@ private:
                 parse_roster(st);
                 emit(make_event(ClientEvent::Roster));
             }
-            if (st.find("disco#items") != std::string::npos) {
-                // Probe each item for HTTP Upload.
-                size_t pos = 0;
-                int n = 0;
-                while ((pos = st.find("<item", pos)) != std::string::npos && n < 12) {
-                    size_t end = st.find('>', pos);
-                    if (end == std::string::npos) break;
-                    std::string j = attr(st.substr(pos, end - pos + 1), "jid");
-                    if (!j.empty()) {
-                        queue_send("<iq type='get' id='du" + std::to_string(n) +
-                                   "' to='" + xml_escape(j) +
-                                   "'><query xmlns='http://jabber.org/protocol/disco#info'/>"
-                                   "</iq>");
-                        ++n;
-                    }
-                    pos = end + 1;
-                }
-            }
+            if (st.find("disco#items") != std::string::npos)
+                handle_disco_items(st);
             if (st.find("urn:xmpp:http:upload:0") != std::string::npos) {
                 if (st.find("<slot") != std::string::npos) {
                     std::string put, get;
@@ -708,14 +885,11 @@ private:
                     if (!put.empty() && !get.empty()) finish_upload(put, get);
                 }
             }
-            if (st.find("disco#info") != std::string::npos) {
-                if (st.find("urn:xmpp:http:upload:0") != std::string::npos) {
-                    std::lock_guard<std::mutex> lock(mu);
-                    upload_available = true;
-                    std::string from = attr(st, "from");
-                    if (!from.empty()) http_upload_host = from;
-                }
-            }
+            if (st.find("disco#info") != std::string::npos)
+                handle_disco_info(st);
+            if (st.find("urn:xmpp:bookmarks:1") != std::string::npos ||
+                st.find("storage:bookmarks") != std::string::npos)
+                handle_bookmarks_iq(st);
             if (st.find("jabber:iq:register") != std::string::npos) {
                 // handled in register_flow synchronously via stream_buf
             }
@@ -725,6 +899,225 @@ private:
                 std::string bare = from.empty() ? bare_jid(jid) : bare_jid(from);
                 apply_vcard(bare, st);
             }
+        }
+    }
+
+    void handle_disco_items(const std::string &st) {
+        std::string from = attr(st, "from");
+        std::string id = attr(st, "id");
+        std::string conf;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            conf = conference_host;
+        }
+        bool room_list = (id.rfind("mucrooms", 0) == 0) ||
+                         (!conf.empty() && !from.empty() && jid_ieq(from, conf));
+        if (room_list) {
+            std::vector<MucRoomInfo> rooms;
+            size_t pos = 0;
+            while ((pos = st.find("<item", pos)) != std::string::npos) {
+                size_t end = st.find('>', pos);
+                if (end == std::string::npos) break;
+                std::string tag = st.substr(pos, end - pos + 1);
+                MucRoomInfo r;
+                r.jid = attr(tag, "jid");
+                r.name = attr(tag, "name");
+                if (r.name.empty()) r.name = jid_node(r.jid);
+                if (!r.jid.empty() && r.jid.find('@') != std::string::npos)
+                    rooms.push_back(r);
+                pos = end + 1;
+            }
+            size_t nrooms = rooms.size();
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                muc_rooms = std::move(rooms);
+            }
+            emit(make_event(ClientEvent::MucRooms));
+            emit(make_event(ClientEvent::StatusText,
+                            "Found " + std::to_string(nrooms) + " chat rooms"));
+            return;
+        }
+        // Host disco#items → probe each child for upload + conference.
+        size_t pos = 0;
+        int n = 0;
+        while ((pos = st.find("<item", pos)) != std::string::npos && n < 24) {
+            size_t end = st.find('>', pos);
+            if (end == std::string::npos) break;
+            std::string j = attr(st.substr(pos, end - pos + 1), "jid");
+            if (!j.empty()) {
+                queue_send("<iq type='get' id='du" + std::to_string(n) +
+                           "' to='" + xml_escape(j) +
+                           "'><query xmlns='http://jabber.org/protocol/disco#info'/>"
+                           "</iq>");
+                ++n;
+            }
+            pos = end + 1;
+        }
+    }
+
+    void handle_disco_info(const std::string &st) {
+        std::string from = attr(st, "from");
+        if (st.find("urn:xmpp:http:upload:0") != std::string::npos) {
+            std::lock_guard<std::mutex> lock(mu);
+            upload_available = true;
+            if (!from.empty()) http_upload_host = from;
+        }
+        bool is_conf =
+            st.find("category='conference'") != std::string::npos ||
+            st.find("category=\"conference\"") != std::string::npos ||
+            st.find("http://jabber.org/protocol/muc") != std::string::npos;
+        if (is_conf && !from.empty()) {
+            bool first = false;
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                if (conference_host.empty()) {
+                    conference_host = from;
+                    first = true;
+                }
+            }
+            if (first) {
+                queue_send("<iq type='get' id='mucrooms0' to='" + xml_escape(from) +
+                           "'><query xmlns='http://jabber.org/protocol/disco#items'/>"
+                           "</iq>");
+                emit(make_event(ClientEvent::StatusText,
+                                "Chat service: " + from));
+            }
+        }
+    }
+
+    void handle_bookmarks_iq(const std::string &st) {
+        if (attr(st, "type") == "error") return;
+        std::vector<MucBookmark> found;
+        // XEP-0402: <conference xmlns='urn:xmpp:bookmarks:1' …/> inside <item id='jid'>
+        size_t pos = 0;
+        while ((pos = st.find("<item", pos)) != std::string::npos) {
+            size_t end = st.find("</item>", pos);
+            size_t self = st.find("/>", pos);
+            std::string chunk;
+            if (end != std::string::npos && (self == std::string::npos || end < self))
+                chunk = st.substr(pos, end + 7 - pos);
+            else if (self != std::string::npos)
+                chunk = st.substr(pos, self + 2 - pos);
+            else
+                break;
+            MucBookmark bm;
+            bm.jid = attr(chunk, "id");
+            size_t c = chunk.find("<conference");
+            if (c != std::string::npos) {
+                size_t cend = chunk.find('>', c);
+                std::string ctag = chunk.substr(c, cend - c + 1);
+                if (bm.jid.empty()) bm.jid = attr(ctag, "jid");
+                bm.name = attr(ctag, "name");
+                std::string aj = attr(ctag, "autojoin");
+                bm.autojoin = (aj == "true" || aj == "1");
+                extract_tag(chunk, "nick", &bm.nick);
+            }
+            if (!bm.jid.empty() && bm.jid.find('@') != std::string::npos)
+                found.push_back(bm);
+            pos = pos + 5;
+        }
+        // XEP-0048 private XML: <conference jid='…' …/>
+        pos = 0;
+        while ((pos = st.find("<conference", pos)) != std::string::npos) {
+            size_t end = st.find('>', pos);
+            if (end == std::string::npos) break;
+            std::string tag = st.substr(pos, end - pos + 1);
+            MucBookmark bm;
+            bm.jid = attr(tag, "jid");
+            bm.name = attr(tag, "name");
+            std::string aj = attr(tag, "autojoin");
+            bm.autojoin = (aj == "true" || aj == "1");
+            if (st[end - 1] != '/') {
+                size_t close = st.find("</conference>", end);
+                if (close != std::string::npos) {
+                    std::string inner = st.substr(end + 1, close - end - 1);
+                    extract_tag(inner, "nick", &bm.nick);
+                }
+            }
+            if (!bm.jid.empty() && bm.jid.find('@') != std::string::npos) {
+                bool dup = false;
+                for (const auto &f : found)
+                    if (jid_ieq(f.jid, bm.jid)) {
+                        dup = true;
+                        break;
+                    }
+                if (!dup) found.push_back(bm);
+            }
+            pos = end + 1;
+        }
+        if (found.empty() && st.find("id='bmpep1'") != std::string::npos)
+            return; // wait for private XML fallback
+        if (!found.empty()) {
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                // Prefer richer list; merge by jid.
+                for (const auto &bm : found) {
+                    bool hit = false;
+                    for (auto &e : muc_bookmarks) {
+                        if (jid_ieq(e.jid, bm.jid)) {
+                            e = bm;
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (!hit) muc_bookmarks.push_back(bm);
+                }
+            }
+            emit(make_event(ClientEvent::Bookmarks));
+            autojoin_bookmarks();
+        }
+    }
+
+    void publish_bookmarks() {
+        std::vector<MucBookmark> copy;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            copy = muc_bookmarks;
+        }
+        // PEP Native Bookmarks — publish each room as its own item.
+        for (const auto &b : copy) {
+            std::string iq =
+                "<iq type='set' id='bmset" + std::to_string(iq_seq_++) + "'>"
+                "<pubsub xmlns='http://jabber.org/protocol/pubsub'>"
+                "<publish node='urn:xmpp:bookmarks:1'>"
+                "<item id='" +
+                xml_escape(b.jid) + "'><conference xmlns='urn:xmpp:bookmarks:1' name='" +
+                xml_escape(b.name.empty() ? jid_node(b.jid) : b.name) +
+                "' autojoin='" + (b.autojoin ? "true" : "false") + "'>";
+            if (!b.nick.empty())
+                iq += "<nick>" + xml_escape(b.nick) + "</nick>";
+            iq += "</conference></item></publish></pubsub></iq>";
+            queue_send(iq);
+        }
+        // Private XML storage:bookmarks (legacy clients / servers).
+        std::string storage =
+            "<iq type='set' id='bmprivset'><query xmlns='jabber:iq:private'>"
+            "<storage xmlns='storage:bookmarks'>";
+        for (const auto &b : copy) {
+            storage += "<conference jid='" + xml_escape(b.jid) + "' name='" +
+                       xml_escape(b.name.empty() ? jid_node(b.jid) : b.name) +
+                       "' autojoin='" + (b.autojoin ? "true" : "false") + "'>";
+            if (!b.nick.empty())
+                storage += "<nick>" + xml_escape(b.nick) + "</nick>";
+            storage += "</conference>";
+        }
+        storage += "</storage></query></iq>";
+        queue_send(storage);
+    }
+
+    void autojoin_bookmarks() {
+        std::vector<MucBookmark> join;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            for (const auto &b : muc_bookmarks)
+                if (b.autojoin && !muc_joined.count(b.jid)) join.push_back(b);
+        }
+        for (const auto &b : join) {
+            std::string nick = b.nick.empty() ? jid_node(jid) : b.nick;
+            join_muc(b.jid, nick);
+            emit(make_event(ClientEvent::StatusText, "Autojoining " + b.jid));
+            // UI opens tabs via Message/Bookmarks — emit a synthetic cue.
+            emit(make_event(ClientEvent::Message, {}, b.jid));
         }
     }
 
@@ -1013,11 +1406,12 @@ private:
         }
         publish_presence();
         request_vcard(); // self
-        // disco for upload
+        // disco for upload + conference service
         sock_.send_all("<iq type='get' id='disco1' to='" + xml_escape(host_) +
                        "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
         sock_.send_all("<iq type='get' id='disco2' to='" + xml_escape(host_) +
                        "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>");
+        request_bookmarks();
         set_state(ConnState::Online, "Signed on as " + jid);
         emit(make_event(ClientEvent::Identity));
         return true;
