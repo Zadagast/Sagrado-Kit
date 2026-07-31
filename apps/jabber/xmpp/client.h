@@ -989,7 +989,6 @@ private:
 
     // Match the outer close when <message> nests (MAM/carbons forwarded).
     static size_t stanza_end_nested(const std::string &buf, const char *kind) {
-        const size_t klen = std::strlen(kind);
         const std::string open = std::string("<") + kind;
         const std::string close = std::string("</") + kind + ">";
         size_t i = 0;
