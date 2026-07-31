@@ -446,6 +446,32 @@ Color presence_color(const Appearance &, jabber::Show s) {
     }
 }
 
+// Leading spaces leave a gutter; marks stamp into it after paint_menu.
+static const char *kPresenceItems[] = {
+    "    Available",
+    "    Away",
+    "    Busy",
+    "    Invisible",
+};
+static const jabber::Show kPresenceShows[] = {
+    jabber::Show::Chat,
+    jabber::Show::Away,
+    jabber::Show::Dnd,
+    jabber::Show::Unavailable,
+};
+
+void paint_presence_menu_marks(Canvas &cv, const MenuLayout &lay) {
+    constexpr int kMark = 8;
+    for (int i = 0; i < 4; ++i) {
+        Rect row{lay.items_bounds.x, lay.items_bounds.y + i * lay.item_h,
+                 lay.items_bounds.w, lay.item_h};
+        Rect mark{row.x + 5, row.y + (row.h - kMark) / 2, kMark, kMark};
+        cv.fill(mark, presence_color(g.ap, kPresenceShows[i]));
+        bool hot = (i == g.menu_item_hot);
+        cv.frame(mark, hot ? g.ap.c("menu.hilite_dark") : g.ap.c("menu.dark"));
+    }
+}
+
 void paint_avatar_tile(Canvas &cv, const Appearance &ap, Rect r, const SkinImage *img,
                        const std::string &initials) {
     cv.fill(r, ap.c("list.background"));
@@ -845,10 +871,7 @@ void paint() {
     paint_gel_grip(cv, g.ap, g.gel.grip, g.focused);
 
     if (g.menu_open >= 0) {
-        // Presence popup from identity strip: Available / Away / Busy / Invisible only.
-        static const char *kPresenceItems[] = {
-            "Available", "Away", "Busy", "Invisible",
-        };
+        // Presence popup from identity strip: Available / Away / Busy / Invisible.
         const MenuDef md =
             g.presence_menu
                 ? MenuDef{kPresenceItems, 4}
@@ -870,6 +893,7 @@ void paint() {
             menu_place(win, anchor, mw, menu_estimate_h(md.count), &mx, &my);
         }
         g.popup = paint_menu(cv, g.ap, mx, my, mw, md.items, md.count, g.menu_item_hot);
+        if (g.presence_menu) paint_presence_menu_marks(cv, g.popup);
     }
 
     paint_dialog(cv);
