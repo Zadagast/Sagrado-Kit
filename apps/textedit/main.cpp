@@ -626,14 +626,16 @@ void paint_main() {
             g.status_rect.y + (g.status_rect.h - cv.line_height()) / 2, stats,
             ap.c("primary.label"));
 
-    // Open menu popup (menu bar titles, or gel Window Menu under the hatch)
+    // Open menu popup (menu bar titles, or gel Window Menu under the hatch).
+    // Keep popups inside the window — Milk's Window Menu sits on the right.
+    Rect win{0, 0, cv.width(), cv.height()};
     if (g.menu_open == MenuWindow) {
         const MenuDef &md = kWindowMenu;
         int mw = 72;
         for (int i = 0; i < md.count; ++i)
             mw = std::max(mw, cv.text_width(md.items[i]) + 28);
-        int mx = g.gel.hatch_box.x;
-        int my = g.gel.hatch_box.bottom();
+        int mx = 0, my = 0;
+        menu_place(win, g.gel.hatch_box, mw, menu_estimate_h(md.count), &mx, &my);
         g.popup = paint_menu(cv, ap, mx, my, mw, md.items, md.count, g.menu_item_hot);
     } else if (g.menu_open >= 0 && g.menu_open < MenuCount) {
         Rect item = g.menu_bar.item_rects[g.menu_open];
@@ -650,8 +652,9 @@ void paint_main() {
                           g.soft_wrap ? "[x]" : "[ ]");
             items_buf[3] = wrap_lab;
         }
-        g.popup = paint_menu(cv, ap, item.x, item.bottom(), mw, items_buf, md.count,
-                             g.menu_item_hot);
+        int mx = 0, my = 0;
+        menu_place(win, item, mw, menu_estimate_h(md.count), &mx, &my);
+        g.popup = paint_menu(cv, ap, mx, my, mw, items_buf, md.count, g.menu_item_hot);
     }
 
     paint_gel_grip(cv, ap, g.gel.grip, g.focused);

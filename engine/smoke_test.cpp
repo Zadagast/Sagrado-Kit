@@ -130,6 +130,17 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "short label was elided\n");
             return 1;
         }
+        // Right-edge Window Menu (Milk) must not open past the window.
+        {
+            Rect win{0, 0, 720, 520};
+            Rect hatch{685, 4, 28, 15};
+            int mw = 90, mx = 0, my = 0;
+            menu_place(win, hatch, mw, menu_estimate_h(4), &mx, &my);
+            if (mx < 0 || mx + mw > win.right() || my < 0) {
+                std::fprintf(stderr, "menu_place clipped: %d,%d w=%d\n", mx, my, mw);
+                return 1;
+            }
+        }
 
         // A Haxial face: 12px line, one 'A' 5x7 two rows down, advance 7.
         std::vector<uint8_t> f(0x136 + 3 * hfnt::kRecord, 0);

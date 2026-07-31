@@ -1695,6 +1695,25 @@ inline bool popup_frame_usable(const SkinImage *frame) {
     return frame->w >= 7 && frame->h >= 7;
 }
 
+// Place a popup under `anchor` so it stays inside `win`. Prefers below-left;
+// if that clips the right edge, right-aligns to the anchor; may flip above.
+// `menu_h` may be an estimate (pad + count * kMenuItemH is fine).
+inline void menu_place(Rect win, Rect anchor, int menu_w, int menu_h, int *out_x,
+                       int *out_y) {
+    int x = anchor.x;
+    int y = anchor.bottom();
+    if (x + menu_w > win.right()) x = anchor.right() - menu_w;
+    if (x < win.x) x = win.x;
+    if (x + menu_w > win.right()) x = std::max(win.x, win.right() - menu_w);
+    if (y + menu_h > win.bottom()) y = anchor.y - menu_h;
+    if (y < win.y) y = win.y;
+    if (out_x) *out_x = x;
+    if (out_y) *out_y = y;
+}
+
+// Estimated outer height for colour-path / typical padded menus.
+inline int menu_estimate_h(int count) { return 4 + count * kMenuItemH; }
+
 // Popup / drop-down menu panel. `hot` is the hilited row (-1 none).
 // Optional `disabled_mask` bit i disables item i.
 // Art path: menu.background(_pattern) + menu.item.* + menu.separator + popup_frame.*.
