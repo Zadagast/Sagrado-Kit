@@ -150,6 +150,9 @@ struct ThemeImage {
     std::vector<uint32_t> px; // 0xFFRRGGBB opaque, 0x00000000 transparent
     uint8_t caps[4] = {0, 0, 0, 0};      // l, t, r, b
     uint8_t positions[4] = {0, 0, 0, 0}; // l, t, r, b
+    // Image +8..+11 Text Color / aux (0x00RRGGBB). Icons have no field.
+    bool has_text_color = false;
+    uint32_t text_color = 0;
 
     uint32_t at(int x, int y) const { return px[size_t(y) * w + x]; }
 };
@@ -204,10 +207,19 @@ inline bool parse_image(const std::vector<uint8_t> &d, size_t o, size_t end,
     int palette_len = d[o + 6] + 1;
     int transparent_index = d[o + 7];
     if (header_len >= 20) {
+        // +8..+11 = Text Color / aux (0x00RRGGBB big-endian).
+        uint32_t tc = rd32(d, o + 8) & 0x00ffffffu;
+        out.has_text_color = tc != 0;
+        out.text_color = tc;
         for (int i = 0; i < 4; ++i) {
             out.caps[i] = d[o + 12 + i];
             out.positions[i] = d[o + 16 + i];
         }
+    } else {
+        out.has_text_color = false;
+        out.text_color = 0;
+        std::memset(out.caps, 0, 4);
+        std::memset(out.positions, 0, 4);
     }
     size_t pixels_off = o + header_len + 4 * size_t(palette_len);
     size_t stride = (size_t(w) * bpp + 31) / 32 * 4;

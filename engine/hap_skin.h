@@ -1,9 +1,13 @@
 // Apply a loaded Hap Theme onto Appearance (Sagrado-style live Hap import).
 // Maps verified Hap colour indices + image slots → named SagradoKit roles/art.
 #pragma once
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <map>
 #include <string>
+#include <vector>
 
 #include "hap.h"
 #include "skin.h"
@@ -125,9 +129,9 @@ static const HapArtMap kHapArtMap[] = {
     {196, "scrollbar.v.arrow_hilite.single_down"},
     {200, "menu.background_pattern"},
     {201, "menu.background"},
-    {202, "menu.item_pattern.normal"},
-    {203, "menu.item_pattern.hilited"},
-    {204, "menu.item_pattern.disabled"},
+    {202, "menu.item.pattern.normal"},
+    {203, "menu.item.pattern.hilited"},
+    {204, "menu.item.pattern.disabled"},
     {205, "menu.item.normal"},
     {206, "menu.item.hilited"},
     {207, "menu.item.disabled"},
@@ -201,6 +205,10 @@ static const HapColorMap kHapColorMap[] = {
     {18, "list.hilite_foreground"},
     {19, "list.sort_column_background"},
     {20, "list.separator"},
+    {21, "workspace.background1"},
+    {22, "workspace.background2"},
+    {23, "workspace.background3"},
+    {24, "workspace.background4"},
     {29, "button.light2"},
     {30, "button.light1"},
     {31, "button.face"},
@@ -279,6 +287,22 @@ static const HapColorMap kHapColorMap[] = {
     {155, "scrollbar.disable_dark"},
     {156, "scrollbar.disable_frame"},
     {157, "scrollbar.disable_label"},
+    {158, "slider.indicator_light"},
+    {159, "slider.indicator"},
+    {160, "slider.indicator_dark"},
+    {161, "slider.indicator_frame"},
+    {162, "slider.indicator_hilite_light"},
+    {163, "slider.indicator_hilite"},
+    {164, "slider.indicator_hilite_dark"},
+    {165, "slider.indicator_hilite_frame"},
+    {166, "slider.bar"},
+    {167, "slider.bar_frame"},
+    {168, "slider.bar_hilite"},
+    {169, "slider.bar_hilite_frame"},
+    {170, "slider.disable_light"},
+    {171, "slider.disable"},
+    {172, "slider.disable_dark"},
+    {173, "slider.disable_frame"},
     {174, "column_header.frame"},
     {175, "column_header.light"},
     {176, "column_header.face"},
@@ -311,24 +335,26 @@ static constexpr int kHapColorMapN =
 // Icons. Each icon n occupies record 4n (16 px) and 4n+1 (32 px) of the icon
 // section; AppearanceEdit's panel row order does not follow the numbering.
 //
-// The names below are ground truth, not inference: AppearanceEdit 1.4 saves a
-// version-2 .hap whose icon sections are row-indexed tables of named %IKN
-// records (file icons carry the literal type string, e.g. "folder/uploads").
-// Re-saving a v1 theme and matching the decoded artwork of every v2 record back
-// to the v1 record it came from yields the record number for each panel row.
-// Cross-checked over Blue Print / Ashen / WinXP, whose authored sets differ, and
-// confirmed independently by clearing single icons before saving. Rows whose art
-// is unauthored in all 111 corpus themes (Haxial, Help, Download, Upload)
-// stay unmapped rather than guessed. See docs/haxial-surface-map.md.
+// Primary names (alert.*, document_saved, ...) follow AppearanceEdit v2 ground
+// truth from main. Kit Preview / contract aliases (stop.16, document.text.16,
+// user.16, hard_disk.16, ...) share the same records so both naming schemes work.
 static const HapArtMap kHapIconMap[] = {
     {4, "alert.stop.16"},
     {5, "alert.stop.32"},
+    {4, "stop.16"},
+    {5, "stop.32"},
     {8, "alert.note.16"},
     {9, "alert.note.32"},
+    {8, "note.16"},
+    {9, "note.32"},
     {12, "alert.caution.16"},
     {13, "alert.caution.32"},
+    {12, "caution.16"},
+    {13, "caution.32"},
     {16, "alert.question.16"},
     {17, "alert.question.32"},
+    {16, "question.16"},
+    {17, "question.32"},
     {288, "settings.16"},
     {289, "settings.32"},
     {292, "tools.16"},
@@ -359,12 +385,16 @@ static const HapArtMap kHapIconMap[] = {
     {357, "message.32"},
     {360, "users.16"},
     {361, "users.32"},
+    {360, "user.16"},
+    {361, "user.32"},
     {368, "server.16"},
     {369, "server.32"},
     {372, "files.16"},
     {373, "files.32"},
     {376, "document_saved.16"},
     {377, "document_saved.32"},
+    {376, "document.saved.16"},
+    {377, "document.saved.32"},
     {380, "document_unsaved.16"},
     {381, "document_unsaved.32"},
 };
@@ -374,70 +404,143 @@ static constexpr int kHapIconMapN =
 // File icons: same 4n/4n+1 record pairing, keyed by Haxial's file-type strings
 // (the taxonomy is embedded in every Haxial app, e.g. Calculator's FTI table).
 // Names come from the v2 records, which store the type string verbatim.
-// "file_icon.data" is the generic file; "file.generic.NN" and "folder.NN" stay
-// as aliases because the painters already ask for them.
+// "file_icon.data" is the generic file; friendly aliases keep Kit Preview /
+// soft-complete paths working.
 static const HapArtMap kHapFileIconMap[] = {
     {40, "file_icon.executable/program.16"},
     {41, "file_icon.executable/program.32"},
+    {40, "program.16"},
+    {41, "program.32"},
     {44, "file_icon.executable/plugin.16"},
     {45, "file_icon.executable/plugin.32"},
+    {44, "plugin.16"},
+    {45, "plugin.32"},
     {48, "file_icon.executable/library.16"},
     {49, "file_icon.executable/library.32"},
+    {48, "shared_library.16"},
+    {49, "shared_library.32"},
     {64, "file_icon.alias/unattached.16"},
     {65, "file_icon.alias/unattached.32"},
+    {64, "unattached_alias.16"},
+    {65, "unattached_alias.32"},
     {68, "file_icon.data.16"},
     {69, "file_icon.data.32"},
     {68, "file.generic.16"},
     {69, "file.generic.32"},
+    {68, "document.16"},
+    {69, "document.32"},
     {72, "file_icon.text/.16"},
     {73, "file_icon.text/.32"},
+    {72, "document.text.16"},
+    {73, "document.text.32"},
     {76, "file_icon.image/.16"},
     {77, "file_icon.image/.32"},
+    {76, "document.image.16"},
+    {77, "document.image.32"},
     {80, "file_icon.audio/.16"},
     {81, "file_icon.audio/.32"},
+    {80, "document.audio.16"},
+    {81, "document.audio.32"},
     {84, "file_icon.video/.16"},
     {85, "file_icon.video/.32"},
+    {84, "document.video.16"},
+    {85, "document.video.32"},
     {88, "file_icon.font/.16"},
     {89, "file_icon.font/.32"},
+    {88, "document.font.16"},
+    {89, "document.font.32"},
     {92, "file_icon.archive/.16"},
     {93, "file_icon.archive/.32"},
+    {92, "document.archive.16"},
+    {93, "document.archive.32"},
     {96, "file_icon.data/truncated.16"},
     {97, "file_icon.data/truncated.32"},
+    {96, "document.partial.16"},
+    {97, "document.partial.32"},
     {160, "file_icon.folder/.16"},
     {161, "file_icon.folder/.32"},
     {160, "folder.16"},
     {161, "folder.32"},
     {172, "file_icon.folder/uploads.16"},
     {173, "file_icon.folder/uploads.32"},
+    {172, "folder.uploads.16"},
+    {173, "folder.uploads.32"},
     {176, "file_icon.folder/dropbox.16"},
     {177, "file_icon.folder/dropbox.32"},
+    {176, "folder.dropbox.16"},
+    {177, "folder.dropbox.32"},
     {192, "file_icon.folder/programs.16"},
     {193, "file_icon.folder/programs.32"},
+    {192, "folder.programs.16"},
+    {193, "folder.programs.32"},
     {196, "file_icon.folder/programming.16"},
     {197, "file_icon.folder/programming.32"},
+    {196, "folder.programming.16"},
+    {197, "folder.programming.32"},
     {200, "file_icon.folder/games.16"},
     {201, "file_icon.folder/games.32"},
+    {200, "folder.games.16"},
+    {201, "folder.games.32"},
     {204, "file_icon.folder/internet.16"},
     {205, "file_icon.folder/internet.32"},
+    {204, "folder.internet.16"},
+    {205, "folder.internet.32"},
     {208, "file_icon.folder/images.16"},
     {209, "file_icon.folder/images.32"},
+    {208, "folder.pictures.16"},
+    {209, "folder.pictures.32"},
     {212, "file_icon.folder/audio.16"},
     {213, "file_icon.folder/audio.32"},
+    {212, "folder.sounds.16"},
+    {213, "folder.sounds.32"},
     {240, "file_icon.volume/ram.16"},
     {241, "file_icon.volume/ram.32"},
+    {240, "ram_disk.16"},
+    {241, "ram_disk.32"},
     {244, "file_icon.volume/hd.16"},
     {245, "file_icon.volume/hd.32"},
+    {244, "hard_disk.16"},
+    {245, "hard_disk.32"},
     {248, "file_icon.volume/net.16"},
     {249, "file_icon.volume/net.32"},
+    {248, "network_disk.16"},
+    {249, "network_disk.32"},
     {252, "file_icon.volume/cd.16"},
     {253, "file_icon.volume/cd.32"},
+    {252, "compact_disk.16"},
+    {253, "compact_disk.32"},
     {256, "file_icon.volume/dvd.16"},
     {257, "file_icon.volume/dvd.32"},
+    {256, "dvd.16"},
+    {257, "dvd.32"},
     {260, "file_icon.volume/cart.16"},
     {261, "file_icon.volume/cart.32"},
+    {260, "removable_media.16"},
+    {261, "removable_media.32"},
 };
 static constexpr int kHapFileIconMapN =
     int(sizeof(kHapFileIconMap) / sizeof(kHapFileIconMap[0]));
+
+// Full Hap Images / Icons catalog keys (editor lists include empty slots).
+inline std::vector<std::string> all_hap_art_keys() {
+    std::vector<std::string> keys;
+    keys.reserve(size_t(kHapArtMapN));
+    for (int i = 0; i < kHapArtMapN; ++i) keys.push_back(kHapArtMap[i].key);
+    return keys;
+}
+inline std::vector<std::string> all_hap_icon_keys() {
+    std::vector<std::string> keys;
+    keys.reserve(size_t(kHapIconMapN + kHapFileIconMapN));
+    auto push_unique = [&](const char *key) {
+        for (const auto &k : keys)
+            if (k == key) return;
+        keys.push_back(key);
+    };
+    for (int i = 0; i < kHapIconMapN; ++i) push_unique(kHapIconMap[i].key);
+    for (int i = 0; i < kHapFileIconMapN; ++i) push_unique(kHapFileIconMap[i].key);
+    return keys;
+}
+
 
 inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     SkinImage s;
@@ -446,6 +549,8 @@ inline SkinImage theme_image_to_skin(const ThemeImage &t) {
     s.px = t.px;
     std::memcpy(s.caps, t.caps, 4);
     std::memcpy(s.positions, t.positions, 4);
+    s.has_text_color = t.has_text_color;
+    s.text_color = t.text_color;
     return s;
 }
 
@@ -454,9 +559,179 @@ inline Color hap_u32_to_color(uint32_t v) {
             uint8_t(v & 0xff)};
 }
 
-// Fill Skin colours + art/icon caches from a Hap Theme (incomplete OK).
+// Locate format/skins/completion/completion.sap relative to a Hap path or CWD.
+inline std::string find_completion_pack(const std::string &hap_path = {}) {
+    std::vector<std::string> cands;
+    auto push = [&](std::string p) {
+        if (!p.empty()) cands.push_back(std::move(p));
+    };
+    if (!hap_path.empty()) {
+        std::string dir = parent_dir(hap_path);
+        push(join_path(dir, "completion.sap"));
+        push(join_path(dir, "../completion/completion.sap"));
+        push(join_path(dir, "../../format/skins/completion/completion.sap"));
+        push(join_path(dir, "../../../format/skins/completion/completion.sap"));
+        push(join_path(dir, "../format/skins/completion/completion.sap"));
+    }
+    push("format/skins/completion/completion.sap");
+    push("../format/skins/completion/completion.sap");
+    push("../../format/skins/completion/completion.sap");
+    for (const auto &p : cands) {
+        std::ifstream f(p, std::ios::binary);
+        if (f) return p;
+    }
+    return {};
+}
+
+// Fill empty art/icon caches from the Kit completion pack. Never overwrites
+// Hap-authored slots. Never fills primary.background image.
 template <typename AppearanceT>
-inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
+inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
+    if (pack_path.empty()) return 0;
+    Skin pack;
+    if (!skin_toml::load(pack_path, pack)) return 0;
+    std::string dir = parent_dir(pack_path);
+    int filled = 0;
+
+    for (const auto &kv : pack.art) {
+        if (kv.first == "primary.background" ||
+            kv.first == "primary.background_pattern")
+            continue;
+        // Never invent scroll grips — themes that omit them (Aluminum Alloy,
+        // Milk) either bake marks into the indicator or want a clean thumb.
+        // Foreign grips read as a fake button on authored indicators.
+        if (kv.first.find(".grips.") != std::string::npos) continue;
+        // Never invent open-menu chrome from the completion pack. Milk and
+        // many light themes leave Menu Background / Item slots empty on
+        // purpose (colour path). Injecting dark Boilerplate plates makes the
+        // app look like two skins mixed together.
+        if (kv.first == "menu.background" ||
+            kv.first == "menu.background_pattern" ||
+            kv.first == "menu.separator" ||
+            kv.first.rfind("menu.item.", 0) == 0)
+            continue;
+        if (ap.art_cache.count(kv.first) && !ap.art_cache[kv.first].empty())
+            continue;
+        SkinImage img;
+        std::string full = join_path(dir, kv.second.path);
+        if (!load_skin_image(full, img) || img.empty()) continue;
+        if (kv.second.has_caps) std::memcpy(img.caps, kv.second.caps, 4);
+        if (kv.second.has_positions)
+            std::memcpy(img.positions, kv.second.positions, 4);
+        // Do not soft-fill popup_frame from the pack when the Hap already has
+        // any plate (including Milk's 3×3 stub). paint_menu ignores unusable
+        // stubs and uses the colour-path Focus Box ring instead — pack frames
+        // are foreign chrome and read as a mixed theme.
+        if (kv.first.rfind("popup_frame", 0) == 0) continue;
+        ap.art_cache[kv.first] = std::move(img);
+        ++filled;
+    }
+    for (const auto &kv : pack.icons) {
+        if (ap.icon_cache.count(kv.first) && !ap.icon_cache[kv.first].empty())
+            continue;
+        SkinImage img;
+        std::string full = join_path(dir, kv.second);
+        if (!load_skin_image(full, img) || img.empty()) continue;
+        std::memset(img.caps, 0, 4);
+        std::memset(img.positions, 0, 4);
+        ap.icon_cache[kv.first] = std::move(img);
+        ++filled;
+    }
+    return filled;
+}
+
+// Stock CRT leftovers (neon green ink, blood-red hilites) and chroma-key
+// fills clash on light Hap gels. Remap chrome roles to coherent neighbours.
+// Policy lives here — every Hap, not a per-skin patch.
+inline bool hap_color_light(Color c) {
+    return int(c.r) + int(c.g) + int(c.b) >= 480; // mean ≥ 160
+}
+inline bool hap_color_chroma(Color c) {
+    if (c.g >= 200 && c.r <= 60 && c.b <= 60) return true;
+    if (c.r >= 200 && c.b >= 200 && c.g <= 60) return true;
+    return false;
+}
+inline bool hap_stock_crt_green(Color c) {
+    return c.r <= 40 && c.g >= 180 && c.b <= 40;
+}
+inline bool hap_stock_crt_red(Color c) {
+    return c.r >= 100 && c.g <= 40 && c.b <= 40 && int(c.r) >= int(c.g) * 3;
+}
+inline Color hap_mix(Color a, Color b, int t /* 0..256 */) {
+    t = std::clamp(t, 0, 256);
+    return rgb(uint8_t((int(a.r) * (256 - t) + int(b.r) * t) >> 8),
+               uint8_t((int(a.g) * (256 - t) + int(b.g) * t) >> 8),
+               uint8_t((int(a.b) * (256 - t) + int(b.b) * t) >> 8));
+}
+
+template <typename AppearanceT>
+inline void cohere_chrome_colors(AppearanceT &ap) {
+    Color face = ap.c("primary.background");
+    Color win = ap.c("window.face");
+    const bool light = hap_color_light(face) || hap_color_light(win);
+
+    auto needs_remap = [&](Color cur) {
+        if (hap_color_chroma(cur)) return true;
+        if (light && (hap_stock_crt_green(cur) || hap_stock_crt_red(cur)))
+            return true;
+        return false;
+    };
+
+    Color ink = ap.c("primary.label");
+    if (light && (hap_color_light(ink) || needs_remap(ink))) ink = rgb(32, 32, 32);
+
+    Color fill = ap.c("list.background");
+    if (needs_remap(fill) || (light && hap_stock_crt_green(fill)))
+        fill = ap.c("primary.light");
+    if (needs_remap(fill) || (light && !hap_color_light(fill) &&
+                              hap_stock_crt_green(ap.c("list.background"))))
+        fill = face;
+    if (light && int(fill.r) + int(fill.g) + int(fill.b) < 200)
+        fill = ap.c("primary.light");
+    if (light && needs_remap(fill)) fill = rgb(236, 236, 236);
+
+    Color hilite = light ? hap_mix(face, rgb(0, 0, 0), 56)
+                         : hap_mix(face, rgb(255, 255, 255), 72);
+    if (needs_remap(hilite)) hilite = light ? rgb(180, 180, 190) : rgb(80, 80, 90);
+    Color hi_ink = hap_color_light(hilite) ? rgb(16, 16, 16) : rgb(255, 255, 255);
+
+    auto fix = [&](const char *role, Color repl) {
+        if (needs_remap(ap.c(role))) ap.set_color(role, repl);
+    };
+
+    fix("menu.background", fill);
+    fix("menu.light", ap.c("primary.light"));
+    fix("menu.dark", ap.c("primary.dark"));
+    fix("menu.label", ink);
+    fix("menu.disable_label", hap_mix(ink, fill, 120));
+    fix("menu.hilite_background", hilite);
+    fix("menu.hilite_light", hap_mix(hilite, rgb(255, 255, 255), 90));
+    fix("menu.hilite_dark", hap_mix(hilite, rgb(0, 0, 0), 90));
+    fix("menu.hilite_label", hi_ink);
+
+    fix("list.background", fill);
+    fix("list.label", ink);
+    fix("list.hilite_background", hilite);
+    fix("list.hilite_foreground", hi_ink);
+
+    fix("text.foreground", ink);
+    // Stock CRT field is black; on a light gel remap to a paper face.
+    Color tbg = ap.c("text.background");
+    if (needs_remap(tbg) ||
+        (light && tbg.r <= 8 && tbg.g <= 8 && tbg.b <= 8))
+        ap.set_color("text.background", rgb(255, 255, 255));
+    fix("text.hilite_background", hilite);
+    fix("text.hilite_foreground", hi_ink);
+    fix("text.insertion_point", light ? rgb(0, 0, 0) : ink);
+
+    fix("focus.box", light ? rgb(0, 0, 0) : ap.c("primary.dark"));
+}
+
+// Fill Skin colours + art/icon caches from a Hap Theme (incomplete OK).
+// soft_complete_path: optional Kit completion.sap for empty slots only.
+template <typename AppearanceT>
+inline bool apply_hap_theme(AppearanceT &ap, Theme &theme,
+                            const std::string &soft_complete_path = {}) {
     Skin skin = stock_skin();
     skin.meta.name = theme.name.empty() ? "Hap Theme" : theme.name;
     skin.meta.creator = theme.author.empty() ? "imported from .hap" : theme.author;
@@ -464,6 +739,7 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
         theme.description.empty() ? "Live Hap import (Sagrado-style)"
                                   : theme.description;
     if (!theme.version.empty()) skin.meta.version = theme.version;
+    else skin.meta.version = "1.0";
 
     if (theme.has_colors) {
         for (int i = 0; i < kHapColorMapN; ++i) {
@@ -491,10 +767,24 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
     ap.art_cache.clear();
     ap.icon_cache.clear();
 
+    // Named art map first.
+    bool mapped_art[512] = {};
     for (int i = 0; i < kHapArtMapN; ++i) {
-        const ThemeImage *img = theme.image(kHapArtMap[i].slot);
+        int slot = kHapArtMap[i].slot;
+        if (slot >= 0 && slot < 512) mapped_art[slot] = true;
+        const ThemeImage *img = theme.image(slot);
         if (!img || img->w <= 0) continue;
         ap.art_cache[kHapArtMap[i].key] = theme_image_to_skin(*img);
+    }
+    // Preserve unknown occupied image slots by index (e.g. 271) so Hap→Sap
+    // round-trip does not discard chrome that is not yet named.
+    for (const auto &kv : theme.images) {
+        int slot = kv.first;
+        if (slot < 0 || (slot < 512 && mapped_art[slot])) continue;
+        if (kv.second.w <= 0) continue;
+        char key[40];
+        std::snprintf(key, sizeof(key), "hap.image.%d", slot);
+        ap.art_cache[key] = theme_image_to_skin(kv.second);
     }
     for (int i = 0; i < kHapIconMapN; ++i) {
         const ThemeImage *img = theme.icon(kHapIconMap[i].slot);
@@ -506,6 +796,11 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme) {
         if (!img || img->w <= 0) continue;
         ap.icon_cache[kHapFileIconMap[i].key] = theme_image_to_skin(*img);
     }
+
+    std::string pack = soft_complete_path;
+    if (pack.empty()) pack = find_completion_pack();
+    if (!pack.empty()) soft_complete(ap, pack);
+    cohere_chrome_colors(ap);
     return true;
 }
 

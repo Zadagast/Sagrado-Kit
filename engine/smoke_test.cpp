@@ -9,7 +9,7 @@
 
 int main(int argc, char **argv) {
     Appearance ap;
-    std::string path = argc > 1 ? argv[1] : "format/skins/stock.skin.toml";
+    std::string path = argc > 1 ? argv[1] : "format/skins/stock.sap";
     if (!ap.load(path)) {
         std::fprintf(stderr, "load failed: %s\n", path.c_str());
         // Fall back to embedded stock
@@ -33,6 +33,83 @@ int main(int argc, char **argv) {
         if (ap.icon("file.generic.16"))
             std::printf("file.generic.16 icon %dx%d\n", ap.icon("file.generic.16")->w,
                         ap.icon("file.generic.16")->h);
+        if (ap.icon("folder.16"))
+            std::printf("folder.16 icon %dx%d\n", ap.icon("folder.16")->w,
+                        ap.icon("folder.16")->h);
+        if (ap.icon("user.16"))
+            std::printf("user.16 icon %dx%d\n", ap.icon("user.16")->w,
+                        ap.icon("user.16")->h);
+        if (ap.art("hap.image.271"))
+            std::printf("hap.image.271 preserved %dx%d\n", ap.art("hap.image.271")->w,
+                        ap.art("hap.image.271")->h);
+        if (ap.art("menu.item.hilited"))
+            std::printf("menu.item.hilited art %dx%d\n", ap.art("menu.item.hilited")->w,
+                        ap.art("menu.item.hilited")->h);
+        if (ap.art("slider.h.bar.disabled"))
+            std::printf("slider.h.bar.disabled art %dx%d\n",
+                        ap.art("slider.h.bar.disabled")->w,
+                        ap.art("slider.h.bar.disabled")->h);
+        // Milk leaves open-menu plates empty (colour path). Soft-complete must
+        // not invent dark Boilerplate menu.background / menu.item.* — that
+        // reads as two themes mixed together. (Hap may still carry a junk
+        // menu.separator plate; paint ignores separators taller than 4px.)
+        if (path.find("Milk Redux") != std::string::npos ||
+            path.find("milk-redux") != std::string::npos) {
+            if (ap.art("menu.background") || ap.art("menu.background_pattern") ||
+                ap.art("menu.item.normal") || ap.art("menu.item.hilited") ||
+                ap.art("menu.item.pattern.normal") ||
+                ap.art("menu.item.pattern.hilited")) {
+                std::fprintf(stderr,
+                             "Milk open-menu art was soft-completed (mixed theme)\n");
+                return 1;
+            }
+            std::printf("Milk open menus: colour path (no invented menu art)\n");
+        }
+        // Light Haps: open-menu sample must not be hot-green dominated (stock CRT
+        // leak or chroma fill plates). Coherence + menu_fill_art_usable own this.
+        if (path.find("MacOS Classic") != std::string::npos ||
+            path.find("Milk Redux") != std::string::npos ||
+            path.find("milk-redux") != std::string::npos ||
+            path.find("Ashen") != std::string::npos) {
+            Color face = ap.c("primary.background");
+            int face_lum = (int(face.r) + int(face.g) + int(face.b)) / 3;
+            if (face_lum >= 160) {
+                Color fg = ap.c("text.foreground");
+                if (fg.g >= 180 && fg.r <= 40 && fg.b <= 40) {
+                    std::fprintf(stderr,
+                                 "light Hap leaked stock CRT green text.foreground\n");
+                    return 1;
+                }
+                Color mh = ap.c("menu.hilite_background");
+                if (mh.r >= 100 && mh.g <= 40 && mh.b <= 40 &&
+                    int(mh.r) >= int(mh.g) * 3) {
+                    std::fprintf(stderr,
+                                 "light Hap leaked stock CRT red menu.hilite\n");
+                    return 1;
+                }
+                Canvas mcv;
+                mcv.resize(240, 120);
+                mcv.clear(face);
+                static const char *items[] = {"Copy", "Paste", "React…"};
+                MenuLayout ml =
+                    paint_menu(mcv, ap, 8, 8, 120, items, 3, 1);
+                int sx = ml.items_bounds.x + ml.items_bounds.w / 2;
+                int sy = ml.items_bounds.y + ml.item_h + ml.item_h / 2;
+                uint32_t px =
+                    mcv.data()[size_t(sy) * mcv.width() + sx];
+                int pr = int((px >> 16) & 255), pg = int((px >> 8) & 255),
+                    pb = int(px & 255);
+                if (pg >= 180 && pr <= 60 && pb <= 60) {
+                    std::fprintf(stderr,
+                                 "light Hap open-menu sample is hot-green "
+                                 "#%02x%02x%02x\n",
+                                 pr, pg, pb);
+                    return 1;
+                }
+                std::printf("light Hap menu sample OK (#%02x%02x%02x)\n", pr, pg,
+                            pb);
+            }
+        }
     }
 
     Color bg = ap.c("primary.background");
@@ -67,6 +144,27 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "raw latin-1 byte not folded\n");
             return 1;
         }
+        // Em-dash / smart quotes fold onto ASCII (stock face has no U+2014).
+        if (t.text_width("Untitled \xe2\x80\x94 App") !=
+            t.text_width("Untitled - App")) {
+            std::fprintf(stderr, "em-dash not folded to hyphen\n");
+            return 1;
+        }
+        if (t.text_width("\xe2\x80\x9chello\xe2\x80\x9d") !=
+            t.text_width("\"hello\"")) {
+            std::fprintf(stderr, "smart quotes not folded\n");
+            return 1;
+        }
+        // Empty Font must not stick — Canvas keeps stock (avoids blank labels).
+        {
+            Font empty;
+            t.set_font(&empty);
+            if (t.font().name != "Stock" || t.text_width("Find") == 0) {
+                std::fprintf(stderr, "empty font was not rejected\n");
+                return 1;
+            }
+            t.set_font(nullptr);
+        }
         std::string cut = t.text_elide("Menu Bar Pattern", 60);
         if (cut.size() < 4 || cut.compare(cut.size() - 3, 3, "...") != 0 ||
             t.text_width(cut.c_str()) > 60) {
@@ -76,6 +174,17 @@ int main(int argc, char **argv) {
         if (t.text_elide("Menu", 400) != "Menu") {
             std::fprintf(stderr, "short label was elided\n");
             return 1;
+        }
+        // Right-edge Window Menu (Milk) must not open past the window.
+        {
+            Rect win{0, 0, 720, 520};
+            Rect hatch{685, 4, 28, 15};
+            int mw = 90, mx = 0, my = 0;
+            menu_place(win, hatch, mw, menu_estimate_h(4), &mx, &my);
+            if (mx < 0 || mx + mw > win.right() || my < 0) {
+                std::fprintf(stderr, "menu_place clipped: %d,%d w=%d\n", mx, my, mw);
+                return 1;
+            }
         }
 
         // A Haxial face: 12px line, one 'A' 5x7 two rows down, advance 7.
@@ -152,7 +261,7 @@ int main(int argc, char **argv) {
         if (cv.data()[i]) ++lit;
     std::printf("painted %zu non-black pixels\n", lit);
 
-    std::string out = "build/smoke-roundtrip.skin.toml";
+    std::string out = "build/smoke-roundtrip.sap";
     if (!ap.save(out)) {
         std::fprintf(stderr, "save failed\n");
         return 1;
@@ -166,6 +275,22 @@ int main(int argc, char **argv) {
     if (bg2.r != bg.r || bg2.g != bg.g || bg2.b != bg.b) {
         std::fprintf(stderr, "roundtrip colour mismatch\n");
         return 1;
+    }
+    if (!ap.art_cache.empty()) {
+        if (again.art_cache.size() != ap.art_cache.size()) {
+            std::fprintf(stderr, "roundtrip art count mismatch %zu → %zu\n",
+                         ap.art_cache.size(), again.art_cache.size());
+            return 1;
+        }
+        if (ap.art("button.normal") && again.art("button.normal")) {
+            const SkinImage *a = ap.art("button.normal");
+            const SkinImage *b = again.art("button.normal");
+            if (a->w != b->w || a->h != b->h || a->px != b->px) {
+                std::fprintf(stderr, "roundtrip button.normal pixels mismatch\n");
+                return 1;
+            }
+        }
+        std::printf("art roundtrip ok (%zu slots)\n", again.art_cache.size());
     }
     std::printf("roundtrip ok → %s\n", out.c_str());
 

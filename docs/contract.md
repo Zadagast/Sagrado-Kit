@@ -5,7 +5,7 @@ own look — they load a skin through the Appearance Engine and paint kit
 surfaces from resolved tokens.
 
 ```
-┌─────────────────┐     .skin.toml      ┌──────────────────┐
+┌─────────────────┐        .sap         ┌──────────────────┐
 │  SagradoKit      │ ─────────────────► │  Appearance       │
 │  Editor          │   load / save      │  Engine           │
 └─────────────────┘                     └────────┬─────────┘
@@ -22,17 +22,17 @@ surfaces from resolved tokens.
 
 | Piece | Path | Job |
 |---|---|---|
-| Skin format | `format/` | Named colour roles + reserved art/icon slots (`.skin.toml`) |
+| Skin format | `format/` | Named colour roles + reserved art/icon slots (`.sap`) |
 | Appearance Engine | `engine/` | Load skin, resolve tokens, paint kit surfaces into a software framebuffer |
 | Editor | `editor/` | Win32 AppearanceEdit-style app — author the format against a live kit preview |
 
-## Skin format (`.skin.toml`)
+## Skin format (`.sap`)
 
-Human-authored TOML. Schema: [`format/schema.json`](../format/schema.json).
-Example: [`format/skins/stock.skin.toml`](../format/skins/stock.skin.toml).
+Human-authored TOML (Sagrado Appearance). Schema: [`format/schema.json`](../format/schema.json).
+Example: [`format/skins/stock.sap`](../format/skins/stock.sap).
 
 ```toml
-format = "sagrado-skin"
+format = "sap"
 version = 1
 
 [meta]
@@ -45,15 +45,32 @@ background = "#c0c0c0"
 label = "#000000"
 # …
 
-[art]
-# reserved: "window.frame.normal" = "relative/path.png"
+[art."button.normal"]
+file = "button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
 
 [icons]
-# reserved: "file.generic.16" = "relative/path.png"
+# reserved: "file.generic.16" = "relative/path.skimg"
 ```
 
 Colours are `#RRGGBB` or `#RRGGBBAA`. Omitted roles fall through to stock.
-Art/icon maps are reserved in this slice (paths accepted, painting later).
+Art slots use Hap names; each may carry `caps` (9-slice) and `positions`
+(travel / thickness). Saving a live-loaded `.hap` writes a `.sap` plus `.skimg`
+files beside it — same art the Hap imported.
+
+### Hap ↔ Sap
+
+| | `.hap` | `.sap` |
+|---|---|---|
+| Role | Haxial Appearance (binary import) | Sagrado Appearance (authored) |
+| Colours | 204-index table → named roles | Named roles (+ transitions) |
+| Images | Indexed slots + caps/positions | `[art."slot"]` + `.skimg` |
+| Icons | Separate icon table | `[icons]` |
+| Editor | Load only | Load / Save |
+
+`.sap` is meant to express everything Hap carries that the kit uses. Load either;
+author and ship `.sap`.
 
 ### Named colour roles (first slice)
 
@@ -90,8 +107,8 @@ that map for what Positions mean on each control.
 
 | Namespace | Keys (first wave + reserved) |
 |---|---|
-| `art` | `button.normal`, `button.hilited`, `button.disabled`, `default_button.*`, `icon_button.normal`, `icon_button.hilited`, `icon_button.disabled`, `tick.*`, `mutex.*`, `disclosure.*`, `popup.*`, `popup.no_title.*`, `popup.symbol.*`, `popup_frame.*`, `menu.background(_pattern)`, `menu.item.*`, `menu.separator`, `menu_bar.pattern`, `menu_bar.background`, `menu_bar.title*`, `separator.h/v`, `box`, `framed_raised`, `progress.*`, `focus_box.*`, `slider.h/v.bar.*`, `slider.h/v.indicator.*`, `slider.h/v.indicator_pointed.*`, `scrollbar.v/h.double_arrows`, `scrollbar.v/h.single_arrows`, `scrollbar.v/h.disabled`, `scrollbar.v/h.too_small`, `scrollbar.v/h.indicator.*`, `scrollbar.v/h.grips.*`, `scrollbar.v/h.arrow_hilite.*`, `column_header.normal/hilited/disabled`, `window.frame.*`, `window.close/minimize/maximize/menu/resize.*`, `wonderlight.*` |
-| `icons` | `file.generic.16`, `file.generic.32`, `folder.16`, `folder.32`, `user.16`, `user.32` |
+| `art` | `primary.background` (tiled client pattern; colour role shares the name), `button.normal`, `button.hilited`, `button.disabled`, `default_button.*`, `icon_button.normal`, `icon_button.hilited`, `icon_button.disabled`, `tick.*`, `mutex.*`, `disclosure.*`, `popup.*`, `popup.no_title.*`, `popup.symbol.*`, `popup_frame.*`, `menu.background(_pattern)`, `menu.item.pattern.*`, `menu.item.*`, `menu.separator`, `menu_bar.pattern`, `menu_bar.background`, `menu_bar.title*`, `separator.h/v`, `box`, `framed_raised`, `progress.*`, `focus_box.*`, `slider.h/v.bar.*`, `slider.h/v.indicator.*`, `slider.h/v.indicator_pointed.*`, `scrollbar.v/h.double_arrows`, `scrollbar.v/h.single_arrows`, `scrollbar.v/h.disabled`, `scrollbar.v/h.too_small`, `scrollbar.v/h.indicator.*`, `scrollbar.v/h.grips.*`, `scrollbar.v/h.arrow_hilite.*`, `column_header.normal/hilited/disabled`, `window.frame.*`, `window.close/minimize/maximize/menu/resize.*` (incl. `.disabled`), `wonderlight.*` |
+| `icons` | Full AppearanceEdit catalog (`stop`, `note`, `caution`, `question`, `program`, `plugin`, `shared_library`, `unattached_alias`, `document` (+ text/image/audio/video/font/archive/partial/saved), `folder` (+ uploads/dropbox/programs/programming/games/internet/pictures/sounds), disks, `settings`, `tools`, `exit`, `about`, `information`, `address_book`, `launch`, `create_folder`, `connect`, `disconnect`, `data_transfer`, `news`, `chat`, `message`, `users`/`user`, `haxial`, `server`, `files`) each as `.16` / `.32`. Aliases: `file.generic` → `document`, `user` → `users`. Unmapped Hap images preserved as `hap.image.N`. |
 
 Art painting is gated on the surface map (verified Hap index + caps/positions
 meaning). Colour fallbacks remain mandatory.
@@ -117,24 +134,30 @@ Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 2. **Button** — raised bevel push button (pressed uses `button_hilite.*` / default / disabled)
 3. **Icon Button** — `paint_icon_button` (Hap 49–51 + optional title)
 4. **Tick / Mutex** — checkbox and radio (`paint_tick` / `paint_mutex`, blank/ticked/tristate)
-5. **Field** — sunken text field with focus ring and caret
-6. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
-7. **Menu Bar** — `paint_menu_bar` (colour path; optional `menu_bar.*` art)
-8. **Slider** — bar + indicator; optional pointed indicators (`paint_slider(..., pointed)`)
-9. **Progress** — empty bar + fill (`paint_progress`)
-10. **List + header** — column header normal/hilited/disabled + list rows with hilite / `file_label` tints
-11. **Scrollbar** — V/H art-first (double/single arrows, disabled, too-small, grips hilited, arrow-hilite overlays)
-12. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
-13. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
-14. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
-15. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
+5. **Field** — sunken single-line text field with focus ring and caret (`paint_field`)
+6. **Multiline text field** — `TextDoc` + soft-wrap `layout_lines` + `paint_text_editor` in a sunken rect (`engine/text_field.h` / `paint_text_field`). Hit-test, drag-select, arrows/Home/End, Ctrl+A/C/X/V/Z, scroll when wrapped content exceeds height. Enter inserts a newline by default; apps may treat Enter as Send (Shift+Enter = newline).
+7. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
+8. **Menu Bar** — `paint_menu_bar` (colour path; optional `menu_bar.*` art)
+9. **Context Menu** — kit `paint_menu` + `menu_place` via `engine/context_menu.h` (window-space). Apps supply labels + handle actions; the kit paints and hit-tests only. Never `TrackPopupMenu` for in-window chrome (tray may stay OS).
+10. **Slider** — bar + indicator; optional pointed indicators (`paint_slider(..., pointed)`)
+11. **Progress** — empty bar + fill (`paint_progress`)
+12. **List + header** — column header normal/hilited/disabled + list rows with hilite / `file_label` tints
+13. **Scrollbar** — V/H art-first (double/single arrows, disabled, too-small, grips hilited, arrow-hilite overlays)
+14. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
+15. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
+16. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
+17. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
+18. **Alert / About** — gel dialog with optional alert icon + wrapped body + default OK (`paint_alert`). Apps own the HWND; never `MessageBox` / OS widgets for in-app chrome.
+19. **Emoji Picker** — Ubuntu Characters–style IA (`paint_emoji_picker_client` into a Gel Host client): search field, left rail (Recently Used + categories), 6-column scrollable grid of 48px glyphs, Cancel. Category labels are ASCII (kit font is Latin-1 — emoji are **not** drawn as Unicode text glyphs); on-screen tiles come from an **on-disk Noto Color Emoji pack** (`build/emoji_pack/` via `make emoji-pack`). Host with `gel_host_create` (`GelHostKind::Floating`) so the window moves and resizes; `paint_emoji_picker` remains for kit preview self-framing. `emoji_icon` / `paint_emoji_marks` blit PNGs into other surfaces. No new Hap art slots.
+20. **Clipboard** — kit `engine/clipboard.h` (`clipboard_set` / `clipboard_get`, Win32 `CF_TEXT`). Apps do not keep private OpenClipboard helpers.
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.
 
 ## Editor responsibilities
 
-- Load / save `.skin.toml`
+- Load / save `.sap` (also load Haxial `.hap`; Hap is import-only — Save always writes `.sap`)
+- Panels: Colors (typed `#RRGGBB`, Import Colors, Colors Preview), Info meta typing, Images / Icons (full Hap catalogs + Paste), ♦ Groups
 - Present named colour roles for editing
 - Live preview of the kit surfaces above, driven by the same engine apps use
 - Leave incomplete skins valid (partial colour tables are fine)
@@ -151,3 +174,84 @@ Same shape as Haxial and Sagrado `native/`. No OS widgets, no CSS, no web host.
 3. Paint every window through the Appearance Engine into a software framebuffer.
 4. When adding a new control, extend the skin schema + engine helpers — do not
    invent a private colour table.
+
+## Sagrado Apps standard
+
+**Sagrado TextEdit** (`apps/textedit/`) is the reference consumer — the bar for
+every later Sagrado app. Copy its shape; do not invent a parallel UI stack.
+Its document buffer and wrap/paint live in the kit (`TextDoc`, `layout_lines`,
+`paint_text_editor`); the app is the thin shell (files, Find, menus).
+**Sagrado Jabber** (`apps/jabber/`) is the second consumer (IM + XMPP); see
+[`docs/jabber.md`](jabber.md). Chat transcripts soft-wrap through the same kit
+layout (`paint_text_view` / `layout_lines`), not `text_elided`.
+
+| Rule | Meaning |
+|---|---|
+| Kit paints everything | Gel, menus, fields, scrollbars, alerts, **text** — `paint_*` into a `Canvas`, then blit. No OS widgets, no private colour tables. |
+| Kit owns plain text | Soft/hard wrap (`text_layout.h`), buffer (`TextDoc`), `paint_text_view` / `paint_text_editor` / `paint_text_field`. Apps do not ship private wrap loops or Doc types. |
+| Kit owns clipboard | `engine/clipboard.h` for CF_TEXT set/get. |
+| Context menus are kit paint | `context_menu.h` on `paint_menu` / `menu_place` — not OS popups for in-window chrome. |
+| One shared `Appearance` | All gels in the process load the same skin; switch live when the user picks one. |
+| Ooze Gel owns the frame | Title / hatch / Window Menu / close·zoom·min / grow box are kit chrome. Host decorations stay off (especially under Wine). |
+| Clip, don’t hide | Narrow windows clip menu titles and title text. No hamburger / overflow chrome. |
+| App min size | Outer window clamps so gel stays usable (TextEdit matches Haxial TextEdit **212×128**). |
+| Popups stay on-screen | Use `menu_place` (right-anchored Window Menus flip/clamp inside the window). |
+| Pattern tiles clip | Tiled art (`menu.background_pattern`, primary pattern, …) must clip to the destination — never spill past the control. |
+| Soft-complete is fill-only | Never invent open-menu plates over a colour-path theme; ignore unusable `popup_frame` stubs. |
+| Menu fill art must be sane | `menu_fill_art_usable` rejects empty, absurd, and chroma-key plates (hot green / magenta); paint falls back to the colour path. |
+| Hap chrome colours cohere | After Hap import, remap chroma fills and stock CRT neon green / blood-red hilites that clash with a light gel face (`cohere_chrome_colors`). |
+| Alerts are gel | About / notes use `paint_alert`, not `MessageBox`. |
+| Floating windows use Gel Host | Find, About, Emoji, and future tools are real HWNDs via `engine/gel_host.h` — title drag (move), grip/edges (resize when `Floating`), min size, close. Do not re-copy `WM_NCHITTEST` / size-drag per sheet. |
+| Overlays are modal-only | Fixed overlays that dim the parent are only for true blocking sheets (e.g. Sign On). New interactive tools must not ship as non-movable overlays. |
+
+### New app checklist
+
+1. Main gel shell (borderless `WS_POPUP`, shared `Appearance`, kit `paint_*`).
+2. Every extra window → `gel_host_create` (`Dialog` or `Floating`); paint client contents only.
+3. Multiline edit / compose → kit `text_field` + kit clipboard; context menus → kit `context_menu`.
+4. Pass `make smoke` (load skin → paint gel → no clip spill).
+
+New apps land under `apps/` and pass `make smoke` patterns established by
+TextEdit / Jabber.
+
+## Label ink (do not invent a private palette)
+
+Kit painters resolve label colour with one policy (`label_ink` /
+`button_label_ink` / `gel_title_ink`):
+
+```
+plate Text Color (authored, not blank-white)
+  → named role (button.label, menu.label, …)
+  → primary.label   (Haxial practice when the role is still stock-white)
+```
+
+Call a `paint_*` helper, or `label_ink(ap, ap.c("….label"), plate)`, instead of
+raw `ap.c("button.label")`. Hap themes (Milk especially) leave Button Label at
+white on light pills — the kit remaps that.
+
+## Fonts (every Canvas / gel)
+
+- Each `Canvas` defaults to the stock face. `set_font(&face)` swaps in a Haxial
+  `%FNT`; `set_font(nullptr)` restores stock.
+- **Unusable faces are rejected** (empty / default-constructed `Font` with no
+  Latin advances) — the canvas keeps stock so chrome never paints with
+  zero-width glyphs.
+- Share one loaded face across every gel window (`set_font` on each canvas), or
+  leave them all on stock. Do not point a canvas at an unloaded `Font`.
+- Missing punctuation (em/en dash, smart quotes, ellipsis) folds onto ASCII so
+  titles stay readable.
+
+## Multi-window apps
+
+Each Win32 gel is its own `Canvas` + blit. Skin lives in one shared
+`Appearance`; faces must be applied per canvas. Incomplete skins remain valid —
+art → colour → stock still fills every hole.
+
+**Gel Host** (`engine/gel_host.h`) is the foundation for secondary windows:
+
+| Kind | Chrome | Move | Resize |
+|---|---|---|---|
+| `GelHostKind::Dialog` | close + hatch + min (`GelStyle::Dialog`) | title → `HTCAPTION` | no |
+| `GelHostKind::Floating` | + grip (`GelStyle::Floating`) | title → `HTCAPTION` | grip + edges |
+
+Apps supply paint/input callbacks; the host owns Ooze Gel chrome behavior.

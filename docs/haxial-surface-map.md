@@ -13,6 +13,37 @@ a parallel PNG grammar.
 
 ---
 
+## AppearanceEdit panels (1.200)
+
+Four authoring panels, in order:
+
+| Panel | What it edits | SagradoKit today |
+|---|---|---|
+| **Information** | name, version, creator, description | Info tab: typed fields → `[meta]` on Save `.sap` |
+| **Colors** | 204 named roles + ♦ Groups + Import Colors + RGB/hex/decimal | Named roles + RGB + typed `#RRGGBB`; Import Colors; Colors Preview. Decimal/CSV import still skipped |
+| **Images** | paste bitmap, Caps, Positions, Transparent Color, Text Color | Full Hap slot list (empties shown); Paste / Caps / Pos / Transparent / Text Color |
+| **Icons** | full 16×16 / 32×32 catalog | Full Hap icon catalog (empties shown); Paste / Transparent / Text Color |
+
+### Authoring rules (PDF — record these)
+
+| Rule | Contract |
+|---|---|
+| **Colors Preview** | Preview on the Colors panel = **colours only** (images/icons hidden). Other panels, or **Alt/Option+Preview**, = full chrome |
+| **♦ Groups** | Diamond-flanked rows (e.g. Primary Group) set a related cluster from one base colour (light / background / dark / frame) |
+| **Import Colors** | Window Menu → Import Colors copies the colour table from another `.hap` into the current file |
+| **Transparent Color** | Per-image menu: None / White / 100% Red / 100% Green / 100% Blue. Exact channel match only |
+| **Text Color** | Per-image label ink when the engine draws text on that plate |
+| **256 indexed** | Hap save reduces images to ≤256 colours; Adaptive Indexed guidance in the PDF. Sap `.skimg` stays full ARGB by design |
+| **Tick height** | ≤ **18** px |
+| **Separator** | ≤ **4** px thick; centred in its gap |
+| **Frame Positions** | Window / popup frame thickness must be **even** (2, 4, 6…) |
+| **Resize** | No transparent colour on Window Resize |
+| **Title Disabled** | Close/Min/Max/Menu **Disabled** art optional — if absent, **hide** the button when disabled |
+| **WonderLight** | Must be **16×16**; Flash On1/On2 alternate when flashing |
+| **Host layout** | `Appearances/` folder beside the Haxial program + `Appearance.hap`; folder may be an alias/shortcut |
+
+---
+
 ## Engine rules (from AppearanceEdit docs)
 
 ### Incomplete skins
@@ -72,6 +103,38 @@ an odd Position, while 113 records on placement slots do — title buttons
 (223–244), slider bars/indicators (126–148), scrollbars (162–196) and the popup
 symbol (97–99). So a validator must not reject odd Positions outright.
 
+### Fill model (sizing)
+
+**Outer size is the program’s job.** The Appearance Engine never invents a
+control’s destination rect from art pixel size. The app (TextEdit, KDX, kit
+preview) requests a `Rect`; Caps/Positions only say how to fill or place inside it.
+
+```
+App requests Rect R for a control
+        │
+        ├─ stretchy chrome (button, bar, frame, header, menu…)
+        │     nine_slice(art, R) using Caps
+        │     Positions may inset travel / thickness / fill area inside R
+        │
+        └─ fixed chrome (title btn, grip, symbol, arrow hilite, icon)
+              blit 1:1 at Positions (or centre); natural art size
+```
+
+| Rule | Hap contract |
+|---|---|
+| Buttons / headers / menus / frames | Stretch freely via Caps into requested R |
+| Scrollbar cross-axis | Layout thickness **exactly 16**; thinner art (e.g. Milk 15) is **centred** in the trough — not stretched cross-axis |
+| Scroll / slider bar Positions | Limit **indicator travel** inside the full bar — do **not** shrink the bar |
+| Progress height | ≤ **16**; fill Positions = inset inside the trough |
+| Slider band | Height (H) or width (V) including indicator ≤ **30** |
+| Window / popup frame Positions | Frame **thickness** (even); client = inside |
+| Title buttons / WonderLight / icons | Place 1:1; never 9-slice into the control rect |
+
+TextEdit-measured kit metrics (`kButtonH=24`, `kTitleH=22`, `kBorder=6`) are
+layout constants from real Haxial chrome. AppearanceEdit’s “buttons usually 20”
+is authoring guidance for art — both are Haxial; do not “correct” Find metrics
+to 20.
+
 ### States
 
 | State | Meaning |
@@ -125,9 +188,15 @@ For the four kit surfaces we care about first:
 
 ## Images — authoring names → Hap slots → paint contract
 
-AppearanceEdit Images panel order (from the exe). Hap **slot indices** below are
-those verified by Sagrado / theme probes. Rows marked **index TBD** need a
-probe pass before we paint them in SagradoKit.
+AppearanceEdit Images panel order (from the exe; full list in
+`research/probe_haps.py` `IMAGE_NAMES`). Hap **slot indices** below are
+verified by Sagrado / cross-theme probes (`research/probe_haps.py`).
+
+### Primary Background (tiled client fill)
+
+| AppearanceEdit name | Hap slot | Caps / Positions | Paint |
+|---|---|---|---|
+| Primary Background | **17** | usually caps 0; tiled 1:1 | Optional pattern under gel **client**. Colour role `primary.background` is the solid fill; art key **`primary.background`** tiles on top when present. Occupied in 4/11 probed themes (Boilerplate 128×128, Terminal-TRON 64×64, …). Solid-only themes leave the slot empty — use the colour |
 
 ### Push button
 
@@ -171,23 +240,29 @@ face + 3 px on each side (`kDefaultButtonPad`).
 **SagradoKit names:** `tick.blank.*`, `tick.ticked.*`, `tick.tristate.*`,
 `mutex.blank.*`, `mutex.ticked.*`, `mutex.tristate.*`.
 
+### Focus Box
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Focus Box Normal / Hilited / Disabled | **101** / **102** / **103** | 3 px thick; centre transparent. Occupied in 4–6 / 11 themes (typically 7×7 with caps 3). Colour fallback: `focus.box` / `primary.disable_frame` |
+
+**SagradoKit names:** `focus_box.normal`, `focus_box.hilited`, `focus_box.disabled`.
+
 ### Disclosure / separators / box / progress
 
 | AppearanceEdit name | Hap slot | SagradoKit |
 |---|---|---|
-| Primary Background Pattern | **17** | `primary.background_pattern` — tiled behind window interiors (24/111 themes, up to 280×1600) |
-| Small Plus / Minus | **81** / **85** | `disclosure.plus.small`, `disclosure.minus.small` |
-| Medium Plus / Minus | **263** / **267** | `disclosure.plus.medium`, `disclosure.minus.medium` — same 26 themes as 81/85, larger glyphs |
-| Focus Box Normal/Hilited/Disabled | **101** / **102** / **103** | `focus_box.*` — 7×7-ish frame, caps 3 on all sides |
-| Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` |
+| Small Plus / Minus | **81** / **85** | `disclosure.plus.small`, `disclosure.minus.small` — docs: usually 12×12 |
+| Medium Plus / Minus | **263** / **267** | `disclosure.plus.medium`, `disclosure.minus.medium` — docs: 16×16; occupied in 7/11 themes (stride matches Small ±4) |
+| Horiz / Vert Separator | **105** / **106** | `separator.h`, `separator.v` — ≤4 px |
 | Box / Framed Raised Box | **107** / **108** | `box`, `framed_raised` |
 | Progress Bar / Fill | **111** / **112** | `progress.bar`, `progress.fill` |
 | Progress Bar Non-Fill | **113** | `progress.non_fill` — 9-sliced over the *unfilled* remainder, after the fill |
 | Progress Bar Digit 0–9 | **114**–**123** | `progress.digit.0`…`.9` — bitmap glyphs stamped centred; all ten required |
 | Progress Bar Digit 100% | **124** | `progress.digit.full` — single record replacing "100" at completion |
 | Color Chooser Normal/Hilited/Disabled | **281** / **282** / **283** | `color_chooser.*` — swatch well; Positions = well inset |
-| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — 16×16 status lamp |
-| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp |
+| WonderLight Off/Pause/Ready/Go/Finished | **251**–**255** | `wonderlight.*` — **must** 16×16 |
+| WonderLight Flash Off/On1/On2 | **256**–**258** | Flash attention lamp; On1/On2 alternate |
 
 ### Menu (open list)
 
@@ -195,10 +270,10 @@ face + 3 px on each side (`kDefaultButtonPad`).
 |---|---|---|
 | Menu Background Pattern | **200** | Optional tiled pattern (else Menu Background colour) |
 | Menu Background | **201** | 9-slice over item area; may use transparency over pattern |
-| Menu Item Pattern Normal/Hilited/Disabled | **202** / **203** / **204** | Optional per-row tile under the item chrome |
+| Menu Item Pattern Normal/Hilited/Disabled | **202** / **203** / **204** | Optional per-row pattern under item chrome (sparse — Function / Boilerplate) |
 | Menu Item Normal/Hilited/Disabled | **205** / **206** / **207** | Per-row chrome above background |
 | Menu Separator | **208** | Horizontal rule; L/R caps; vertically centred |
-| Popup Window Frame Normal/Focus | **248** / **249** | Frame around popup/menu; **Positions = thickness** (even); centre transparent |
+| Popup Window Frame Normal/Focus | **248** / **249** | Frame around popup/menu; **Positions = thickness** (even); centre transparent. Occupied in 9/11 themes |
 | Menu First / Last Item Hilited | **209** / **210** | Replaces 206 on the top/bottom row so the hilite meets the menu's rounded ends |
 
 The menu group is numbered **densely** (200…208, unlike the 4-slot blocks used
@@ -215,7 +290,8 @@ Normal/Hilited/Disabled (276 is a hole between the two triples).
 Colours always apply for label / hilite / disable ink even when art is present.
 
 **SagradoKit names:** `menu.background_pattern`, `menu.background`,
-`menu.item.normal`, `menu.item.hilited`, `menu.item.disabled`,
+`menu.item.pattern.normal/hilited/disabled`, `menu.item.normal`,
+`menu.item.hilited`, `menu.item.disabled`,
 `menu.item.first_hilited`, `menu.item.last_hilited`, `menu.separator`,
 `popup_frame.normal`, `popup_frame.focus`, `menu_bar.pattern`,
 `menu_bar.background`, `menu_bar.title_pattern.*`, `menu_bar.title.*`.
@@ -258,7 +334,53 @@ this many pixels from the end”).
 `scrollbar.v.disabled`, `scrollbar.v.too_small`, `scrollbar.v.indicator.*`,
 `scrollbar.v.grips.*`, `scrollbar.v.arrow_hilite.*`, and `scrollbar.h.*`.
 
-### Icons (Icons section, 8-byte records)
+### Icon Button / Column header
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Icon Button Normal/Hilited/Disabled | **49** / **50** / **51** | `icon_button.*`; icon + optional title |
+| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers; disabled often donor-filled |
+
+### Window gel (frame + title buttons)
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Window Frame Normal/Focus | **220** / **221** | Positions = frame thickness (even); centre transparent |
+| Window Close N/F/H/**D** | **223** / **224** / **225** / **226** | Positions place the button; Disabled optional (else **hide**) |
+| Window Minimize N/F/H/**D** | **228** / **229** / **230** / **231** | same |
+| Window Maximize N/F/H/**D** | **233** / **234** / **235** / **236** | same |
+| Window Menu N/F/**H**/**D** | **238** / **239** / **240** / **241** | Hilited used when pressed; Disabled optional (else hide). Slot 240 empty across probed themes but reserved |
+| Window Resize Normal/Focus | **243** / **244** | Bottom-right; **no transparent colour** |
+
+**SagradoKit names:** `window.frame.*`, `window.close.*`, `window.minimize.*`,
+`window.maximize.*`, `window.menu.*` (incl. `.hilited` / `.disabled`),
+`window.resize.*`.
+
+The Disabled variants share their group's Positions exactly (same glyph
+placement as Normal/Focus/Hilited) across all corpus themes that author them —
+that is how 226/231/236/241 were identified.
+
+### Menu Bar family
+
+| AppearanceEdit name | Hap slot | Notes |
+|---|---|---|
+| Menu Bar Pattern / Menu Bar | **271** / **272** | `menu_bar.pattern` (tiled, clipped to the strip), `menu_bar.background` — empty across probed themes; colour path is the real fallback |
+| Menu Bar Title Pattern N/H/D | **273** / **274** / **275** | `menu_bar.title_pattern.*` tiled under each title cell |
+| Menu Bar Title N/H/D | **277** / **278** / **279** | `menu_bar.title.*`; colour path stays the fallback (rarely authored) |
+
+**How the last slots were pinned:** AppearanceEdit ticks a checkmark beside
+every row a theme authors, so injecting one record at a candidate slot into a
+known-good theme and reading which row gains a tick names that slot outright.
+That is the evidence for 113/114–124, 209/210, 271–275, 277–279 and 281–283 —
+the previously "occupied but unnamed" 271 and 272/277/278/279 among them. No
+image slot authored anywhere in the 111-theme corpus is unmapped now.
+
+---
+
+## Icons catalog (AppearanceEdit)
+
+Icons are a separate Hap table (16×16 and 32×32). Programs pick a size.
+Transparent Color + 256-colour rules apply.
 
 Slots verified by decoding the section across the corpus (contact sheets from
 `research/dump_hap.py`) — the four alert icons match AppearanceEdit's Icons
@@ -281,39 +403,20 @@ Icon slot **ids are not the panel row order** beyond the four alerts (e.g. row
 remaining occupied ranges are the file-type and label-coloured folder icons
 (164–213) and the Mouse Icons set.
 
-### Icon Button / Menu Bar / Column header
+SagradoKit also imports the full AppearanceEdit catalog. Each icon type uses Hap
+slots `id*4` (16×16) and `id*4+1` (32×32). Type IDs were verified against
+complete themes (X.hap / Ashen) and AppearanceEdit panel order:
 
-| AppearanceEdit name | Hap slot | Notes |
+| Catalog name | Type id | Slots |
 |---|---|---|
-| Icon Button Normal/Hilited/Disabled | **49** / **50** / **51** | `icon_button.*`; icon + optional title |
-| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers; disabled often donor-filled |
-| Menu Bar Pattern / Menu Bar | **271** / **272** | `menu_bar.pattern` (tiled, clipped to the strip), `menu_bar.background` |
-| Menu Bar Title Pattern N/H/D | **273** / **274** / **275** | `menu_bar.title_pattern.*` tiled under each title cell |
-| Menu Bar Title N/H/D | **277** / **278** / **279** | `menu_bar.title.*`; colour path stays the fallback (rarely authored) |
+| Stop / Note / Caution / Question | 1–4 | 4/5 … 16/17 |
+| Program / Plugin / Shared Library / Unattached Alias | 10–12, 16 | 40…65 |
+| Document (+ variants) | 17–24 | 68…97 |
+| Folder (+ variants) | 40, 43–44, 48–53 | 160…213 |
+| Disks / Settings… / Users… / Files / Document Saved | 60–95 | 240…381 |
 
-### Column header / gel (related)
-
-| AppearanceEdit name | Hap slot | Notes |
-|---|---|---|
-| Column Header Normal/Hilited/Disabled | **150** / **151** / **152** | List headers + often tabs |
-| Window Frame Normal/Focus | **220** / **221** | Positions = frame thickness; centre transparent |
-| Window Close/Min/Max/Menu … | **223+** | Groups of 5: Normal, Focus, Hilited, **Disabled**, (spare) |
-| Window Close Normal/Focus/Hilited/Disabled | **223**–**226** | `window.close.*` |
-| Window Minimize … | **228**–**231** | `window.minimize.*` |
-| Window Maximize … | **233**–**236** | `window.maximize.*` |
-| Window Menu Normal/Focus/Hilited/Disabled | **238**–**241** | Hilited (240) is AppearanceEdit 1.4-only; unauthored in corpus themes |
-| Window Resize Normal/Focus | **243** / **244** | Bottom-right; no transparent colour |
-
-The Disabled variants share their group's Positions exactly (same glyph
-placement as Normal/Focus/Hilited) across all corpus themes that author them —
-that is how 226/231/236/241 were identified.
-
-**How the last slots were pinned:** AppearanceEdit ticks a checkmark beside
-every row a theme authors, so injecting one record at a candidate slot into a
-known-good theme and reading which row gains a tick names that slot outright.
-That is the evidence for 113/114–124, 209/210, 271–275, 277–279 and 281–283 —
-the previously "occupied but unnamed" 271 and 272/277/278/279 among them. No
-image slot authored anywhere in the 111-theme corpus is unmapped now.
+Aliases: `file.generic` = Document (68/69), `user` = Users (360/361).
+Unknown image slots are kept as `hap.image.N` on Hap→Sap.
 
 ---
 
@@ -339,7 +442,7 @@ Before painting art for a control in `engine/`:
 
 1. Row in this file has a **verified Hap slot** (or explicit “colour-only”).
 2. Caps/positions meaning recorded.
-3. Named `.skin.toml` `[art]` key listed in `docs/contract.md`.
+3. Named `.sap` `[art]` key listed in `docs/contract.md`.
 4. Fallback colour roles listed.
 5. Probe at least 3 art-heavy themes for that slot (size/caps sanity).
 
@@ -352,10 +455,15 @@ Before painting art for a control in `engine/`:
 | Column header | 150 / 151 | `column_header.*` + Primary Label |
 | Window gel frame + title boxes (close / **Window Menu** / min / max) | 220+ | `window.frame.*`, `window.close.*`, `window.menu.*`, `window.minimize.*`, `window.maximize.*` + Primary Label |
 
-**Needs index probe before art paint:**
+**Still open / deferred (kit is theme-authoring-ready without these):**
 
-Menu bar Hap indices (empty across probed themes), popup window frame (rare),
-full Hap icon catalog beyond file/folder/user.
+| Item | Status |
+|---|---|
+| Menu Bar Hap indices | Empty across probed themes — colour / `menu_bar.*` keys only until a theme authors them |
+| `menu.item.disabled` Hap index | **207** under dense menu numbering (205/206/207); normals often left to colours |
+| Hap write | Out of scope — Load `.hap`, Save `.sap` (+ `.skimg`) |
+| WonderLight Flash period | On1/On2 alternate; frame timing undocumented (Kit Preview shows static Flash strip) |
+| Decimal/CSV colour import | AppearanceEdit has it; Kit uses RGB sliders + hex |
 
 ---
 
@@ -366,6 +474,8 @@ full Hap icon catalog beyond file/folder/user.
 | `research/AppearanceEdit-Documentation.txt` | Extracted official PDF |
 | `research/probe_haps.py` | Slot occupancy / geometry probe |
 | `research/probe-report.txt` | Last probe run |
+| `research/haps/` | Vendored Sagrado Appearances samples for Load / probes |
 | AppearanceEdit 1.24 zip | https://kdx.technowiki.info/downloads/AppearanceEdit1240-Win.zip |
 
-Do not commit the `.exe` / `.hap` binaries; re-download when probing.
+Do not commit AppearanceEdit `.exe` / zip downloads (`research/bin/`).
+`.hap` samples under `research/haps/` are tracked so the editor can Load them.

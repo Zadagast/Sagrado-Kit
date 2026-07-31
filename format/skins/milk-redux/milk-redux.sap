@@ -1,0 +1,877 @@
+# SagradoKit skin — Milk Redux + donor WonderLight/icons
+format = "sap"
+version = 1
+
+[meta]
+name = "Milk Redux"
+creator = "extracted from Hap"
+description = "Art seed: buttons, icon button, popup, gel, tick/mutex, progress, scroll extras, pointed sliders, header, menu, WonderLight, icons"
+version = "1.0"
+
+[colors.button]
+dark1 = "#222222"
+dark2 = "#111111"
+face = "#333333"
+frame = "#000000"
+label = "#ffffff"
+light1 = "#444444"
+light2 = "#666666"
+
+[colors.button_disable]
+dark1 = "#2e2e2e"
+dark2 = "#2a2a2a"
+face = "#333333"
+frame = "#222222"
+label = "#888888"
+light1 = "#3a3a3a"
+light2 = "#444444"
+
+[colors.button_hilite]
+dark1 = "#660000"
+dark2 = "#440000"
+face = "#880000"
+frame = "#000000"
+label = "#ffffff"
+light1 = "#aa0000"
+light2 = "#cc0000"
+
+[colors.column_header]
+dark = "#111111"
+face = "#333333"
+frame = "#000000"
+hilite = "#333333"
+hilite_dark = "#111111"
+hilite_label = "#ffffff"
+hilite_light = "#666666"
+label = "#ffffff"
+light = "#666666"
+
+[colors.default_button]
+dark = "#660000"
+face = "#880000"
+frame = "#000000"
+light = "#cc0000"
+
+[colors.file_label]
+0 = "#ffffff"
+1 = "#ff0000"
+10 = "#007f00"
+11 = "#007f7f"
+12 = "#002266"
+13 = "#ff00ff"
+14 = "#7f007f"
+15 = "#666666"
+2 = "#ff7f00"
+3 = "#00ff00"
+4 = "#00ffff"
+5 = "#0000ff"
+6 = "#8800ff"
+7 = "#880000"
+8 = "#552200"
+9 = "#ffff00"
+
+[colors.focus]
+box = "#000000"
+
+[colors.important]
+label = "#b9b9b9"
+
+[colors.list]
+background = "#ffffff"
+hilite_background = "#b9b9b9"
+hilite_foreground = "#000000"
+label = "#000000"
+separator = "#f5f5f5"
+sort_column_background = "#ededed"
+
+[colors.menu]
+background = "#f5f5f5"
+dark = "#cfcfcf"
+disable_label = "#888888"
+hilite_background = "#b9b9b9"
+hilite_dark = "#cfcfcf"
+hilite_label = "#ffffff"
+hilite_light = "#cfcfcf"
+label = "#000000"
+light = "#cfcfcf"
+
+[colors.primary]
+background = "#ffffff"
+dark = "#111111"
+disable_frame = "#222222"
+disable_label = "#888888"
+frame = "#000000"
+label = "#000000"
+light = "#666666"
+
+[colors.progress]
+bkgnd = "#444444"
+bkgnd_dark = "#333333"
+bkgnd_light = "#666666"
+frame = "#000000"
+label = "#cc0000"
+transition = [
+  "#660000",
+  "#880000",
+  "#aa0000",
+  "#cc0000",
+  "#ff5555",
+  "#cc0000",
+  "#aa0000",
+  "#880000",
+  "#660000",
+  "#440000"
+]
+
+[colors.scrollbar]
+dark = "#111111"
+disable = "#333333"
+disable_dark = "#2a2a2a"
+disable_frame = "#222222"
+disable_label = "#888888"
+disable_light = "#444444"
+face = "#333333"
+frame = "#000000"
+hilite = "#880000"
+hilite_dark = "#440000"
+hilite_label = "#ffffff"
+hilite_light = "#cc0000"
+indicator = "#333333"
+indicator_dark = "#111111"
+indicator_hilite = "#880000"
+indicator_hilite_dark = "#440000"
+indicator_hilite_light = "#cc0000"
+indicator_light = "#666666"
+label = "#ffffff"
+light = "#666666"
+track = "#444444"
+track_dark1 = "#333333"
+track_dark2 = "#222222"
+track_light1 = "#555555"
+track_light2 = "#666666"
+
+[colors.slider]
+bar = "#444444"
+bar_frame = "#000000"
+bar_hilite = "#660000"
+bar_hilite_frame = "#000000"
+disable = "#333333"
+disable_dark = "#2a2a2a"
+disable_frame = "#222222"
+disable_light = "#444444"
+indicator = "#333333"
+indicator_dark = "#111111"
+indicator_frame = "#000000"
+indicator_hilite = "#880000"
+indicator_hilite_dark = "#440000"
+indicator_hilite_frame = "#000000"
+indicator_hilite_light = "#cc0000"
+indicator_light = "#666666"
+
+[colors.text]
+background = "#f5f5f5"
+foreground = "#000000"
+hilite_background = "#b9b9b9"
+hilite_foreground = "#ffffff"
+insertion_point = "#000000"
+
+[colors.window]
+dark1 = "#111111"
+dark2 = "#111111"
+face = "#222222"
+frame = "#000000"
+label = "#ffffff"
+light1 = "#333333"
+light2 = "#555555"
+transition = [
+  "#0c0c0c",
+  "#0f0f0f",
+  "#121212",
+  "#141414",
+  "#171717",
+  "#1a1a1a",
+  "#1c1c1c",
+  "#1f1f1f",
+  "#222222",
+  "#272727",
+  "#343434",
+  "#414141",
+  "#4e4e4e",
+  "#5b5b5b",
+  "#686868",
+  "#757575",
+  "#828282",
+  "#8f8f8f"
+]
+
+[colors.window_focus]
+dark1 = "#660000"
+dark2 = "#440000"
+face = "#880000"
+frame = "#000000"
+label = "#ffffff"
+light1 = "#aa0000"
+light2 = "#cc0000"
+transition = [
+  "#320000",
+  "#3d0000",
+  "#480000",
+  "#520000",
+  "#5d0000",
+  "#680000",
+  "#720000",
+  "#7d0000",
+  "#880000",
+  "#8b0000",
+  "#920000",
+  "#990000",
+  "#a00000",
+  "#a70000",
+  "#ae0000",
+  "#b50000",
+  "#bc0000",
+  "#c30000"
+]
+
+[colors.workspace]
+background1 = "#100010"
+background2 = "#300030"
+background3 = "#300000"
+background4 = "#002000"
+
+[art."button.normal"]
+file = "button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."button.hilited"]
+file = "button_hilited.skimg"
+caps = [15, 11, 15, 11]
+positions = [0, 0, 0, 0]
+
+[art."button.disabled"]
+file = "button_disabled.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."default_button.normal"]
+file = "default_button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."default_button.hilited"]
+file = "default_button_hilited.skimg"
+caps = [15, 11, 15, 11]
+positions = [0, 0, 0, 0]
+
+[art."default_button.disabled"]
+file = "default_button_disabled.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."icon_button.normal"]
+file = "icon_button_normal.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."icon_button.hilited"]
+file = "icon_button_hilited.skimg"
+caps = [15, 11, 15, 11]
+positions = [0, 0, 0, 0]
+
+[art."icon_button.disabled"]
+file = "icon_button_disabled.skimg"
+caps = [13, 11, 12, 11]
+positions = [0, 0, 0, 0]
+
+[art."tick.blank.normal"]
+file = "tick_blank_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.blank.hilited"]
+file = "tick_blank_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.blank.disabled"]
+file = "tick_blank_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.ticked.normal"]
+file = "tick_ticked_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.ticked.hilited"]
+file = "tick_ticked_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.ticked.disabled"]
+file = "tick_ticked_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.tristate.normal"]
+file = "tick_tristate_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.tristate.hilited"]
+file = "tick_tristate_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."tick.tristate.disabled"]
+file = "tick_tristate_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.blank.normal"]
+file = "mutex_blank_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.blank.hilited"]
+file = "mutex_blank_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.blank.disabled"]
+file = "mutex_blank_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.ticked.normal"]
+file = "mutex_ticked_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.ticked.hilited"]
+file = "mutex_ticked_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.ticked.disabled"]
+file = "mutex_ticked_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.tristate.normal"]
+file = "mutex_tristate_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.tristate.hilited"]
+file = "mutex_tristate_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."mutex.tristate.disabled"]
+file = "mutex_tristate_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."disclosure.plus.small"]
+file = "disclosure_plus_small.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."disclosure.minus.small"]
+file = "disclosure_minus_small.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."popup.normal"]
+file = "popup_normal.skimg"
+caps = [2, 10, 19, 9]
+positions = [0, 0, 0, 0]
+
+[art."popup.hilited"]
+file = "popup_hilited.skimg"
+caps = [2, 10, 19, 9]
+positions = [0, 0, 0, 0]
+
+[art."popup.disabled"]
+file = "popup_disabled.skimg"
+caps = [2, 10, 19, 9]
+positions = [0, 0, 0, 0]
+
+[art."popup.no_title.normal"]
+file = "popup_no_title_normal.skimg"
+caps = [8, 7, 11, 12]
+positions = [0, 0, 0, 0]
+
+[art."popup.no_title.hilited"]
+file = "popup_no_title_hilited.skimg"
+caps = [8, 7, 11, 12]
+positions = [0, 0, 0, 0]
+
+[art."popup.no_title.disabled"]
+file = "popup_no_title_disabled.skimg"
+caps = [8, 7, 11, 12]
+positions = [0, 0, 0, 0]
+
+[art."popup.symbol.normal"]
+file = "popup_symbol_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."popup.symbol.hilited"]
+file = "popup_symbol_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."popup.symbol.disabled"]
+file = "popup_symbol_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."focus_box.hilited"]
+file = "focus_box_hilited.skimg"
+caps = [2, 2, 2, 2]
+positions = [0, 0, 0, 0]
+
+[art."focus_box.disabled"]
+file = "focus_box_disabled.skimg"
+caps = [3, 3, 3, 3]
+positions = [0, 0, 0, 0]
+
+[art."separator.h"]
+file = "separator_h.skimg"
+caps = [2, 0, 1, 0]
+positions = [0, 0, 0, 0]
+
+[art."separator.v"]
+file = "separator_v.skimg"
+caps = [0, 1, 0, 1]
+positions = [0, 0, 0, 0]
+
+[art."box"]
+file = "box.skimg"
+caps = [2, 2, 2, 2]
+positions = [0, 0, 0, 0]
+
+[art."framed_raised"]
+file = "framed_raised.skimg"
+caps = [2, 2, 2, 2]
+positions = [0, 0, 0, 0]
+
+[art."progress.bar"]
+file = "progress_bar.skimg"
+caps = [3, 0, 3, 0]
+positions = [0, 0, 0, 0]
+
+[art."progress.fill"]
+file = "progress_fill.skimg"
+caps = [2, 0, 1, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.h.bar.normal"]
+file = "slider_h_bar_normal.skimg"
+caps = [2, 0, 3, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.h.bar.hilited"]
+file = "slider_h_bar_hilited.skimg"
+caps = [2, 0, 3, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.h.bar.disabled"]
+file = "slider_h_bar_disabled.skimg"
+caps = [2, 0, 3, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.h.indicator.normal"]
+file = "slider_h_indicator_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 10, 0, 0]
+
+[art."slider.h.indicator.hilited"]
+file = "slider_h_indicator_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 10, 0, 0]
+
+[art."slider.h.indicator.disabled"]
+file = "slider_h_indicator_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.h.indicator_pointed.normal"]
+file = "slider_h_indicator_pointed_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 3, 0, 0]
+
+[art."slider.h.indicator_pointed.hilited"]
+file = "slider_h_indicator_pointed_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 3, 0, 0]
+
+[art."slider.h.indicator_pointed.disabled"]
+file = "slider_h_indicator_pointed_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.v.bar.normal"]
+file = "slider_v_bar_normal.skimg"
+caps = [0, 2, 0, 3]
+positions = [0, 0, 0, 0]
+
+[art."slider.v.bar.hilited"]
+file = "slider_v_bar_hilited.skimg"
+caps = [0, 2, 0, 3]
+positions = [0, 0, 0, 0]
+
+[art."slider.v.bar.disabled"]
+file = "slider_v_bar_disabled.skimg"
+caps = [0, 2, 0, 3]
+positions = [0, 0, 0, 0]
+
+[art."slider.v.indicator.normal"]
+file = "slider_v_indicator_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [10, 0, 0, 0]
+
+[art."slider.v.indicator.hilited"]
+file = "slider_v_indicator_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [10, 0, 0, 0]
+
+[art."slider.v.indicator.disabled"]
+file = "slider_v_indicator_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."slider.v.indicator_pointed.normal"]
+file = "slider_v_indicator_pointed_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [3, 0, 0, 0]
+
+[art."slider.v.indicator_pointed.hilited"]
+file = "slider_v_indicator_pointed_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [3, 0, 0, 0]
+
+[art."slider.v.indicator_pointed.disabled"]
+file = "slider_v_indicator_pointed_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."column_header.normal"]
+file = "column_header_normal.skimg"
+caps = [2, 10, 2, 9]
+positions = [0, 0, 0, 0]
+
+[art."column_header.hilited"]
+file = "column_header_hilited.skimg"
+caps = [2, 10, 2, 9]
+positions = [0, 0, 0, 0]
+
+[art."column_header.disabled"]
+file = "column_header_disabled.skimg"
+caps = [8, 8, 9, 9]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.double_arrows"]
+file = "scrollbar_h_double_arrows.skimg"
+caps = [30, 0, 31, 0]
+positions = [30, 0, 30, 0]
+
+[art."scrollbar.h.single_arrows"]
+file = "scrollbar_h_single_arrows.skimg"
+caps = [15, 0, 16, 0]
+positions = [15, 0, 15, 0]
+
+[art."scrollbar.h.disabled"]
+file = "scrollbar_h_disabled.skimg"
+caps = [15, 0, 16, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.too_small"]
+file = "scrollbar_h_too_small.skimg"
+caps = [2, 0, 2, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.indicator.normal"]
+file = "scrollbar_h_indicator_normal.skimg"
+caps = [23, 0, 23, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.indicator.hilited"]
+file = "scrollbar_h_indicator_hilited.skimg"
+caps = [23, 0, 23, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.grips.normal"]
+file = "scrollbar_h_grips_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.grips.hilited"]
+file = "scrollbar_h_grips_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.first_left"]
+file = "scrollbar_h_arrow_hilite_first_left.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.first_right"]
+file = "scrollbar_h_arrow_hilite_first_right.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.second_left"]
+file = "scrollbar_h_arrow_hilite_second_left.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 14, 0]
+
+[art."scrollbar.h.arrow_hilite.second_right"]
+file = "scrollbar_h_arrow_hilite_second_right.skimg"
+caps = [0, 0, 0, 0]
+positions = [14, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.single_left"]
+file = "scrollbar_h_arrow_hilite_single_left.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.h.arrow_hilite.single_right"]
+file = "scrollbar_h_arrow_hilite_single_right.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.double_arrows"]
+file = "scrollbar_v_double_arrows.skimg"
+caps = [0, 30, 0, 31]
+positions = [0, 30, 0, 30]
+
+[art."scrollbar.v.single_arrows"]
+file = "scrollbar_v_single_arrows.skimg"
+caps = [0, 15, 0, 16]
+positions = [0, 15, 0, 15]
+
+[art."scrollbar.v.disabled"]
+file = "scrollbar_v_disabled.skimg"
+caps = [0, 15, 0, 16]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.too_small"]
+file = "scrollbar_v_too_small.skimg"
+caps = [0, 2, 0, 2]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.indicator.normal"]
+file = "scrollbar_v_indicator_normal.skimg"
+caps = [0, 23, 0, 23]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.indicator.hilited"]
+file = "scrollbar_v_indicator_hilited.skimg"
+caps = [0, 23, 0, 23]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.grips.normal"]
+file = "scrollbar_v_grips_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.grips.hilited"]
+file = "scrollbar_v_grips_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.first_up"]
+file = "scrollbar_v_arrow_hilite_first_up.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.first_down"]
+file = "scrollbar_v_arrow_hilite_first_down.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.second_up"]
+file = "scrollbar_v_arrow_hilite_second_up.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 14]
+
+[art."scrollbar.v.arrow_hilite.second_down"]
+file = "scrollbar_v_arrow_hilite_second_down.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 14]
+
+[art."scrollbar.v.arrow_hilite.single_up"]
+file = "scrollbar_v_arrow_hilite_single_up.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."scrollbar.v.arrow_hilite.single_down"]
+file = "scrollbar_v_arrow_hilite_single_down.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 14]
+
+[art."window.frame.normal"]
+file = "window_frame_normal.skimg"
+caps = [9, 22, 9, 2]
+positions = [2, 22, 2, 2]
+
+[art."window.frame.focus"]
+file = "window_frame_focus.skimg"
+caps = [9, 22, 9, 2]
+positions = [2, 22, 2, 2]
+
+[art."window.close.normal"]
+file = "window_close_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [7, 4, 0, 0]
+
+[art."window.close.focus"]
+file = "window_close_focus.skimg"
+caps = [0, 0, 0, 0]
+positions = [7, 4, 0, 0]
+
+[art."window.close.hilited"]
+file = "window_close_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [7, 4, 0, 0]
+
+[art."window.close.disabled"]
+file = "window_close_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."window.minimize.normal"]
+file = "window_minimize_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [24, 4, 0, 0]
+
+[art."window.minimize.focus"]
+file = "window_minimize_focus.skimg"
+caps = [0, 0, 0, 0]
+positions = [24, 4, 0, 0]
+
+[art."window.minimize.hilited"]
+file = "window_minimize_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [24, 4, 0, 0]
+
+[art."window.minimize.disabled"]
+file = "window_minimize_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 6, 0, 0]
+
+[art."window.maximize.normal"]
+file = "window_maximize_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [41, 4, 0, 0]
+
+[art."window.maximize.focus"]
+file = "window_maximize_focus.skimg"
+caps = [0, 0, 0, 0]
+positions = [41, 4, 0, 0]
+
+[art."window.maximize.hilited"]
+file = "window_maximize_hilited.skimg"
+caps = [0, 0, 0, 0]
+positions = [41, 4, 0, 0]
+
+[art."window.maximize.disabled"]
+file = "window_maximize_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 31, 0]
+
+[art."window.menu.normal"]
+file = "window_menu_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 4, 7, 0]
+
+[art."window.menu.focus"]
+file = "window_menu_focus.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 4, 7, 0]
+
+[art."window.menu.disabled"]
+file = "window_menu_disabled.skimg"
+caps = [0, 0, 0, 0]
+positions = [33, 0, 0, 0]
+
+[art."window.resize.normal"]
+file = "window_resize_normal.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."window.resize.focus"]
+file = "window_resize_focus.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."popup_frame.normal"]
+file = "popup_frame_normal.skimg"
+caps = [1, 1, 1, 1]
+positions = [0, 0, 0, 0]
+
+[art."popup_frame.focus"]
+file = "popup_frame_focus.skimg"
+caps = [1, 1, 1, 1]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.off"]
+file = "wonderlight_off.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.pause"]
+file = "wonderlight_pause.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.ready"]
+file = "wonderlight_ready.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.go"]
+file = "wonderlight_go.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.finished"]
+file = "wonderlight_finished.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_off"]
+file = "wonderlight_flash_off.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_on1"]
+file = "wonderlight_flash_on1.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."wonderlight.flash_on2"]
+file = "wonderlight_flash_on2.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."disclosure.plus.medium"]
+file = "disclosure_plus_medium.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."disclosure.minus.medium"]
+file = "disclosure_minus_medium.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[icons]
+"file.generic.16" = "file_generic_16.skimg"
+"file.generic.32" = "file_generic_32.skimg"
+"folder.16" = "folder_16.skimg"
+"folder.32" = "folder_32.skimg"
+

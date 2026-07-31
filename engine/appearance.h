@@ -1,6 +1,7 @@
 // Appearance Engine — every window speaks this.
 // Resolve tokens (art → colour → stock) and paint kit surfaces into a Canvas.
 #pragma once
+#include <cstdint>
 #include <algorithm>
 #include <cstring>
 #include <map>
@@ -8,6 +9,7 @@
 
 #include "skin.h"
 #include "hap_skin.h"
+#include "text_layout.h"
 
 // RAII clip nest — intersects Canvas clip with `r`, restores on scope exit.
 struct CanvasClip {
@@ -39,9 +41,13 @@ constexpr int kRowH = 18;
 constexpr int kButtonH = 24;
 constexpr int kDefaultButtonH = 26;
 constexpr int kDefaultButtonPad = 3; // ring inset inside default outer
+// AppearanceEdit usual push-button height for generic kit samples (not Find).
+constexpr int kKitButtonH = 20;
 constexpr int kFieldH = 20;
 constexpr int kFindDlgW = 442; // Sagrado Find window size
 constexpr int kFindDlgH = 176;
+constexpr int kAlertDlgW = 380; // Note / About gel dialog
+constexpr int kAlertDlgH = 200;
 
 // Default-button outer around a regular face width, same top as Find.
 inline Rect default_button_rect(int x, int y, int face_w) {
@@ -68,6 +74,10 @@ struct Appearance {
             if (!load_skin_image(full, img)) return;
             if (ref.has_caps) std::memcpy(img.caps, ref.caps, 4);
             if (ref.has_positions) std::memcpy(img.positions, ref.positions, 4);
+            if (ref.has_text_color) {
+                img.has_text_color = true;
+                img.text_color = ref.text_color;
+            }
             if (!ref.has_caps && img.caps[0] == 0 && img.caps[1] == 0 &&
                 img.caps[2] == 0 && img.caps[3] == 0 && img.w > 1 && img.h > 1) {
                 img.caps[0] = uint8_t(img.w / 2);
@@ -78,12 +88,18 @@ struct Appearance {
             dst[key] = std::move(img);
         };
         for (const auto &kv : skin.art) load_into(kv.second, art_cache, kv.first);
-        // Icons: SlotMap path → load as SkinImage (no caps required).
+        // Icons: SlotMap path → load as SkinImage (no caps; never invent mid caps).
         for (const auto &kv : skin.icons) {
             if (kv.second.empty()) continue;
             ArtRef ref;
             ref.path = kv.second;
-            load_into(ref, icon_cache, kv.first);
+            if (ref.path.empty()) continue;
+            SkinImage img;
+            std::string full = join_path(skin_dir, ref.path);
+            if (!load_skin_image(full, img)) continue;
+            std::memset(img.caps, 0, 4);
+            std::memset(img.positions, 0, 4);
+            icon_cache[kv.first] = std::move(img);
         }
     }
 
@@ -101,7 +117,7 @@ struct Appearance {
         if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".hap") == 0) {
             Theme theme;
             if (!load_hap(path, theme)) return false;
-            return apply_hap_theme(*this, theme);
+            return apply_hap_theme(*this, theme, find_completion_pack(path));
         }
         Skin s;
         if (!skin_toml::load(path, s)) return false;
@@ -111,7 +127,53 @@ struct Appearance {
         return true;
     }
 
-    bool save(const std::string &path) const { return skin_toml::save(path, skin); }
+    // Write a .sap next to dumped .skimg art/icons (Hap→Sap parity round-trip).
+    // Paths in the TOML are relative to the .sap directory. Existing skin.art /
+    // skin.icons basenames are preferred when present.
+    bool save(const std::string &path) const {
+        Skin out = skin;
+        std::string dir = parent_dir(path);
+
+        auto basename_of = [](const std::string &p) -> std::string {
+            auto slash = p.find_last_of("/\\");
+            return slash == std::string::npos ? p : p.substr(slash + 1);
+        };
+        auto slot_file = [&](const std::string &key, const std::string &existing)
+            -> std::string {
+            if (!existing.empty()) return basename_of(existing);
+            std::string n = key;
+            for (char &c : n)
+                if (c == '.' || c == '/' || c == '\\' || c == ' ') c = '_';
+            return n + ".skimg";
+        };
+
+        for (const auto &kv : art_cache) {
+            if (kv.second.empty()) continue;
+            std::string existing;
+            auto it = out.art.find(kv.first);
+            if (it != out.art.end()) existing = it->second.path;
+            std::string fname = slot_file(kv.first, existing);
+            if (!save_skimg(join_path(dir, fname), kv.second)) return false;
+            ArtRef &ref = out.art[kv.first];
+            ref.path = fname;
+            std::memcpy(ref.caps, kv.second.caps, 4);
+            std::memcpy(ref.positions, kv.second.positions, 4);
+            ref.has_caps = true;
+            ref.has_positions = true;
+            ref.has_text_color = kv.second.has_text_color;
+            ref.text_color = kv.second.text_color;
+        }
+        for (const auto &kv : icon_cache) {
+            if (kv.second.empty()) continue;
+            std::string existing;
+            auto it = out.icons.find(kv.first);
+            if (it != out.icons.end()) existing = it->second;
+            std::string fname = slot_file(kv.first, existing);
+            if (!save_skimg(join_path(dir, fname), kv.second)) return false;
+            out.icons[kv.first] = fname;
+        }
+        return skin_toml::save(path, out);
+    }
 
     Color c(const char *role) const { return resolve_color(skin, stock, role); }
 
@@ -132,15 +194,69 @@ struct Appearance {
 
     Color title_label(bool focused) const {
         // Standard colour path uses Window / Window Focus Label. Bitmap themes
-        // leave those white — KDX then paints Primary Label / Disable Label.
+        // leave those near-white — KDX then paints Primary Label / Disable Label.
         const char *role = focused ? "window_focus.label" : "window.label";
         Color wl = c(role);
-        bool white = wl.r == 255 && wl.g == 255 && wl.b == 255;
-        if (white)
+        if (wl.r > 200 && wl.g > 200 && wl.b > 200)
             return focused ? c("primary.label") : c("primary.disable_label");
         return wl;
     }
 };
+
+// Hap button plates are often taller than AppearanceEdit's "usual 20"
+// (Milk Redux is 23). Prefer authored height so kit samples are not squashed.
+inline int kit_button_height(const Appearance &ap) {
+    if (const SkinImage *b = ap.art("button.normal"))
+        if (b->h > 0) return b->h;
+    return kKitButtonH;
+}
+
+inline int kit_popup_height(const Appearance &ap) {
+    if (const SkinImage *p = ap.art("popup.normal"))
+        if (p->h > 0) return p->h;
+    return kKitButtonH;
+}
+
+inline int kit_header_height(const Appearance &ap) {
+    if (const SkinImage *h = ap.art("column_header.normal"))
+        if (h->h > 0) return h->h;
+    return kHeaderH;
+}
+
+inline int kit_row_height(const Appearance &ap) {
+    // Keep rows a hair under headers; never shorter than a 16px icon + sep.
+    int hdr = kit_header_height(ap);
+    int row = hdr - 2;
+    if (row < 16) row = 16;
+    if (row > hdr) row = hdr;
+    return row;
+}
+
+// Default outer sized from Hap art when present (avoids stretching a 23px
+// default plate into a hard-coded 26px band beside shorter neighbours).
+inline Rect default_button_rect(const Appearance &ap, int x, int y, int face_w) {
+    int face_h = kit_button_height(ap);
+    if (const SkinImage *d = ap.art("default_button.normal")) {
+        if (d->h > 0) {
+            if (d->h <= face_h + 2 * kDefaultButtonPad)
+                return {x, y, face_w + 2 * kDefaultButtonPad, face_h};
+            return {x, y, std::max(face_w + 2 * kDefaultButtonPad, d->w), d->h};
+        }
+    }
+    return {x, y, face_w + 2 * kDefaultButtonPad,
+            face_h + 2 * kDefaultButtonPad};
+}
+
+// Vertical origin so glyph ink is centred in r (bitmap fonts rarely fill
+// the full kFontHeight box — geometric (h-16)/2 reads as top- or bottom-heavy).
+inline int label_y_centered(const Canvas &cv, Rect r, const char *s,
+                            int press_off = 0) {
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (!s || !*s || !cv.text_ink(s, x0, y0, x1, y1))
+        return r.y + (r.h - kFontHeight) / 2 + press_off;
+    int ih = y1 - y0 + 1;
+    return r.y + (r.h - ih) / 2 - y0 + press_off;
+}
 
 struct GelLayout {
     Rect window;
@@ -155,8 +271,9 @@ struct GelLayout {
 };
 
 enum class GelStyle {
-    Main,   // TextEdit main: close + Window Menu + max + min + grip
-    Dialog, // Find-style: close + Window Menu + min (no max/grip)
+    Main,     // TextEdit main: close + Window Menu + max + min + grip
+    Dialog,   // Find-style: close + Window Menu + min (no max/grip)
+    Floating, // Tool window: close + Window Menu + min + grip (no max)
 };
 
 // Title-button place from art Positions (Sagrado chrome_layout).
@@ -169,11 +286,28 @@ inline Rect gel_place_title_btn(const SkinImage *img, int win_x, int win_y,
     return {win_x + bx, win_y + by, img->w, img->h};
 }
 
+// disabled_mask bits match pressed_box ids: 1=close, 2=menu, 3=max, 4=min.
+// Hap contract: Disabled art optional — if absent, hide the button.
+inline const SkinImage *gel_title_btn_art(const Appearance *ap, bool focused,
+                                          bool disabled, bool pressed,
+                                          const char *normal, const char *focus,
+                                          const char *hilited,
+                                          const char *disabled_slot) {
+    if (!ap) return nullptr;
+    if (disabled) return ap->art(disabled_slot);
+    const SkinImage *img = nullptr;
+    if (pressed) img = ap->art(hilited);
+    if (!img) img = focused ? ap->art(focus) : ap->art(normal);
+    if (!img) img = ap->art(normal);
+    return img;
+}
+
 // Placement: art frame Positions when present, else Standard metrics.
 inline GelLayout gel_layout(int x, int y, int w, int h,
                             GelStyle style = GelStyle::Main,
                             const Appearance *ap = nullptr,
-                            bool focused = true) {
+                            bool focused = true,
+                            unsigned disabled_mask = 0) {
     GelLayout lay;
     lay.window = {x, y, w, h};
     lay.title = {x, y, w, kTitleH};
@@ -193,34 +327,52 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         if (bb <= 0) bb = kBorder;
         lay.title_h = bt;
         lay.client = {x + bl, y + bt, w - bl - br, h - bt - bb};
-        const char *close_n = focused ? "window.close.focus" : "window.close.normal";
-        const char *min_n = focused ? "window.minimize.focus" : "window.minimize.normal";
-        const char *max_n = focused ? "window.maximize.focus" : "window.maximize.normal";
-        const char *menu_n = focused ? "window.menu.focus" : "window.menu.normal";
-        const SkinImage *close_img = ap->art(close_n);
-        if (!close_img) close_img = ap->art("window.close.normal");
-        const SkinImage *min_img = ap->art(min_n);
-        if (!min_img) min_img = ap->art("window.minimize.normal");
-        const SkinImage *max_img = ap->art(max_n);
-        if (!max_img) max_img = ap->art("window.maximize.normal");
-        const SkinImage *menu_img = ap->art(menu_n);
-        if (!menu_img) menu_img = ap->art("window.menu.normal");
-        lay.close_box = gel_place_title_btn(close_img, x, y, w);
-        lay.min_box = gel_place_title_btn(min_img, x, y, w);
-        lay.max_box = gel_place_title_btn(max_img, x, y, w);
-        lay.hatch_box = gel_place_title_btn(menu_img, x, y, w);
-        // No menu art → Standard rectangle next to Close (every Haxial window).
-        if (lay.hatch_box.w <= 0 && lay.close_box.w > 0)
+        bool close_dis = (disabled_mask & (1u << 1)) != 0;
+        bool menu_dis = (disabled_mask & (1u << 2)) != 0;
+        bool max_dis = (disabled_mask & (1u << 3)) != 0;
+        bool min_dis = (disabled_mask & (1u << 4)) != 0;
+        const SkinImage *close_img =
+            gel_title_btn_art(ap, focused, close_dis, false, "window.close.normal",
+                              "window.close.focus", "window.close.hilited",
+                              "window.close.disabled");
+        const SkinImage *min_img =
+            gel_title_btn_art(ap, focused, min_dis, false, "window.minimize.normal",
+                              "window.minimize.focus", "window.minimize.hilited",
+                              "window.minimize.disabled");
+        const SkinImage *max_img =
+            gel_title_btn_art(ap, focused, max_dis, false, "window.maximize.normal",
+                              "window.maximize.focus", "window.maximize.hilited",
+                              "window.maximize.disabled");
+        const SkinImage *menu_img =
+            gel_title_btn_art(ap, focused, menu_dis, false, "window.menu.normal",
+                              "window.menu.focus", "window.menu.hilited",
+                              "window.menu.disabled");
+        // Disabled without art → hide (empty rect). Otherwise place from art.
+        lay.close_box = close_dis && !close_img
+                            ? Rect{0, 0, 0, 0}
+                            : gel_place_title_btn(close_img, x, y, w);
+        lay.min_box = min_dis && !min_img ? Rect{0, 0, 0, 0}
+                                          : gel_place_title_btn(min_img, x, y, w);
+        lay.max_box = max_dis && !max_img ? Rect{0, 0, 0, 0}
+                                          : gel_place_title_btn(max_img, x, y, w);
+        lay.hatch_box = menu_dis && !menu_img
+                            ? Rect{0, 0, 0, 0}
+                            : gel_place_title_btn(menu_img, x, y, w);
+        // No menu art → Standard rectangle next to Close (every Haxial window),
+        // unless the menu button is disabled-and-hidden.
+        if (!menu_dis && lay.hatch_box.w <= 0 && lay.close_box.w > 0)
             lay.hatch_box = {lay.close_box.right() + 8, lay.close_box.y, kHatchW,
                             lay.close_box.h};
-        else if (lay.hatch_box.w <= 0)
+        else if (!menu_dis && lay.hatch_box.w <= 0)
             lay.hatch_box = {x + 5 + kBtnBox + 8, y + kBtnTop, kHatchW, kBtnBox};
         const SkinImage *resize = focused ? ap->art("window.resize.focus")
                                           : ap->art("window.resize.normal");
         if (!resize) resize = ap->art("window.resize.normal");
         if (resize) {
-            int px = resize->positions[2] > 0 ? resize->positions[2] : 1;
-            int py = resize->positions[3] > 0 ? resize->positions[3] : 1;
+            // positions right/bottom = inset from window edge; 0 = flush
+            // (same as colour-path kGrip). Do not invent a 1px air gap.
+            int px = resize->positions[2];
+            int py = resize->positions[3];
             lay.grip = {x + w - px - resize->w, y + h - py - resize->h, resize->w,
                         resize->h};
         } else {
@@ -231,10 +383,22 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         lay.client = {x + kBorder, y + kTitleH, w - 2 * kBorder,
                       h - kTitleH - kBorder};
         int by = y + kBtnTop;
-        lay.close_box = {x + 5, by, kBtnBox, kBtnBox};
-        lay.hatch_box = {lay.close_box.right() + 8, by, kHatchW, kBtnBox};
-        lay.min_box = {x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
-        lay.max_box = {lay.min_box.x - 4 - kBtnBox, by, kBtnBox, kBtnBox};
+        bool close_dis = (disabled_mask & (1u << 1)) != 0;
+        bool menu_dis = (disabled_mask & (1u << 2)) != 0;
+        bool max_dis = (disabled_mask & (1u << 3)) != 0;
+        bool min_dis = (disabled_mask & (1u << 4)) != 0;
+        // Colour-path gel has no Disabled art → hide when disabled.
+        lay.close_box = close_dis ? Rect{0, 0, 0, 0} : Rect{x + 5, by, kBtnBox, kBtnBox};
+        lay.hatch_box = menu_dis ? Rect{0, 0, 0, 0}
+                                 : Rect{(lay.close_box.w > 0 ? lay.close_box.right() + 8
+                                                             : x + 5 + kBtnBox + 8),
+                                        by, kHatchW, kBtnBox};
+        lay.min_box = min_dis ? Rect{0, 0, 0, 0}
+                              : Rect{x + w - 5 - kBtnBox, by, kBtnBox, kBtnBox};
+        lay.max_box = max_dis ? Rect{0, 0, 0, 0}
+                              : Rect{(lay.min_box.w > 0 ? lay.min_box.x - 4 - kBtnBox
+                                                        : x + w - 5 - 2 * kBtnBox - 4),
+                                     by, kBtnBox, kBtnBox};
         lay.grip = {x + w - kGrip, y + h - kGrip, kGrip, kGrip};
     }
 
@@ -242,6 +406,9 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
         // Dialogs still get the Window Menu rectangle (Haxial); no max / grip.
         lay.max_box = {0, 0, 0, 0};
         lay.grip = {0, 0, 0, 0};
+    } else if (style == GelStyle::Floating) {
+        // Floating tools: move + resize grip; no maximize.
+        lay.max_box = {0, 0, 0, 0};
     }
     return lay;
 }
@@ -323,14 +490,82 @@ inline void paint_primary_background(Canvas &cv, const Appearance &ap, Rect r) {
     cv.pop_clip(prev);
 }
 
+// True when resize art has too few marks that read against both the client
+// fill and the dark frame corner the grow box sits on. International is a
+// #3a3a3a plate (matches chrome) with black hash (matches the frame) and only
+// a 4×4 light staircase left — faithful blit reads as a stray speck. Ashen /
+// WinXP keep enough contrasting ink to skip the overlay.
+inline bool gel_resize_camouflaged(const SkinImage &img, const Appearance &ap) {
+    if (img.empty()) return true;
+    Color bg = ap.c("primary.background");
+    Color frame = ap.c("window.frame");
+    auto ad = [](int x, int y) { return x > y ? x - y : y - x; };
+    auto lum = [](Color c) { return (int(c.r) + int(c.g) + int(c.b)) / 3; };
+    auto close_to = [&](Color a, Color b, int tol) {
+        return ad(int(a.r), int(b.r)) <= tol && ad(int(a.g), int(b.g)) <= tol &&
+               ad(int(a.b), int(b.b)) <= tol;
+    };
+    int bg_l = lum(bg), frame_l = lum(frame);
+    int visible = 0, opaque = 0;
+    for (int i = 0; i < img.w * img.h; ++i) {
+        uint32_t p = img.px[size_t(i)];
+        if ((p >> 24) < 128) continue;
+        ++opaque;
+        Color c{uint8_t((p >> 16) & 255), uint8_t((p >> 8) & 255),
+                uint8_t(p & 255)};
+        int cl = lum(c);
+        if (ad(cl, bg_l) < 50) continue;      // blends into client fill
+        if (ad(cl, frame_l) < 30) continue;   // blends into frame edge
+        if (close_to(c, frame, 40)) continue;
+        ++visible;
+    }
+    if (opaque < 8) return true;
+    // International lands at 10 (4×4 staircase only). Authored grips with a
+    // real ink mark (Ashen, Boilerplate metal, WinXP) sit at 12+.
+    return visible < 12;
+}
+
+inline Color gel_grip_ridge_ink(const Appearance &ap, bool focused, Color against) {
+    Color bright =
+        focused ? ap.c("window_focus.light1") : ap.c("window.light1");
+    auto dist2 = [](Color a, Color b) {
+        int dr = int(a.r) - int(b.r), dg = int(a.g) - int(b.g),
+            db = int(a.b) - int(b.b);
+        return dr * dr + dg * dg + db * db;
+    };
+    if (dist2(bright, against) < 50 * 50) bright = ap.c("primary.label");
+    if (dist2(bright, against) < 50 * 50) bright = ap.c("window.label");
+    return bright;
+}
+
+inline void paint_gel_grip_ridges(Canvas &cv, Rect g, Color bright) {
+    for (int i = 0; i < 3; ++i) {
+        int o = 4 + i * 4;
+        for (int s = 0; s <= o; ++s) {
+            cv.put(g.right() - 3 - o + s, g.bottom() - 3 - s, pack(bright));
+            cv.put(g.right() - 2 - o + s, g.bottom() - 3 - s, pack(bright));
+        }
+    }
+}
+
 // Grow box — art resize slot, else Sagrado paint_grip colour path.
+// Camouflage Hap plates get Standard ridges stamped on top so the handle
+// stays legible (same idea as blankish title-button glyph overlay).
 inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focused) {
     if (g.w <= 0 || g.h <= 0) return;
     const SkinImage *img =
         focused ? ap.art("window.resize.focus") : ap.art("window.resize.normal");
     if (!img) img = ap.art("window.resize.normal");
     if (img) {
-        cv.nine_slice(*img, g);
+        // Zero-cap plates are whole tiles — never invent mid caps via nine_slice.
+        if (img->w == g.w && img->h == g.h)
+            cv.blit_image(*img, g.x, g.y);
+        else
+            cv.nine_slice(*img, g);
+        if (gel_resize_camouflaged(*img, ap)) {
+            Color against = ap.c("primary.background");
+            paint_gel_grip_ridges(cv, g, gel_grip_ridge_ink(ap, focused, against));
+        }
         return;
     }
     const char *grp = focused ? "window_focus" : "window";
@@ -347,38 +582,115 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
     cv.vline(g.x, g.y, g.bottom(), frame);
     cv.hline(g.x + 1, g.right() - 2, g.y + 1, bright);
     cv.vline(g.x + 1, g.y + 1, g.bottom() - 2, bright);
-    for (int i = 0; i < 3; ++i) {
-        int o = 4 + i * 4;
-        for (int s = 0; s <= o; ++s) {
-            cv.put(g.right() - 3 - o + s, g.bottom() - 3 - s, pack(bright));
-            cv.put(g.right() - 2 - o + s, g.bottom() - 3 - s, pack(bright));
-        }
-    }
+    paint_gel_grip_ridges(cv, g, bright);
 }
 
-// Gel: art frame + title boxes when present; else Standard colour chrome.
+// Prefer Hap plate Text Color when set; else colour-table label with
+// Haxial/KDX stock-white → Primary Label practice.
+inline bool label_near_white(Color c) {
+    return c.r > 200 && c.g > 200 && c.b > 200;
+}
+
+inline Color plate_text_color(const SkinImage *plate) {
+    if (!plate || !plate->has_text_color) return {0, 0, 0};
+    return {uint8_t((plate->text_color >> 16) & 0xff),
+            uint8_t((plate->text_color >> 8) & 0xff),
+            uint8_t(plate->text_color & 0xff)};
+}
+
+// When candidate is stock near-white (unauthored), use Primary Label so ink
+// stays readable on light bitmap chrome (Aluminum Alloy, etc.).
+inline Color readable_label(const Appearance &ap, Color candidate,
+                            bool disabled = false) {
+    if (disabled) return ap.c("primary.disable_label");
+    if (label_near_white(candidate)) return ap.c("primary.label");
+    return candidate;
+}
+
+// Canonical label ink for every kit painter that draws text on a control.
+// Resolution: plate Text Color (authored, not blank-white) → role → Primary Label.
+// Apps should call this (or a paint_* helper) instead of raw ap.c("*.label").
+inline Color label_ink(const Appearance &ap, Color role_ink,
+                       const SkinImage *plate = nullptr, bool disabled = false) {
+    if (disabled) return ap.c("primary.disable_label");
+    if (plate && plate->has_text_color) {
+        Color tc = plate_text_color(plate);
+        if (!label_near_white(tc)) return tc;
+    }
+    return readable_label(ap, role_ink, disabled);
+}
+
+inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
+                              const SkinImage *plate = nullptr) {
+    (void)has_art;
+    if (disabled)
+        return label_ink(ap, ap.c("button_disable.label"), plate, true);
+    // Milk & friends leave Button Label at stock white on light pills.
+    return label_ink(ap, ap.c("button.label"), plate, false);
+}
+
+// Gel title ink: frame Text Color, else Window Label with stock-white remap.
+inline Color gel_title_ink(const Appearance &ap, bool focused,
+                           const SkinImage *frame = nullptr) {
+    if (frame && frame->has_text_color) {
+        Color tc = plate_text_color(frame);
+        if (!label_near_white(tc)) return tc;
+    }
+    return ap.title_label(focused);
+}
+
+// True when a title-button plate is near-uniform (Milk blank spheres) so
+// Standard glyphs should be stamped on top. Art that already draws an X/−/+
+// has enough luminance variance to skip the overlay.
+inline bool skin_image_blankish(const SkinImage &img) {
+    if (img.empty() || img.w < 4 || img.h < 4) return true;
+    int samples = 0;
+    int64_t sum = 0, sum2 = 0;
+    int step_x = std::max(1, img.w / 4);
+    int step_y = std::max(1, img.h / 4);
+    for (int y = 0; y < img.h; y += step_y) {
+        for (int x = 0; x < img.w; x += step_x) {
+            uint32_t p = img.at(x, y);
+            if ((p >> 24) < 128) continue; // ignore transparent
+            int r = (p >> 16) & 255, g = (p >> 8) & 255, b = p & 255;
+            int lum = (r + g + b) / 3;
+            sum += lum;
+            sum2 += lum * lum;
+            ++samples;
+        }
+    }
+    if (samples < 4) return true;
+    double mean = double(sum) / samples;
+    double var = double(sum2) / samples - mean * mean;
+    return var < 180.0; // blank spheres sit well under this; ink marks don't
+}
 inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                       const char *title, bool focused, int pressed_box = 0,
-                      GelStyle style = GelStyle::Main) {
-    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style, &ap, focused);
+                      GelStyle style = GelStyle::Main,
+                      unsigned disabled_mask = 0) {
+    GelLayout lay = gel_layout(win.x, win.y, win.w, win.h, style, &ap, focused,
+                               disabled_mask);
 
     const SkinImage *frame =
         focused ? ap.art("window.frame.focus") : ap.art("window.frame.normal");
     if (!frame) frame = ap.art("window.frame.normal");
     if (frame) {
         cv.nine_slice(*frame, win);
-        Color tc = ap.title_label(focused);
+        Color tc = gel_title_ink(ap, focused, frame);
         int tw = cv.text_width(title);
+        Rect title_band{win.x, win.y, win.w, lay.title_h};
         cv.text(win.x + (win.w - tw) / 2,
-                win.y + (lay.title_h - cv.line_height()) / 2, title, tc);
-        auto paint_btn = [&](Rect r, const char *normal, const char *focus,
-                             const char *hilited, bool pressed,
+                label_y_centered(cv, title_band, title), title, tc);
+        auto paint_btn = [&](Rect r, int box_id, const char *normal,
+                             const char *focus, const char *hilited,
+                             const char *disabled_slot,
                              void (*glyph)(Canvas &, Rect, Color)) {
             if (r.w <= 0) return;
-            const SkinImage *img = nullptr;
-            if (pressed) img = ap.art(hilited);
-            if (!img) img = focused ? ap.art(focus) : ap.art(normal);
-            if (!img) img = ap.art(normal);
+            bool disabled = (disabled_mask & (1u << box_id)) != 0;
+            bool pressed = !disabled && pressed_box == box_id;
+            const SkinImage *img =
+                gel_title_btn_art(&ap, focused, disabled, pressed, normal, focus,
+                                  hilited, disabled_slot);
             if (img) {
                 // Title buttons are placed 1:1 — never 9-slice (caps are 0 and
                 // nine_slice would invent mid caps that smear the sphere).
@@ -392,21 +704,25 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                 // would show two marks.
                 return;
             }
-            if (glyph) glyph(cv, r, tc);
+            // disabled without art → already hidden in layout
+            if (!disabled && glyph) glyph(cv, r, tc);
         };
-        paint_btn(lay.close_box, "window.close.normal", "window.close.focus",
-                  "window.close.hilited", pressed_box == 1, gel_close_glyph);
-        paint_btn(lay.max_box, "window.maximize.normal", "window.maximize.focus",
-                  "window.maximize.hilited", pressed_box == 3, gel_max_glyph);
-        paint_btn(lay.min_box, "window.minimize.normal", "window.minimize.focus",
-                  "window.minimize.hilited", pressed_box == 4, gel_min_glyph);
+        paint_btn(lay.close_box, 1, "window.close.normal", "window.close.focus",
+                  "window.close.hilited", "window.close.disabled", gel_close_glyph);
+        paint_btn(lay.max_box, 3, "window.maximize.normal", "window.maximize.focus",
+                  "window.maximize.hilited", "window.maximize.disabled",
+                  gel_max_glyph);
+        paint_btn(lay.min_box, 4, "window.minimize.normal", "window.minimize.focus",
+                  "window.minimize.hilited", "window.minimize.disabled",
+                  gel_min_glyph);
         // Window Menu rectangle — Hap art when present, else striped plate.
         if (lay.hatch_box.w > 0) {
-            const SkinImage *mimg = nullptr;
-            if (pressed_box == 2) mimg = ap.art("window.menu.hilited");
-            if (!mimg) mimg = focused ? ap.art("window.menu.focus")
-                                      : ap.art("window.menu.normal");
-            if (!mimg) mimg = ap.art("window.menu.normal");
+            bool menu_dis = (disabled_mask & (1u << 2)) != 0;
+            bool menu_pressed = !menu_dis && pressed_box == 2;
+            const SkinImage *mimg =
+                gel_title_btn_art(&ap, focused, menu_dis, menu_pressed,
+                                  "window.menu.normal", "window.menu.focus",
+                                  "window.menu.hilited", "window.menu.disabled");
             if (mimg) {
                 if (mimg->w == lay.hatch_box.w && mimg->h == lay.hatch_box.h)
                     cv.blit_image(*mimg, lay.hatch_box.x, lay.hatch_box.y);
@@ -414,8 +730,8 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
                     cv.place(*mimg,
                              lay.hatch_box.x + (lay.hatch_box.w - mimg->w) / 2,
                              lay.hatch_box.y + (lay.hatch_box.h - mimg->h) / 2);
-            } else {
-                gel_flat_box(cv, lay.hatch_box, pressed_box == 2, ap.c("window_focus.dark1"),
+            } else if (!menu_dis) {
+                gel_flat_box(cv, lay.hatch_box, menu_pressed, ap.c("window_focus.dark1"),
                              ap.c("window_focus.frame"));
                 gel_diagonal_hatch(cv,
                                    {lay.hatch_box.x + 2, lay.hatch_box.y + 2,
@@ -439,8 +755,7 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     Color deep = role("dark1");
     Color frame_c = role("frame");
     Color label = role("label");
-    bool label_white = label.r == 255 && label.g == 255 && label.b == 255;
-    if (label_white) label = ap.title_label(focused);
+    if (label_near_white(label)) label = ap.title_label(focused);
 
     Color grad[18];
     for (int i = 0; i < 18; ++i) {
@@ -483,8 +798,9 @@ inline void paint_gel(Canvas &cv, const Appearance &ap, Rect win,
     }
 
     int tw = cv.text_width(title);
+    Rect title_band{win.x, win.y, win.w, lay.title_h};
     cv.text(win.x + (win.w - tw) / 2,
-            win.y + (lay.title_h - cv.line_height()) / 2, title, label);
+            label_y_centered(cv, title_band, title), title, label);
 
     if (lay.close_box.w > 0) {
         gel_flat_box(cv, lay.close_box, pressed_box == 1, deep, frame_c);
@@ -580,22 +896,12 @@ inline void paint_default_ring_color(Canvas &cv, const Appearance &ap, Rect r) {
     cv.frame({r.x + 2, r.y + 2, r.w - 4, r.h - 4}, ap.c("default_button.face"));
 }
 
-// Art-first button; colour path = Sagrado draw_button.
-// Hap art themes (Milk): Button Label is often white on white plates — use
-// Primary Label for ink when art is present (KDX title-label practice).
-inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art) {
-    if (disabled) return ap.c("button_disable.label");
-    Color ink = ap.c("button.label");
-    if (has_art && ink.r > 200 && ink.g > 200 && ink.b > 200)
-        return ap.c("primary.label");
-    return ink;
-}
-
 inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
                          const char *label, bool pressed, bool is_default,
                          bool disabled = false) {
     if (disabled) pressed = false;
     bool used_art = false;
+    const SkinImage *plate = nullptr;
     if (is_default) {
         const char *dslot = disabled ? "default_button.disabled"
                                      : (pressed ? "default_button.hilited"
@@ -605,27 +911,27 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
         if (dimg) {
             cv.nine_slice(*dimg, r);
             used_art = true;
+            plate = dimg;
         } else {
             paint_default_ring_color(cv, ap, r);
             r = {r.x + kDefaultButtonPad, r.y + kDefaultButtonPad,
                  r.w - 2 * kDefaultButtonPad, r.h - 2 * kDefaultButtonPad};
             paint_button_face(cv, ap, r, pressed, disabled);
-            used_art = ap.art(disabled ? "button.disabled"
-                                       : (pressed ? "button.hilited"
-                                                  : "button.normal")) != nullptr;
+            plate = ap.art(disabled ? "button.disabled"
+                                    : (pressed ? "button.hilited" : "button.normal"));
+            used_art = plate != nullptr;
         }
     } else {
         const char *slot = disabled ? "button.disabled"
                                     : (pressed ? "button.hilited" : "button.normal");
-        used_art = ap.art(slot) != nullptr ||
-                   (pressed && ap.art("button.normal") != nullptr);
+        plate = ap.art(slot);
+        if (!plate && pressed) plate = ap.art("button.normal");
+        used_art = plate != nullptr;
         paint_button_face(cv, ap, r, pressed, disabled);
     }
-    int tw = cv.text_width(label);
     int off = pressed ? 1 : 0;
-    Color ink = button_label_ink(ap, disabled, used_art);
-    cv.text(r.x + (r.w - tw) / 2 + off, r.y + (r.h - cv.line_height()) / 2 + off,
-            label, ink);
+Color ink = button_label_ink(ap, disabled, used_art, plate);
+    cv.text_centered(r, label, ink, off);
 }
 
 inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
@@ -644,11 +950,25 @@ inline void paint_field(Canvas &cv, const Appearance &ap, Rect r,
         cv.frame(r, ap.c("primary.frame"));
     }
     int tx = r.x + 5;
-    int ty = r.y + (r.h - cv.line_height()) / 2;
+    int ty = label_y_centered(cv, {r.x, r.y, r.w, r.h}, text);
     int end = cv.text(tx, ty, text, ap.c("text.foreground"));
-    if (focused && caret_on)
-        cv.vline(end + 1, r.y + 3, r.bottom() - 3, ap.c("text.insertion_point"));
+    if (focused && caret_on) {
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        int caret_top = r.y + 3, caret_bot = r.bottom() - 3;
+        if (cv.text_ink(text, x0, y0, x1, y1)) {
+            caret_top = ty + y0;
+            caret_bot = ty + y1 + 1;
+        }
+        cv.vline(end + 1, caret_top, caret_bot, ap.c("text.insertion_point"));
+    }
 }
+
+// Tick mark enum lives early so Find chrome can call paint_tick (defined later).
+enum class TickMark { Blank, Ticked, Tristate };
+constexpr int kTickBox = 14;
+inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
+                       TickMark mark, const char *label, bool pressed = false,
+                       bool disabled = false);
 
 // Find-proportioned dialog sample — Sagrado native Find size (442×176) and
 // chrome (close + min only). This is the title-bar reference, not a 72px stub.
@@ -669,35 +989,17 @@ inline GelLayout paint_find_chrome_sample(Canvas &cv, const Appearance &ap,
     if (fw < 40) fw = 40;
     Rect find_field{fx, cl.y + 10, fw, kFieldH};
     Rect repl_field{fx, cl.y + 40, fw, kFieldH};
-    cv.text(lx, find_field.y + 6, "Find:", ap.c("primary.label"));
-    cv.text(lx, repl_field.y + 6, "Replace:", ap.c("primary.label"));
+    Color lab = label_ink(ap, ap.c("primary.label"));
+    cv.text(lx, label_y_centered(cv, find_field, "Find:"), "Find:", lab);
+    cv.text(lx, label_y_centered(cv, repl_field, "Replace:"), "Replace:", lab);
     paint_field(cv, ap, find_field, "needle", true, caret_on);
     paint_field(cv, ap, repl_field, "replacement", false, false);
 
     int cy = cl.y + 74;
-    auto paint_check = [&](int cx, int cy0, bool on, const char *lab) {
-        Rect b{cx, cy0, 14, 14};
-        cv.fill(b, ap.c("button.face"));
-        rounded_frame(cv, b, ap.c("button.frame"), ap.c("primary.background"));
-        cv.hline(b.x + 1, b.right() - 1, b.y + 1, ap.c("button.light2"));
-        cv.vline(b.x + 1, b.y + 1, b.bottom() - 1, ap.c("button.light2"));
-        cv.hline(b.x + 1, b.right() - 1, b.bottom() - 2, ap.c("button.dark2"));
-        cv.vline(b.right() - 2, b.y + 1, b.bottom() - 1, ap.c("button.dark2"));
-        if (on) {
-            Color ink = ap.c("button.label");
-            for (int i = 0; i < 4; ++i) {
-                cv.put(b.x + 3, b.y + 6 + i, pack(ink));
-                cv.put(b.x + 4, b.y + 7 + i, pack(ink));
-            }
-            for (int i = 0; i < 6; ++i) {
-                cv.put(b.x + 5 + i, b.y + 9 - i, pack(ink));
-                cv.put(b.x + 5 + i, b.y + 10 - i, pack(ink));
-            }
-        }
-        cv.text(cx + 20, cy0 + (14 - cv.line_height()) / 2, lab, ap.c("primary.label"));
-    };
-    paint_check(lx, cy, true, "Case Sensitive");
-    if (cl.w > 280) paint_check(cl.x + 190, cy, false, "Stop at End of File");
+    // Real Hap tick art (not synthetic bevel checks).
+    paint_tick(cv, ap, lx, cy, TickMark::Ticked, "Case Sensitive");
+    if (cl.w > 280)
+        paint_tick(cv, ap, cl.x + 190, cy, TickMark::Blank, "Stop at End of File");
 
     int by = cl.bottom() - 34;
     if (by < cl.y + 4) by = cl.y + 4;
@@ -724,27 +1026,22 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
                                 const char *label, bool hilite,
                                 bool disabled = false) {
     if (disabled) hilite = false;
-    Color ink = hilite ? ap.c("column_header.hilite_label") : ap.title_label(true);
-    if (disabled) {
-        ink = ap.c("primary.disable_label");
-    } else if (!hilite) {
-        Color hl = ap.c("column_header.label");
-        bool white = hl.r == 255 && hl.g == 255 && hl.b == 255;
-        if (!(ap.skin.colors.count("column_header.label") && !white))
-            ink = ap.c("primary.label");
-        else
-            ink = hl;
-    }
-
     const char *slot = disabled ? "column_header.disabled"
                                 : (hilite ? "column_header.hilited"
                                           : "column_header.normal");
     const SkinImage *img = ap.art(slot);
     if (!img && disabled) img = ap.art("column_header.normal");
     if (!img && hilite) img = ap.art("column_header.normal");
+
+    Color role = disabled ? ap.c("primary.disable_label")
+                          : (hilite ? ap.c("column_header.hilite_label")
+                                    : ap.c("column_header.label"));
+    // Hilite Label is often stock-white on light header art — label_ink remaps.
+    Color ink = label_ink(ap, role, img, disabled);
+
     if (img) {
         cv.nine_slice(*img, r);
-        cv.text(r.x + 6, r.y + (r.h - cv.line_height()) / 2, label, ink);
+        cv.text(r.x + 6, label_y_centered(cv, r, label), label, ink);
         return;
     }
 
@@ -762,13 +1059,17 @@ inline void paint_column_header(Canvas &cv, const Appearance &ap, Rect r,
     cv.vline(r.x + 1, r.y + 1, r.bottom() - 1, light);
     cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, dark);
     cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, dark);
-    cv.text(r.x + 6, r.y + (r.h - cv.line_height()) / 2, label, ink);
+    cv.text(r.x + 6, label_y_centered(cv, r, label), label, ink);
 }
 
 inline Color file_label_color(const Appearance &ap, int index) {
     char key[24];
     std::snprintf(key, sizeof(key), "file_label.%d", std::clamp(index, 0, 15));
-    return ap.c(key);
+    Color ink = ap.c(key);
+    // Stock-white file labels vanish on white list backgrounds (Aluminum).
+    if (label_near_white(ink) && label_near_white(ap.c("list.background")))
+        return readable_label(ap, ink);
+    return ink;
 }
 
 inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
@@ -791,15 +1092,44 @@ inline void paint_list(Canvas &cv, const Appearance &ap, Rect r,
         else if (i % 2)
             cv.fill(row, ap.c("list.sort_column_background"));
         if (i < n_rows) {
-            Color ink = sel ? ap.c("list.hilite_foreground") : ap.c("list.label");
-            cv.text(row.x + 6, row.y + (kRowH - cv.line_height()) / 2, rows[i], ink);
+            // Hilite foreground is intentional white-on-hilite; only remap the
+            // idle list label when it is stock-white on a light list.
+            Color ink = sel ? ap.c("list.hilite_foreground")
+                            : readable_label(ap, ap.c("list.label"));
+            cv.text(row.x + 6, label_y_centered(cv, row, rows[i]), rows[i], ink);
         }
         cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
     }
 }
 
 struct ScrollLayout {
-    Rect bar, up, down, track, thumb;
+    Rect bar{}, up{}, down{}, track{}, thumb{};
+    // Double-arrows: each end is a pair (KDX / Hap). Single: only first_*.
+    Rect first_start{}, first_end{};     // start cluster (top / left)
+    Rect second_start{}, second_end{};   // end cluster (bottom / right)
+    bool double_arrows = false;
+};
+
+// Split an end zone into the outer + inner arrow plates (Hap double caps).
+inline void scroll_split_end(Rect zone, bool vertical, Rect &outer, Rect &inner) {
+    if (vertical) {
+        int half = zone.h / 2;
+        outer = {zone.x, zone.y, zone.w, half};
+        inner = {zone.x, zone.y + half, zone.w, zone.h - half};
+    } else {
+        int half = zone.w / 2;
+        outer = {zone.x, zone.y, half, zone.h};
+        inner = {zone.x + half, zone.y, zone.w - half, zone.h};
+    }
+}
+
+// Hap double-arrows: first_* = start cluster (top/left), second_* = end cluster.
+enum class ScrollArrowHot : int {
+    None = 0,
+    FirstStart = 1,
+    FirstEnd = 2,
+    SecondStart = 3,
+    SecondEnd = 4
 };
 
 // Resolve V travel insets: art Positions (T/B), else caps, else square arrow plates.
@@ -817,8 +1147,8 @@ inline void scrollbar_v_insets(const Appearance &ap, int bar_w, int &top,
     } else {
         top = bot = 0;
     }
-    if (top <= 0) top = bar_w;
-    if (bot <= 0) bot = bar_w;
+    if (top <= 0) top = single ? bar_w : bar_w * 2;
+    if (bot <= 0) bot = single ? bar_w : bar_w * 2;
 }
 
 inline void scrollbar_h_insets(const Appearance &ap, int bar_h, int &left,
@@ -834,30 +1164,66 @@ inline void scrollbar_h_insets(const Appearance &ap, int bar_h, int &left,
     } else {
         left = right = 0;
     }
-    if (left <= 0) left = bar_h;
-    if (right <= 0) right = bar_h;
+    if (left <= 0) left = single ? bar_h : bar_h * 2;
+    if (right <= 0) right = single ? bar_h : bar_h * 2;
+}
+
+// Min thumb length: stretch-template floor = along-axis caps + 1px mid
+// (Milk V: 23+23+1 = 47). Do not use full bitmap height as a rigid brick —
+// short Ashen indicators (h=5) correctly floor at bar thickness.
+inline int scrollbar_min_thumb_v(const Appearance &ap, int bar_w) {
+    const SkinImage *ind = ap.art("scrollbar.v.indicator.normal");
+    if (ind) {
+        int c = int(ind->caps[1]) + int(ind->caps[3]) + 1;
+        if (c > 1) return std::max(bar_w, c);
+        if (ind->h > 0) return std::max(bar_w, std::min(ind->h, bar_w * 3));
+    }
+    return bar_w;
+}
+
+inline int scrollbar_min_thumb_h(const Appearance &ap, int bar_h) {
+    const SkinImage *ind = ap.art("scrollbar.h.indicator.normal");
+    if (ind) {
+        int c = int(ind->caps[0]) + int(ind->caps[2]) + 1;
+        if (c > 1) return std::max(bar_h, c);
+        if (ind->w > 0) return std::max(bar_h, std::min(ind->w, bar_h * 3));
+    }
+    return bar_h;
 }
 
 inline ScrollLayout scroll_layout(Rect bar, int value, int max_value, int page,
-                                  int inset_top = -1, int inset_bot = -1) {
+                                  int inset_top = -1, int inset_bot = -1,
+                                  int min_thumb = -1, bool double_arrows = true) {
     ScrollLayout s;
     s.bar = bar;
-    int top = inset_top >= 0 ? inset_top : bar.w;
-    int bot = inset_bot >= 0 ? inset_bot : bar.w;
+    s.double_arrows = double_arrows;
+    int top = inset_top >= 0 ? inset_top : (double_arrows ? bar.w * 2 : bar.w);
+    int bot = inset_bot >= 0 ? inset_bot : (double_arrows ? bar.w * 2 : bar.w);
     if (top + bot > bar.h) {
         top = bar.h / 2;
         bot = bar.h - top;
     }
     s.up = {bar.x, bar.y, bar.w, top};
     s.down = {bar.x, bar.bottom() - bot, bar.w, bot};
+    if (double_arrows) {
+        scroll_split_end(s.up, true, s.first_start, s.first_end);
+        // End cluster: inner (toward track) then outer — second_start = up, second_end = down.
+        int half = bot / 2;
+        s.second_start = {bar.x, s.down.y, bar.w, half};
+        s.second_end = {bar.x, s.down.y + half, bar.w, bot - half};
+    } else {
+        s.first_start = s.up;
+        s.first_end = s.down;
+    }
     int track_h = s.down.y - s.up.bottom();
     if (track_h < 0) track_h = 0;
     s.track = {bar.x, s.up.bottom(), bar.w, track_h};
     if (page < 1) page = 1;
     if (max_value < 0) max_value = 0;
+    int floor = min_thumb > 0 ? min_thumb : bar.w;
     int thumb_h = max_value == 0
                       ? s.track.h
-                      : std::max(bar.w, s.track.h * page / (max_value + page));
+                      : std::max(floor, s.track.h * page / (max_value + page));
     if (thumb_h > s.track.h) thumb_h = s.track.h;
     int travel = s.track.h - thumb_h;
     int ty = s.track.y;
@@ -871,29 +1237,42 @@ inline ScrollLayout scroll_layout(const Appearance &ap, Rect bar, int value,
                                   int max_value, int page, bool single = false) {
     int top = 0, bot = 0;
     scrollbar_v_insets(ap, bar.w, top, bot, single);
-    return scroll_layout(bar, value, max_value, page, top, bot);
+    return scroll_layout(bar, value, max_value, page, top, bot,
+                         scrollbar_min_thumb_v(ap, bar.w), !single);
 }
 
 inline ScrollLayout scroll_layout_h(Rect bar, int value, int max_value, int page,
-                                    int inset_left = -1, int inset_right = -1) {
+                                    int inset_left = -1, int inset_right = -1,
+                                    int min_thumb = -1, bool double_arrows = true) {
     ScrollLayout s;
     s.bar = bar;
-    int left = inset_left >= 0 ? inset_left : bar.h;
-    int right = inset_right >= 0 ? inset_right : bar.h;
+    s.double_arrows = double_arrows;
+    int left = inset_left >= 0 ? inset_left : (double_arrows ? bar.h * 2 : bar.h);
+    int right = inset_right >= 0 ? inset_right : (double_arrows ? bar.h * 2 : bar.h);
     if (left + right > bar.w) {
         left = bar.w / 2;
         right = bar.w - left;
     }
-    s.up = {bar.x, bar.y, left, bar.h}; // left arrow
-    s.down = {bar.right() - right, bar.y, right, bar.h}; // right arrow
+    s.up = {bar.x, bar.y, left, bar.h}; // left cluster
+    s.down = {bar.right() - right, bar.y, right, bar.h}; // right cluster
+    if (double_arrows) {
+        scroll_split_end(s.up, false, s.first_start, s.first_end);
+        int half = right / 2;
+        s.second_start = {s.down.x, bar.y, half, bar.h};
+        s.second_end = {s.down.x + half, bar.y, right - half, bar.h};
+    } else {
+        s.first_start = s.up;
+        s.first_end = s.down;
+    }
     int track_w = s.down.x - s.up.right();
     if (track_w < 0) track_w = 0;
     s.track = {s.up.right(), bar.y, track_w, bar.h};
     if (page < 1) page = 1;
     if (max_value < 0) max_value = 0;
+    int floor = min_thumb > 0 ? min_thumb : bar.h;
     int thumb_w = max_value == 0
                       ? s.track.w
-                      : std::max(bar.h, s.track.w * page / (max_value + page));
+                      : std::max(floor, s.track.w * page / (max_value + page));
     if (thumb_w > s.track.w) thumb_w = s.track.w;
     int travel = s.track.w - thumb_w;
     int tx = s.track.x;
@@ -908,7 +1287,34 @@ inline ScrollLayout scroll_layout_h(const Appearance &ap, Rect bar, int value,
                                     bool single = false) {
     int left = 0, right = 0;
     scrollbar_h_insets(ap, bar.h, left, right, single);
-    return scroll_layout_h(bar, value, max_value, page, left, right);
+    return scroll_layout_h(bar, value, max_value, page, left, right,
+                           scrollbar_min_thumb_h(ap, bar.h), !single);
+}
+
+// Which arrow plate was hit (Hap first_* = start cluster, second_* = end).
+inline ScrollArrowHot scroll_arrow_hit(const ScrollLayout &s, int x, int y) {
+    if (s.first_start.w > 0 && s.first_start.contains(x, y))
+        return ScrollArrowHot::FirstStart;
+    if (s.first_end.w > 0 && s.first_end.contains(x, y))
+        return ScrollArrowHot::FirstEnd;
+    if (s.double_arrows && s.second_start.w > 0 && s.second_start.contains(x, y))
+        return ScrollArrowHot::SecondStart;
+    if (s.double_arrows && s.second_end.w > 0 && s.second_end.contains(x, y))
+        return ScrollArrowHot::SecondEnd;
+    return ScrollArrowHot::None;
+}
+
+inline int scroll_arrow_dir(ScrollArrowHot hot) {
+    switch (hot) {
+    case ScrollArrowHot::FirstStart:
+    case ScrollArrowHot::SecondStart:
+        return -1;
+    case ScrollArrowHot::FirstEnd:
+    case ScrollArrowHot::SecondEnd:
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 inline void paint_arrow(Canvas &cv, Rect r, bool up, Color ink) {
@@ -942,44 +1348,80 @@ inline void paint_arrow_h(Canvas &cv, Rect r, bool left, Color ink) {
 
 inline void paint_scrollbar_grips(Canvas &cv, const SkinImage *grips, Rect thumb) {
     if (!grips || grips->empty()) return;
+    // Skip donor grips that cannot fit the thumb (Milk Hap has none; Ashen is 15×6).
+    if (grips->w > thumb.w || grips->h > thumb.h) return;
     int gx = thumb.x + (thumb.w - grips->w) / 2;
     int gy = thumb.y + (thumb.h - grips->h) / 2;
     cv.blit_image(*grips, gx, gy);
 }
 
-// Stamp a scroll arrow-hilite overlay using Hap Positions as offsets.
-// Prefer Left/Top when set; otherwise Right/Bottom from the far edge.
+// Hap arrow-hilite stamp. Slot name picks the edge; Positions are offsets
+// (0 is valid — do not treat zero as “unset”).
+// second_right / second_down often store the far-edge inset in Left/Top.
 inline void paint_scroll_arrow_overlay(Canvas &cv, const SkinImage *ov, Rect bar,
-                                       bool vertical) {
-    if (!ov || ov->empty()) return;
+                                       const char *slot) {
+    if (!ov || ov->empty() || !slot) return;
+    const bool vert = std::strstr(slot, ".v.") != nullptr;
     int x = 0, y = 0;
-    if (vertical) {
-        x = (ov->positions[0] > 0) ? bar.x + ov->positions[0]
-            : (ov->positions[2] > 0) ? bar.right() - ov->w - ov->positions[2]
-                                     : bar.x + (bar.w - ov->w) / 2;
-        y = (ov->positions[3] > 0 && ov->positions[1] == 0)
-                ? bar.bottom() - ov->h - ov->positions[3]
-                : bar.y + ov->positions[1];
+    auto has = [](const char *n, const char *tok) {
+        return std::strstr(n, tok) != nullptr;
+    };
+
+    if (vert) {
+        x = bar.x + (bar.w - ov->w) / 2;
+        if (ov->positions[0]) x = bar.x + ov->positions[0];
+        else if (ov->positions[2]) x = bar.right() - ov->w - ov->positions[2];
+
+        if (has(slot, "second_down")) {
+            // Top field = inset from bottom to overlay top (Ashen/BeOS); else Bottom.
+            if (ov->positions[1])
+                y = bar.bottom() - ov->positions[1];
+            else
+                y = bar.bottom() - ov->h - ov->positions[3];
+        } else if (has(slot, "second_up")) {
+            y = bar.bottom() - ov->h - ov->positions[3];
+        } else if (has(slot, "single_down")) {
+            y = bar.bottom() - ov->h - ov->positions[3];
+        } else if (has(slot, "first_down")) {
+            if (ov->positions[3])
+                y = bar.bottom() - ov->h - ov->positions[3];
+            else if (ov->positions[1])
+                y = bar.y + ov->positions[1];
+            else
+                y = bar.y + ov->h; // right plate of top double-arrow group
+        } else {
+            // first_up / single_up
+            y = bar.y + ov->positions[1];
+        }
     } else {
-        x = (ov->positions[2] > 0 && ov->positions[0] == 0)
-                ? bar.right() - ov->w - ov->positions[2]
-                : bar.x + ov->positions[0];
-        y = (ov->positions[1] > 0) ? bar.y + ov->positions[1]
-            : (ov->positions[3] > 0) ? bar.bottom() - ov->h - ov->positions[3]
-                                     : bar.y + (bar.h - ov->h) / 2;
+        y = bar.y + (bar.h - ov->h) / 2;
+        if (ov->positions[1]) y = bar.y + ov->positions[1];
+        else if (ov->positions[3]) y = bar.bottom() - ov->h - ov->positions[3];
+
+        if (has(slot, "second_right")) {
+            if (ov->positions[0])
+                x = bar.right() - ov->positions[0];
+            else
+                x = bar.right() - ov->w - ov->positions[2];
+        } else if (has(slot, "second_left")) {
+            x = bar.right() - ov->w - ov->positions[2];
+        } else if (has(slot, "single_right")) {
+            x = bar.right() - ov->w - ov->positions[2];
+        } else if (has(slot, "first_right")) {
+            // Authored Right = far-edge offset; else Left; else left-cluster 2nd plate.
+            if (ov->positions[2])
+                x = bar.right() - ov->w - ov->positions[2];
+            else if (ov->positions[0])
+                x = bar.x + ov->positions[0];
+            else
+                x = bar.x + ov->w;
+        } else {
+            // first_left / single_left
+            x = bar.x + ov->positions[0];
+        }
     }
     cv.blit_image(*ov, x, y);
 }
-
-// arrow_hot: 0 none, 1 first/single start, 2 first/single end,
-//            3 second start, 4 second end (double-arrows only).
-enum class ScrollArrowHot : int {
-    None = 0,
-    FirstStart = 1,
-    FirstEnd = 2,
-    SecondStart = 3,
-    SecondEnd = 4
-};
 
 inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
                                     const ScrollLayout &s, bool hilite_thumb) {
@@ -990,6 +1432,7 @@ inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
     cv.vline(s.track.right() - 1, s.track.y, s.track.bottom(), ap.c("scrollbar.track_dark1"));
 
     auto paint_btn = [&](Rect r) {
+        if (r.w <= 0 || r.h <= 0) return;
         cv.fill(r, ap.c("scrollbar.face"));
         cv.frame(r, ap.c("scrollbar.frame"));
         cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("scrollbar.light"));
@@ -997,10 +1440,22 @@ inline void paint_scrollbar_color_v(Canvas &cv, const Appearance &ap,
         cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("scrollbar.dark"));
         cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("scrollbar.dark"));
     };
-    paint_btn(s.up);
-    paint_btn(s.down);
-    paint_arrow(cv, s.up, true, ap.c("scrollbar.label"));
-    paint_arrow(cv, s.down, false, ap.c("scrollbar.label"));
+    Color ink = ap.c("scrollbar.label");
+    if (s.double_arrows) {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_btn(s.second_start);
+        paint_btn(s.second_end);
+        paint_arrow(cv, s.first_start, true, ink);
+        paint_arrow(cv, s.first_end, false, ink);
+        paint_arrow(cv, s.second_start, true, ink);
+        paint_arrow(cv, s.second_end, false, ink);
+    } else {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_arrow(cv, s.first_start, true, ink);
+        paint_arrow(cv, s.first_end, false, ink);
+    }
 
     Color il = hilite_thumb ? ap.c("scrollbar.indicator_hilite_light")
                             : ap.c("scrollbar.indicator_light");
@@ -1025,6 +1480,7 @@ inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
     cv.hline(s.track.x, s.track.right(), s.track.bottom() - 1, ap.c("scrollbar.track_dark1"));
 
     auto paint_btn = [&](Rect r) {
+        if (r.w <= 0 || r.h <= 0) return;
         cv.fill(r, ap.c("scrollbar.face"));
         cv.frame(r, ap.c("scrollbar.frame"));
         cv.hline(r.x + 1, r.right() - 1, r.y + 1, ap.c("scrollbar.light"));
@@ -1032,10 +1488,22 @@ inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
         cv.hline(r.x + 1, r.right() - 1, r.bottom() - 2, ap.c("scrollbar.dark"));
         cv.vline(r.right() - 2, r.y + 1, r.bottom() - 1, ap.c("scrollbar.dark"));
     };
-    paint_btn(s.up);
-    paint_btn(s.down);
-    paint_arrow_h(cv, s.up, true, ap.c("scrollbar.label"));
-    paint_arrow_h(cv, s.down, false, ap.c("scrollbar.label"));
+    Color ink = ap.c("scrollbar.label");
+    if (s.double_arrows) {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_btn(s.second_start);
+        paint_btn(s.second_end);
+        paint_arrow_h(cv, s.first_start, true, ink);
+        paint_arrow_h(cv, s.first_end, false, ink);
+        paint_arrow_h(cv, s.second_start, true, ink);
+        paint_arrow_h(cv, s.second_end, false, ink);
+    } else {
+        paint_btn(s.first_start);
+        paint_btn(s.first_end);
+        paint_arrow_h(cv, s.first_start, true, ink);
+        paint_arrow_h(cv, s.first_end, false, ink);
+    }
 
     Color il = hilite_thumb ? ap.c("scrollbar.indicator_hilite_light")
                             : ap.c("scrollbar.indicator_light");
@@ -1051,12 +1519,50 @@ inline void paint_scrollbar_color_h(Canvas &cv, const Appearance &ap,
     cv.vline(s.thumb.right() - 2, s.thumb.y + 1, s.thumb.bottom() - 1, id);
 }
 
+// Hap: scrollbar cross-axis is exactly 16. If art is thinner (Milk 15), centre
+// the strip in the layout trough — do not stretch cross-axis.
+inline Rect scrollbar_art_strip(Rect bar, bool vertical, int art_thickness) {
+    if (art_thickness <= 0) return bar;
+    if (vertical) {
+        if (art_thickness >= bar.w) return bar;
+        return {bar.x + (bar.w - art_thickness) / 2, bar.y, art_thickness, bar.h};
+    }
+    if (art_thickness >= bar.h) return bar;
+    return {bar.x, bar.y + (bar.h - art_thickness) / 2, bar.w, art_thickness};
+}
+
+inline Rect scrollbar_thumb_on_strip(Rect thumb, Rect strip, bool vertical) {
+    if (vertical)
+        return {strip.x, thumb.y, strip.w, thumb.h};
+    return {thumb.x, strip.y, thumb.w, strip.h};
+}
+
+// Centre the indicator in the arrow strip cross-axis (Milk 14-wide art in a
+// 15-wide strip) — never stretch cross-axis via nine_slice.
+inline Rect scrollbar_indicator_dest(Rect thumb_on_strip, bool vertical,
+                                     int art_thickness) {
+    if (art_thickness <= 0) return thumb_on_strip;
+    if (vertical) {
+        if (art_thickness >= thumb_on_strip.w) return thumb_on_strip;
+        return {thumb_on_strip.x + (thumb_on_strip.w - art_thickness) / 2,
+                thumb_on_strip.y, art_thickness, thumb_on_strip.h};
+    }
+    if (art_thickness >= thumb_on_strip.h) return thumb_on_strip;
+    return {thumb_on_strip.x,
+            thumb_on_strip.y + (thumb_on_strip.h - art_thickness) / 2,
+            thumb_on_strip.w, art_thickness};
+}
+
 // Art-first vertical scrollbar (double/single arrows + indicator + grips + overlays).
 // `arrow_hot` stamps pressed-arrow hilite overlays (Haxial Positions = offsets).
 inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
                             int value, int max_value, int page, bool hilite_thumb,
                             bool single = false, bool disabled = false,
                             ScrollArrowHot arrow_hot = ScrollArrowHot::None) {
+    // Fill the full trough first. Hap art is often 15-wide in a 16 trough;
+    // without this fill the host background shows as a white seam.
+    cv.fill(bar, ap.c("scrollbar.face"));
+
     // Too-small: shorter than single-arrows caps → stamp too_small art.
     const SkinImage *single_art = ap.art("scrollbar.v.single_arrows");
     int min_h = single_art ? (single_art->caps[1] + single_art->caps[3])
@@ -1065,7 +1571,8 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     if (bar.h < min_h) {
         const SkinImage *tiny = ap.art("scrollbar.v.too_small");
         if (tiny) {
-            cv.nine_slice(*tiny, bar);
+            Rect strip = scrollbar_art_strip(bar, true, tiny->w);
+            cv.nine_slice(*tiny, strip);
             return;
         }
     }
@@ -1073,7 +1580,8 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     if (disabled) {
         const SkinImage *dis = ap.art("scrollbar.v.disabled");
         if (dis) {
-            cv.nine_slice(*dis, bar);
+            Rect strip = scrollbar_art_strip(bar, true, dis->w);
+            cv.nine_slice(*dis, strip);
             return;
         }
     }
@@ -1085,24 +1593,28 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
     const SkinImage *arrows = ap.art(arrow_slot);
     if (!arrows && single) arrows = ap.art("scrollbar.v.double_arrows");
     if (arrows) {
-        cv.nine_slice(*arrows, bar);
+        Rect strip = scrollbar_art_strip(bar, true, arrows->w);
+        cv.nine_slice(*arrows, strip);
         if (!disabled) {
+            Rect th = scrollbar_thumb_on_strip(s.thumb, strip, true);
             const char *islot = hilite_thumb ? "scrollbar.v.indicator.hilited"
                                              : "scrollbar.v.indicator.normal";
             const SkinImage *ind = ap.art(islot);
             if (!ind) ind = ap.art("scrollbar.v.indicator.normal");
-            if (ind && s.thumb.h > 0)
-                cv.nine_slice(*ind, s.thumb);
-            else if (s.thumb.h > 0) {
+            if (ind && th.h > 0) {
+                Rect idest = scrollbar_indicator_dest(th, true, ind->w);
+                cv.nine_slice(*ind, idest);
+                th = idest; // grips centre on the painted indicator
+            } else if (th.h > 0) {
                 Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
                                           : ap.c("scrollbar.indicator");
-                cv.fill(s.thumb, face);
+                cv.fill(th, face);
             }
             const char *gslot = hilite_thumb ? "scrollbar.v.grips.hilited"
                                              : "scrollbar.v.grips.normal";
             const SkinImage *grips = ap.art(gslot);
             if (!grips) grips = ap.art("scrollbar.v.grips.normal");
-            paint_scrollbar_grips(cv, grips, s.thumb);
+            paint_scrollbar_grips(cv, grips, th);
 
             const char *ov_slot = nullptr;
             if (single) {
@@ -1128,7 +1640,7 @@ inline void paint_scrollbar(Canvas &cv, const Appearance &ap, Rect bar,
                     break;
                 }
             }
-            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), bar, true);
+            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), strip, ov_slot);
         }
         return;
     }
@@ -1142,6 +1654,7 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
                               bool hilite_thumb, bool single = false,
                               bool disabled = false,
                               ScrollArrowHot arrow_hot = ScrollArrowHot::None) {
+    cv.fill(bar, ap.c("scrollbar.face"));
     const SkinImage *single_art = ap.art("scrollbar.h.single_arrows");
     int min_w = single_art ? (single_art->caps[0] + single_art->caps[2])
                            : (2 * bar.h);
@@ -1149,7 +1662,8 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
     if (bar.w < min_w) {
         const SkinImage *tiny = ap.art("scrollbar.h.too_small");
         if (tiny) {
-            cv.nine_slice(*tiny, bar);
+            Rect strip = scrollbar_art_strip(bar, false, tiny->h);
+            cv.nine_slice(*tiny, strip);
             return;
         }
     }
@@ -1157,7 +1671,8 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
     if (disabled) {
         const SkinImage *dis = ap.art("scrollbar.h.disabled");
         if (dis) {
-            cv.nine_slice(*dis, bar);
+            Rect strip = scrollbar_art_strip(bar, false, dis->h);
+            cv.nine_slice(*dis, strip);
             return;
         }
     }
@@ -1169,24 +1684,28 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
     const SkinImage *arrows = ap.art(arrow_slot);
     if (!arrows && single) arrows = ap.art("scrollbar.h.double_arrows");
     if (arrows) {
-        cv.nine_slice(*arrows, bar);
+        Rect strip = scrollbar_art_strip(bar, false, arrows->h);
+        cv.nine_slice(*arrows, strip);
         if (!disabled) {
+            Rect th = scrollbar_thumb_on_strip(s.thumb, strip, false);
             const char *islot = hilite_thumb ? "scrollbar.h.indicator.hilited"
                                              : "scrollbar.h.indicator.normal";
             const SkinImage *ind = ap.art(islot);
             if (!ind) ind = ap.art("scrollbar.h.indicator.normal");
-            if (ind && s.thumb.w > 0)
-                cv.nine_slice(*ind, s.thumb);
-            else if (s.thumb.w > 0) {
+            if (ind && th.w > 0) {
+                Rect idest = scrollbar_indicator_dest(th, false, ind->h);
+                cv.nine_slice(*ind, idest);
+                th = idest;
+            } else if (th.w > 0) {
                 Color face = hilite_thumb ? ap.c("scrollbar.indicator_hilite")
                                           : ap.c("scrollbar.indicator");
-                cv.fill(s.thumb, face);
+                cv.fill(th, face);
             }
             const char *gslot = hilite_thumb ? "scrollbar.h.grips.hilited"
                                              : "scrollbar.h.grips.normal";
             const SkinImage *grips = ap.art(gslot);
             if (!grips) grips = ap.art("scrollbar.h.grips.normal");
-            paint_scrollbar_grips(cv, grips, s.thumb);
+            paint_scrollbar_grips(cv, grips, th);
 
             const char *ov_slot = nullptr;
             if (single) {
@@ -1212,7 +1731,7 @@ inline void paint_scrollbar_h(Canvas &cv, const Appearance &ap, Rect bar,
                     break;
                 }
             }
-            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), bar, false);
+            if (ov_slot) paint_scroll_arrow_overlay(cv, ap.art(ov_slot), strip, ov_slot);
         }
         return;
     }
@@ -1232,6 +1751,76 @@ struct MenuLayout {
     int count = 0;
 };
 
+// Hap Popup Window Frame is usable when it publishes thickness (Positions)
+// or is large enough to be real chrome. Tiny 3×3 stubs with zero Positions
+// (Milk, Aluminum) are placeholders — nine-slicing them draws a soft grey
+// ring that reads as an empty "ghost border", especially when menu.background
+// matches the editor fill.
+inline bool popup_frame_usable(const SkinImage *frame) {
+    if (!frame || frame->empty()) return false;
+    int thick = int(frame->positions[0]) + int(frame->positions[1]) +
+                int(frame->positions[2]) + int(frame->positions[3]);
+    if (thick > 0) return true;
+    return frame->w >= 7 && frame->h >= 7;
+}
+
+// Hot green / hot magenta typical of Hap transparency keys used as opaque fills.
+inline bool color_is_chroma_key(Color c) {
+    if (c.g >= 200 && c.r <= 60 && c.b <= 60) return true;
+    if (c.r >= 200 && c.b >= 200 && c.g <= 60) return true;
+    return false;
+}
+
+// Menu fill / item plates: reject empty, absurd sizes, blank stubs, and chroma
+// key plates (same spirit as popup_frame_usable). Failed → colour path only.
+inline bool menu_fill_art_usable(const SkinImage *img) {
+    if (!img || img->empty()) return false;
+    if (img->w < 3 || img->h < 3) return false;
+    if (img->w > 512 || img->h > 512) return false;
+    int samples = 0, chroma = 0;
+    int64_t sum = 0, sum2 = 0;
+    int step_x = std::max(1, img->w / 6);
+    int step_y = std::max(1, img->h / 6);
+    for (int y = 0; y < img->h; y += step_y) {
+        for (int x = 0; x < img->w; x += step_x) {
+            uint32_t p = img->at(x, y);
+            if ((p >> 24) < 128) continue;
+            Color c{uint8_t((p >> 16) & 255), uint8_t((p >> 8) & 255),
+                    uint8_t(p & 255)};
+            int lum = (int(c.r) + int(c.g) + int(c.b)) / 3;
+            sum += lum;
+            sum2 += lum * lum;
+            if (color_is_chroma_key(c)) ++chroma;
+            ++samples;
+        }
+    }
+    if (samples < 3) return false;
+    double mean = double(sum) / samples;
+    double var = double(sum2) / samples - mean * mean;
+    if (var < 40.0 && chroma * 2 >= samples) return false;
+    if (chroma * 5 >= samples * 3) return false; // ≥60% chroma samples
+    return true;
+}
+
+// Place a popup under `anchor` so it stays inside `win`. Prefers below-left;
+// if that clips the right edge, right-aligns to the anchor; may flip above.
+// `menu_h` may be an estimate (pad + count * kMenuItemH is fine).
+inline void menu_place(Rect win, Rect anchor, int menu_w, int menu_h, int *out_x,
+                       int *out_y) {
+    int x = anchor.x;
+    int y = anchor.bottom();
+    if (x + menu_w > win.right()) x = anchor.right() - menu_w;
+    if (x < win.x) x = win.x;
+    if (x + menu_w > win.right()) x = std::max(win.x, win.right() - menu_w);
+    if (y + menu_h > win.bottom()) y = anchor.y - menu_h;
+    if (y < win.y) y = win.y;
+    if (out_x) *out_x = x;
+    if (out_y) *out_y = y;
+}
+
+// Estimated outer height for colour-path / typical padded menus.
+inline int menu_estimate_h(int count) { return 4 + count * kMenuItemH; }
+
 // Popup / drop-down menu panel. `hot` is the hilited row (-1 none).
 // Optional `disabled_mask` bit i disables item i.
 // Art path: menu.background(_pattern) + menu.item.* + menu.separator + popup_frame.*.
@@ -1245,12 +1834,28 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
     int pad_l = 2, pad_t = 2, pad_r = 2, pad_b = 2;
     const SkinImage *frame = ap.art("popup_frame.focus");
     if (!frame) frame = ap.art("popup_frame.normal");
+    if (!popup_frame_usable(frame)) frame = nullptr;
     if (frame) {
-        // Positions = frame thickness (even); fall back to 2px.
-        pad_l = frame->positions[0] > 0 ? frame->positions[0] : 2;
-        pad_t = frame->positions[1] > 0 ? frame->positions[1] : 2;
-        pad_r = frame->positions[2] > 0 ? frame->positions[2] : 2;
-        pad_b = frame->positions[3] > 0 ? frame->positions[3] : 2;
+        // Positions = frame thickness (even). If all zero on a real plate,
+        // derive from caps (even, ≥2).
+        auto even_thick = [](int v) {
+            if (v <= 0) return 0;
+            if (v < 2) return 2;
+            return v & ~1;
+        };
+        pad_l = even_thick(frame->positions[0]);
+        pad_t = even_thick(frame->positions[1]);
+        pad_r = even_thick(frame->positions[2]);
+        pad_b = even_thick(frame->positions[3]);
+        if (pad_l + pad_t + pad_r + pad_b == 0) {
+            pad_l = pad_t = pad_r = pad_b =
+                even_thick(std::max({int(frame->caps[0]), int(frame->caps[1]),
+                                     int(frame->caps[2]), int(frame->caps[3]), 2}));
+        }
+        if (pad_l <= 0) pad_l = 2;
+        if (pad_t <= 0) pad_t = 2;
+        if (pad_r <= 0) pad_r = 2;
+        if (pad_b <= 0) pad_b = 2;
     }
 
     int inner_h = count * kMenuItemH;
@@ -1262,21 +1867,34 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
     cv.fill(lay.frame, ap.c("menu.background"));
     const SkinImage *pat = ap.art("menu.background_pattern");
     if (pat && !pat->empty() && lay.items_bounds.w > 0 && lay.items_bounds.h > 0) {
+        // Must clip — Boilerplate-Rusty's pattern is 128×128; without a clip the
+        // last tile paints past the menu and reads as a floating rusty plate.
+        CanvasClip clip(cv, lay.items_bounds);
         for (int py = lay.items_bounds.y; py < lay.items_bounds.bottom(); py += pat->h)
             for (int px = lay.items_bounds.x; px < lay.items_bounds.right(); px += pat->w)
                 cv.blit_image(*pat, px, py);
     }
     const SkinImage *mbg = ap.art("menu.background");
-    if (mbg)
+    if (menu_fill_art_usable(mbg)) {
+        CanvasClip clip(cv, lay.items_bounds);
         cv.nine_slice(*mbg, lay.items_bounds);
+    }
 
     if (frame) {
         cv.nine_slice(*frame, lay.frame);
     } else {
+        // Colour path: Haxial outer ring is Focus Box. Add a light/dark bevel
+        // only when those roles differ — Milk sets both to the same grey, and
+        // stacking focus + dark + light there looks like a thick odd border.
         cv.frame(lay.frame, ap.c("focus.box"));
-        cv.frame({x + 1, y + 1, width - 2, h - 2}, ap.c("menu.dark"));
-        cv.hline(x + 2, x + width - 2, y + 2, ap.c("menu.light"));
-        cv.vline(x + 2, y + 2, y + h - 2, ap.c("menu.light"));
+        Color light = ap.c("menu.light");
+        Color dark = ap.c("menu.dark");
+        if (light.r != dark.r || light.g != dark.g || light.b != dark.b) {
+            cv.hline(x + 1, x + width - 1, y + 1, light);
+            cv.vline(x + 1, y + 1, y + h - 1, light);
+            cv.hline(x + 1, x + width - 1, y + h - 2, dark);
+            cv.vline(x + width - 2, y + 1, y + h - 1, dark);
+        }
     }
 
     for (int i = 0; i < count; ++i) {
@@ -1288,8 +1906,10 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
                                    std::strcmp(items[i], "—") == 0);
 
         if (is_sep) {
+            // Hap docs: separator ≤4 px. Milk's 28×36 plate is not a rule —
+            // treat as missing and draw the colour path.
             const SkinImage *sep = ap.art("menu.separator");
-            if (sep) {
+            if (sep && sep->h > 0 && sep->h <= 4) {
                 int sh = std::min(sep->h, row.h);
                 Rect dest{row.x, row.y + (row.h - sh) / 2, row.w, sh};
                 cv.nine_slice(*sep, dest);
@@ -1301,10 +1921,13 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
             continue;
         }
 
-        const SkinImage *ipat = ap.art(dis ? "menu.item_pattern.disabled"
-                                           : (is_hot ? "menu.item_pattern.hilited"
-                                                     : "menu.item_pattern.normal"));
-        if (ipat && !ipat->empty()) {
+const char *pslot = dis ? "menu.item.pattern.disabled"
+                                : (is_hot ? "menu.item.pattern.hilited"
+                                          : "menu.item.pattern.normal");
+        const SkinImage *ipat = ap.art(pslot);
+        if (!menu_fill_art_usable(ipat) && is_hot)
+            ipat = ap.art("menu.item.pattern.normal");
+        if (menu_fill_art_usable(ipat)) {
             CanvasClip clip(cv, row);
             for (int py = row.y; py < row.bottom(); py += ipat->h)
                 for (int px = row.x; px < row.right(); px += ipat->w)
@@ -1320,10 +1943,10 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
             const SkinImage *end = nullptr;
             if (i == 0) end = ap.art("menu.item.first_hilited");
             else if (i == count - 1) end = ap.art("menu.item.last_hilited");
-            if (end) item = end;
+            if (menu_fill_art_usable(end)) item = end;
         }
-        if (!item && is_hot) item = ap.art("menu.item.normal");
-        if (item) {
+        if (!menu_fill_art_usable(item) && is_hot) item = ap.art("menu.item.normal");
+        if (menu_fill_art_usable(item)) {
             cv.nine_slice(*item, row);
         } else if (is_hot) {
             cv.fill(row, ap.c("menu.hilite_background"));
@@ -1333,8 +1956,9 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
             cv.vline(row.right() - 1, row.y, row.bottom(), ap.c("menu.hilite_dark"));
         }
 
-        Color ink = dis ? ap.c("menu.disable_label")
-                        : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        Color role = dis ? ap.c("menu.disable_label")
+                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        Color ink = label_ink(ap, role, item, dis);
         cv.text(row.x + 8, row.y + (kMenuItemH - cv.line_height()) / 2, items[i], ink);
     }
     return lay;
@@ -1401,8 +2025,9 @@ inline MenuBarLayout paint_menu_bar(Canvas &cv, const Appearance &ap, Rect r,
         }
         if (title_art) cv.nine_slice(*title_art, item);
 
-        Color ink = dis ? ap.c("menu.disable_label")
-                        : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        Color role = dis ? ap.c("menu.disable_label")
+                         : (is_hot ? ap.c("menu.hilite_label") : ap.c("menu.label"));
+        Color ink = label_ink(ap, role, title_art, dis);
         cv.text(item.x + 8, item.y + (item.h - cv.line_height()) / 2, t, ink);
         x += iw;
     }
@@ -1468,9 +2093,9 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
             cv.place(*sym, sx, sy);
         }
         if (no_title || !label || !*label) return;
-        Color ink = button_label_ink(ap, disabled, plate != nullptr);
+        Color ink = button_label_ink(ap, disabled, true, plate);
         int tx = r.x + 8 + (down ? 1 : 0);
-        int ty = r.y + (r.h - cv.line_height()) / 2 + (down ? 1 : 0);
+        int ty = label_y_centered(cv, r, label, down ? 1 : 0);
         int max_w = (sym ? (sym->positions[2] > 0 ? r.w - sym->positions[2] - sym->w
                                                   : r.w - sym->w - 8)
                          : r.w - 20) -
@@ -1503,7 +2128,7 @@ inline void paint_dropdown(Canvas &cv, const Appearance &ap, Rect r,
 
     if (no_title || !label || !*label) return;
     int tx = r.x + 8 + (down ? 1 : 0);
-    int ty = r.y + (r.h - cv.line_height()) / 2 + (down ? 1 : 0);
+    int ty = label_y_centered(cv, r, label, down ? 1 : 0);
     int max_w = div_x - tx - 4;
     if (max_w < 8) max_w = 8;
     cv.text_elided(tx, ty, label, max_w, ink);
@@ -1517,8 +2142,11 @@ struct SliderLayout {
     int max_value = 100;
     int thumb_w = kSliderThumbW;
     int thumb_h = kSliderThumbH;
+    int travel_a = 0; // H: left inset; V: top inset (Hap Positions)
+    int travel_b = 0; // H: right inset; V: bottom inset
 };
 
+// Hap: bar spans the full control; Positions only limit indicator travel inside it.
 inline SliderLayout slider_layout(Rect r, int value, int max_value,
                                   int thumb_w = kSliderThumbW,
                                   int thumb_h = kSliderThumbH, int travel_l = 0,
@@ -1530,12 +2158,15 @@ inline SliderLayout slider_layout(Rect r, int value, int max_value,
     s.value = std::clamp(value, 0, s.max_value);
     s.thumb_w = thumb_w;
     s.thumb_h = thumb_h;
+    s.travel_a = std::max(0, travel_l);
+    s.travel_b = std::max(0, travel_r);
     if (bar_h < 2) bar_h = 2;
-    int bar_w = r.w - travel_l - travel_r;
-    if (bar_w < thumb_w) bar_w = std::max(thumb_w, r.w);
-    s.bar = {r.x + travel_l, r.y + (r.h - bar_h) / 2, bar_w, bar_h};
-    int travel = std::max(0, s.bar.w - thumb_w);
-    int tx = s.bar.x + (travel * s.value) / s.max_value;
+    s.bar = {r.x, r.y + (r.h - bar_h) / 2, r.w, bar_h};
+    int track_x = s.bar.x + s.travel_a;
+    int track_w = s.bar.w - s.travel_a - s.travel_b;
+    if (track_w < thumb_w) track_w = std::max(thumb_w, s.bar.w);
+    int travel = std::max(0, track_w - thumb_w);
+    int tx = track_x + (travel * s.value) / s.max_value;
     int ty = s.bar.y - thumb_above;
     if (thumb_above <= 0)
         ty = r.y + (r.h - thumb_h) / 2;
@@ -1573,10 +2204,18 @@ inline SliderLayout slider_layout(const Appearance &ap, Rect r, int value,
         thumb_above = ind->positions[1];
     }
     // AppearanceEdit: total height including indicator ≤ 30.
-    int total_h = bar_h + (thumb_above > 0 ? thumb_above : 0);
-    if (thumb_above <= 0) total_h = std::max(bar_h, thumb_h);
-    if (total_h > r.h && r.h > 0) {
-        // Keep within band; prefer shrinking thumb_above.
+    int band = bar_h;
+    if (thumb_above > 0)
+        band = bar_h + thumb_above + std::max(0, thumb_h - bar_h);
+    else
+        band = std::max(bar_h, thumb_h);
+    if (band > 30) {
+        if (thumb_above > 0) thumb_above = std::max(0, 30 - bar_h - 1);
+        band = (thumb_above > 0) ? bar_h + thumb_above + std::max(0, thumb_h - bar_h)
+                                 : std::max(bar_h, thumb_h);
+        if (band > 30 && thumb_h > bar_h) thumb_h = std::max(bar_h, 30 - std::max(0, thumb_above));
+    }
+    if (band > r.h && r.h > 0) {
         if (thumb_above > 0) thumb_above = std::max(0, r.h - bar_h - 1);
     }
     return slider_layout(r, value, max_value, thumb_w, thumb_h, travel_l, travel_r,
@@ -1584,8 +2223,10 @@ inline SliderLayout slider_layout(const Appearance &ap, Rect r, int value,
 }
 
 inline int slider_value_at_x(const SliderLayout &s, int mx) {
-    int travel = std::max(1, s.bar.w - s.thumb_w);
-    int rel = mx - s.bar.x - s.thumb_w / 2;
+    int track_x = s.bar.x + s.travel_a;
+    int track_w = s.bar.w - s.travel_a - s.travel_b;
+    int travel = std::max(1, track_w - s.thumb_w);
+    int rel = mx - track_x - s.thumb_w / 2;
     return std::clamp(rel * s.max_value / travel, 0, s.max_value);
 }
 
@@ -1624,14 +2265,33 @@ inline SliderLayout slider_layout_v(const Appearance &ap, Rect r, int value,
         thumb_h = ind->h;
         thumb_left = ind->positions[0];
     }
+    // AppearanceEdit: total width including indicator ≤ 30.
+    int band = bar_w;
+    if (thumb_left > 0)
+        band = bar_w + thumb_left + std::max(0, thumb_w - bar_w);
+    else
+        band = std::max(bar_w, thumb_w);
+    if (band > 30) {
+        if (thumb_left > 0) thumb_left = std::max(0, 30 - bar_w - 1);
+        if (std::max(bar_w, thumb_w) > 30 && thumb_w > bar_w)
+            thumb_w = std::max(bar_w, 30 - std::max(0, thumb_left));
+    }
+    if (band > r.w && r.w > 0) {
+        if (thumb_left > 0) thumb_left = std::max(0, r.w - bar_w - 1);
+    }
+
     s.thumb_w = thumb_w;
     s.thumb_h = thumb_h;
-    int bar_h = r.h - travel_t - travel_b;
-    if (bar_h < thumb_h) bar_h = std::max(thumb_h, r.h);
-    s.bar = {r.x + (r.w - bar_w) / 2, r.y + travel_t, bar_w, bar_h};
-    int travel = std::max(0, s.bar.h - thumb_h);
+    s.travel_a = std::max(0, travel_t);
+    s.travel_b = std::max(0, travel_b);
+    // Bar spans full height; Positions only limit thumb travel.
+    s.bar = {r.x + (r.w - bar_w) / 2, r.y, bar_w, r.h};
+    int track_y = s.bar.y + s.travel_a;
+    int track_h = s.bar.h - s.travel_a - s.travel_b;
+    if (track_h < thumb_h) track_h = std::max(thumb_h, s.bar.h);
+    int travel = std::max(0, track_h - thumb_h);
     // Value 0 at top (like scroll).
-    int ty = s.bar.y + (travel * s.value) / s.max_value;
+    int ty = track_y + (travel * s.value) / s.max_value;
     int tx = s.bar.x - thumb_left;
     if (thumb_left <= 0) tx = r.x + (r.w - thumb_w) / 2;
     s.thumb = {tx, ty, thumb_w, thumb_h};
@@ -1639,42 +2299,55 @@ inline SliderLayout slider_layout_v(const Appearance &ap, Rect r, int value,
 }
 
 inline int slider_value_at_y(const SliderLayout &s, int my) {
-    int travel = std::max(1, s.bar.h - s.thumb_h);
-    int rel = my - s.bar.y - s.thumb_h / 2;
+    int track_y = s.bar.y + s.travel_a;
+    int track_h = s.bar.h - s.travel_a - s.travel_b;
+    int travel = std::max(1, track_h - s.thumb_h);
+    int rel = my - track_y - s.thumb_h / 2;
     return std::clamp(rel * s.max_value / travel, 0, s.max_value);
 }
 
 inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
                                  int value, int max_value, bool hilite,
-                                 bool pointed = false) {
-    SliderLayout s = slider_layout(ap, r, value, max_value, hilite, pointed);
-
-    const char *bslot = hilite ? "slider.h.bar.hilited" : "slider.h.bar.normal";
+                                 bool pointed = false, bool disabled = false) {
+    // Disabled art when present; layout still uses normal metrics if disabled
+    // plates are missing (Hap often authors only Normal/Hilited).
+    const char *bslot = disabled ? "slider.h.bar.disabled"
+                                 : (hilite ? "slider.h.bar.hilited"
+                                           : "slider.h.bar.normal");
     const SkinImage *bar = ap.art(bslot);
+    if (!bar && disabled) bar = ap.art("slider.h.bar.normal");
     if (!bar) bar = ap.art("slider.h.bar.normal");
     const char *islot =
-        pointed ? (hilite ? "slider.h.indicator_pointed.hilited"
-                          : "slider.h.indicator_pointed.normal")
-                : (hilite ? "slider.h.indicator.hilited"
-                          : "slider.h.indicator.normal");
+        disabled
+            ? (pointed ? "slider.h.indicator_pointed.disabled"
+                       : "slider.h.indicator.disabled")
+            : (pointed ? (hilite ? "slider.h.indicator_pointed.hilited"
+                                 : "slider.h.indicator_pointed.normal")
+                       : (hilite ? "slider.h.indicator.hilited"
+                                 : "slider.h.indicator.normal"));
+    SliderLayout s = slider_layout(ap, r, value, max_value, hilite && !disabled,
+                                   pointed);
     const SkinImage *ind = ap.art(islot);
-    if (!ind && pointed)
+    if (!ind && pointed && !disabled)
         ind = ap.art(hilite ? "slider.h.indicator.hilited"
                             : "slider.h.indicator.normal");
+    if (!ind && disabled) {
+        ind = ap.art(pointed ? "slider.h.indicator_pointed.normal"
+                             : "slider.h.indicator.normal");
+    }
     if (!ind) ind = ap.art("slider.h.indicator.normal");
 
     if (bar) {
         cv.nine_slice(*bar, s.bar);
+    } else if (disabled) {
+        // Colour-path disabled: flat disable plate, no value-fill trough.
+        cv.fill(s.bar, ap.c("slider.disable"));
+        cv.frame(s.bar, ap.c("slider.disable_frame"));
     } else {
+        // Hap travel model: full trough in Bar colour; indicator alone shows
+        // value. Do not value-fill the trough (old kit mistake).
         cv.fill(s.bar, ap.c("slider.bar"));
         cv.frame(s.bar, ap.c("slider.bar_frame"));
-        if (s.value > 0) {
-            int fill_w = (s.thumb.x + s.thumb_w / 2) - s.bar.x;
-            fill_w = std::clamp(fill_w, 0, s.bar.w);
-            Rect fill{s.bar.x, s.bar.y, fill_w, s.bar.h};
-            cv.fill(fill, ap.c("slider.bar_hilite"));
-            cv.frame(fill, ap.c("slider.bar_hilite_frame"));
-        }
     }
 
     if (ind) {
@@ -1685,6 +2358,12 @@ inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
         return s;
     }
 
+    if (disabled) {
+        cv.fill(s.thumb, ap.c("slider.disable"));
+        rounded_frame(cv, s.thumb, ap.c("slider.disable_frame"),
+                      ap.c("primary.background"));
+        return s;
+    }
     Color il = hilite ? ap.c("slider.indicator_hilite_light")
                       : ap.c("slider.indicator_light");
     Color face = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
@@ -1706,25 +2385,38 @@ inline SliderLayout paint_slider(Canvas &cv, const Appearance &ap, Rect r,
 
 inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
                                    int value, int max_value, bool hilite,
-                                   bool pointed = false) {
-    SliderLayout s = slider_layout_v(ap, r, value, max_value, hilite, pointed);
-
-    const char *bslot = hilite ? "slider.v.bar.hilited" : "slider.v.bar.normal";
+                                   bool pointed = false, bool disabled = false) {
+    const char *bslot = disabled ? "slider.v.bar.disabled"
+                                 : (hilite ? "slider.v.bar.hilited"
+                                           : "slider.v.bar.normal");
     const SkinImage *bar = ap.art(bslot);
+    if (!bar && disabled) bar = ap.art("slider.v.bar.normal");
     if (!bar) bar = ap.art("slider.v.bar.normal");
     const char *islot =
-        pointed ? (hilite ? "slider.v.indicator_pointed.hilited"
-                          : "slider.v.indicator_pointed.normal")
-                : (hilite ? "slider.v.indicator.hilited"
-                          : "slider.v.indicator.normal");
+        disabled
+            ? (pointed ? "slider.v.indicator_pointed.disabled"
+                       : "slider.v.indicator.disabled")
+            : (pointed ? (hilite ? "slider.v.indicator_pointed.hilited"
+                                 : "slider.v.indicator_pointed.normal")
+                       : (hilite ? "slider.v.indicator.hilited"
+                                 : "slider.v.indicator.normal"));
+    SliderLayout s =
+        slider_layout_v(ap, r, value, max_value, hilite && !disabled, pointed);
     const SkinImage *ind = ap.art(islot);
-    if (!ind && pointed)
+    if (!ind && pointed && !disabled)
         ind = ap.art(hilite ? "slider.v.indicator.hilited"
                             : "slider.v.indicator.normal");
+    if (!ind && disabled) {
+        ind = ap.art(pointed ? "slider.v.indicator_pointed.normal"
+                             : "slider.v.indicator.normal");
+    }
     if (!ind) ind = ap.art("slider.v.indicator.normal");
 
     if (bar) {
         cv.nine_slice(*bar, s.bar);
+    } else if (disabled) {
+        cv.fill(s.bar, ap.c("slider.disable"));
+        cv.frame(s.bar, ap.c("slider.disable_frame"));
     } else {
         cv.fill(s.bar, ap.c("slider.bar"));
         cv.frame(s.bar, ap.c("slider.bar_frame"));
@@ -1738,6 +2430,12 @@ inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
         return s;
     }
 
+    if (disabled) {
+        cv.fill(s.thumb, ap.c("slider.disable"));
+        rounded_frame(cv, s.thumb, ap.c("slider.disable_frame"),
+                      ap.c("primary.background"));
+        return s;
+    }
     Color il = hilite ? ap.c("slider.indicator_hilite_light")
                       : ap.c("slider.indicator_light");
     Color face = hilite ? ap.c("slider.indicator_hilite") : ap.c("slider.indicator");
@@ -1754,15 +2452,10 @@ inline SliderLayout paint_slider_v(Canvas &cv, const Appearance &ap, Rect r,
     return s;
 }
 
-// --- Tick (checkbox) / Mutex (radio)
-
 // --- Tick (checkbox) / Mutex (radio) ------------------------------------
 // AppearanceEdit: Tick/Mutex Blank|Ticked|Tristate × Normal/Hilited/Disabled.
 // Title is drawn outside the box. Height ≤ 18.
-
-constexpr int kTickBox = 14;
-
-enum class TickMark { Blank, Ticked, Tristate };
+// TickMark / kTickBox declared above (Find sample forward use).
 
 inline const char *tick_art_slot(TickMark mark, bool pressed, bool disabled) {
     const char *m = mark == TickMark::Ticked     ? "ticked"
@@ -1806,21 +2499,39 @@ inline void paint_mutex_dot(Canvas &cv, Rect b, Color ink) {
             if (dx * dx + dy * dy <= 5) cv.put(cx + dx, cy + dy, pack(ink));
 }
 
+// Place Tick/Mutex art: Hap marks are ≤18 and must not smear via nine_slice
+// into kTickBox. Centre-blit natural size when close to the dest.
+inline void place_tick_art(Canvas &cv, const SkinImage &img, Rect &b) {
+    Rect slot = b;
+    auto adiff = [](int a, int b) { return a > b ? a - b : b - a; };
+    if (img.w <= 18 && img.h <= 18 && adiff(img.w, slot.w) <= 6 &&
+        adiff(img.h, slot.h) <= 6) {
+        b.w = img.w;
+        b.h = img.h;
+        // Keep left edge for label layout; centre vertically in the slot.
+        b.x = slot.x;
+        b.y = slot.y + std::max(0, (slot.h - img.h) / 2);
+        cv.blit_image(img, b.x, b.y);
+        return;
+    }
+    if (img.w == b.w && img.h == b.h)
+        cv.blit_image(img, b.x, b.y);
+    else
+        cv.nine_slice(img, b);
+}
+
 // Checkbox. Returns the hit box (glyph only).
 inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
-                       TickMark mark, const char *label, bool pressed = false,
-                       bool disabled = false) {
-    Rect b{x, y, kTickBox, kTickBox};
+                       TickMark mark, const char *label, bool pressed,
+                       bool disabled) {
+    Rect slot{x, y, kTickBox, kTickBox};
+    Rect b = slot;
     const SkinImage *img = ap.art(tick_art_slot(mark, pressed, disabled));
     if (!img && pressed) img = ap.art(tick_art_slot(mark, false, disabled));
     if (!img && mark != TickMark::Blank)
         img = ap.art(tick_art_slot(TickMark::Blank, pressed, disabled));
     if (img) {
-        // Art is placed 1:1 (or nine-sliced into the box if larger/smaller).
-        if (img->w == b.w && img->h == b.h)
-            cv.blit_image(*img, b.x, b.y);
-        else
-            cv.nine_slice(*img, b);
+        place_tick_art(cv, *img, b);
     } else {
         const char *grp = disabled ? "button_disable" : "button";
         auto bc = [&](const char *s) {
@@ -1839,8 +2550,11 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
         else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
     }
     if (label && *label) {
-        Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
-        cv.text(b.right() + 6, b.y + (b.h - cv.line_height()) / 2, label, ink);
+        Color ink = label_ink(ap, ap.c("primary.label"), nullptr, disabled);
+        int top = std::min(slot.y, b.y);
+        int bot = std::max(slot.bottom(), b.bottom());
+        Rect band{b.right() + 6, top, 8, bot - top};
+        cv.text(band.x, label_y_centered(cv, band, label), label, ink);
     }
     return b;
 }
@@ -1849,16 +2563,14 @@ inline Rect paint_tick(Canvas &cv, const Appearance &ap, int x, int y,
 inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
                         TickMark mark, const char *label, bool pressed = false,
                         bool disabled = false) {
-    Rect b{x, y, kTickBox, kTickBox};
+    Rect slot{x, y, kTickBox, kTickBox};
+    Rect b = slot;
     const SkinImage *img = ap.art(mutex_art_slot(mark, pressed, disabled));
     if (!img && pressed) img = ap.art(mutex_art_slot(mark, false, disabled));
     if (!img && mark != TickMark::Blank)
         img = ap.art(mutex_art_slot(TickMark::Blank, pressed, disabled));
     if (img) {
-        if (img->w == b.w && img->h == b.h)
-            cv.blit_image(*img, b.x, b.y);
-        else
-            cv.nine_slice(*img, b);
+        place_tick_art(cv, *img, b);
     } else {
         const char *grp = disabled ? "button_disable" : "button";
         auto bc = [&](const char *s) {
@@ -1878,8 +2590,11 @@ inline Rect paint_mutex(Canvas &cv, const Appearance &ap, int x, int y,
         else if (mark == TickMark::Tristate) paint_tristate_glyph(cv, b, ink);
     }
     if (label && *label) {
-        Color ink = disabled ? ap.c("primary.disable_label") : ap.c("primary.label");
-        cv.text(b.right() + 6, b.y + (b.h - cv.line_height()) / 2, label, ink);
+        Color ink = label_ink(ap, ap.c("primary.label"), nullptr, disabled);
+        int top = std::min(slot.y, b.y);
+        int bot = std::max(slot.bottom(), b.bottom());
+        Rect band{b.right() + 6, top, 8, bot - top};
+        cv.text(band.x, label_y_centered(cv, band, label), label, ink);
     }
     return b;
 }
@@ -2109,18 +2824,22 @@ inline const char *wonderlight_art_slot(WonderLightState st) {
     return "wonderlight.off";
 }
 
+// Colour-path spheres — hues match Hap Milk authored WonderLights
+// (Ready amber ≠ Go green; Pause dark red; Flash On2 amber).
 inline Color wonderlight_color(WonderLightState st) {
     switch (st) {
     case WonderLightState::Go:
-    case WonderLightState::Ready:
         return rgb(0, 200, 40);
+    case WonderLightState::Ready:
+        return rgb(220, 150, 0);
     case WonderLightState::Finished:
         return rgb(40, 120, 255);
     case WonderLightState::Pause:
-        return rgb(220, 180, 0);
+        return rgb(180, 30, 50);
     case WonderLightState::FlashOn1:
-    case WonderLightState::FlashOn2:
         return rgb(255, 60, 60);
+    case WonderLightState::FlashOn2:
+        return rgb(220, 150, 0);
     case WonderLightState::FlashOff:
     case WonderLightState::Off:
     default:
@@ -2169,35 +2888,124 @@ inline Rect paint_wonderlight(Canvas &cv, const Appearance &ap, int x, int y,
     return b;
 }
 
-// File / folder icon — skin [icons] slot, else a drawn document glyph.
+// File / folder icon — skin [icons] slot. No synthetic document fallback:
+// incomplete Haps leave the chrome empty until soft-complete / authoring.
 inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
                        const char *slot = "file.generic.16", int size = 16) {
     Rect b{x, y, size, size};
     const SkinImage *img = ap.icon(slot);
-    if (!img && size >= 32) img = ap.icon("file.generic.32");
-    if (!img && size < 32) img = ap.icon("file.generic.16");
-    if (img) {
-        // Icon art is never stretched: Haxial draws it at its authored size,
-        // centred in the cell (themes do author 16 px art in a 32 px slot).
-        cv.blit_image(*img, b.x + (size - img->w) / 2, b.y + (size - img->h) / 2);
-        return b;
+    if (!img && size >= 32) {
+        if (std::strcmp(slot, "file.generic.32") == 0 ||
+            std::strcmp(slot, "document.32") == 0)
+            img = ap.icon("document.32");
+        if (!img) img = ap.icon("file.generic.32");
+        if (!img) img = ap.icon("document.32");
     }
-    // Document plate
-    Color paper = ap.c("primary.light");
-    Color edge = ap.c("primary.dark");
-    Color ink = ap.c("primary.frame");
-    int fold = size / 4;
-    cv.fill({b.x + 2, b.y + 1, size - 5, size - 3}, paper);
-    cv.frame({b.x + 2, b.y + 1, size - 5, size - 3}, ink);
-    // dog-ear
-    for (int i = 0; i < fold; ++i) {
-        cv.hline(b.right() - 3 - fold + i, b.right() - 3, b.y + 1 + i, edge);
-        cv.put(b.right() - 3 - fold + i, b.y + 1 + i, pack(ink));
+    if (!img && size < 32) {
+        if (std::strcmp(slot, "file.generic.16") == 0 ||
+            std::strcmp(slot, "document.16") == 0)
+            img = ap.icon("document.16");
+        if (!img) img = ap.icon("file.generic.16");
+        if (!img) img = ap.icon("document.16");
     }
-    // text lines
-    for (int i = 0; i < 3; ++i)
-        cv.hline(b.x + 4, b.right() - 5, b.y + size / 2 + i * 3 - 2, edge);
+    if (!img) return b;
+    if (img->w == size && img->h == size)
+        cv.blit_image(*img, b.x, b.y);
+    else
+        cv.place(*img, b.x + (b.w - img->w) / 2, b.y + (b.h - img->h) / 2);
     return b;
+}
+
+// Word-wrap `text` into `r` (honours '\n'). Returns line count painted.
+// Uses kit layout_lines — apps must not ship a private wrap loop.
+inline int paint_wrapped_text(Canvas &cv, Rect r, const char *text, Color ink) {
+    if (!text || r.w <= 0 || r.h <= 0) return 0;
+    std::string body = text;
+    auto lines = layout_lines(cv, body, r.w, true);
+    const int lh = cv.line_height();
+    int painted = 0;
+    int y = r.y;
+    CanvasClip clip(cv, r);
+    for (const auto &vl : lines) {
+        if (y + lh > r.bottom()) break;
+        std::string line = body.substr(vl.start, vl.len);
+        while (!line.empty() && line.back() == ' ') line.pop_back();
+        cv.text(r.x, y, line.c_str(), ink);
+        y += lh;
+        ++painted;
+    }
+    return painted;
+}
+
+enum class AlertKind { Note, Stop, Caution, Question };
+
+inline const char *alert_icon_slot(AlertKind kind, int size) {
+    const bool big = size >= 32;
+    switch (kind) {
+    case AlertKind::Stop:
+        return big ? "alert.stop.32" : "alert.stop.16";
+    case AlertKind::Caution:
+        return big ? "alert.caution.32" : "alert.caution.16";
+    case AlertKind::Question:
+        return big ? "alert.question.32" : "alert.question.16";
+    case AlertKind::Note:
+    default:
+        return big ? "alert.note.32" : "alert.note.16";
+    }
+}
+
+struct AlertLayout {
+    GelLayout gel{};
+    Rect icon{};
+    Rect text{};
+    Rect btn_ok{};
+};
+
+// Alert / About gel — icon (when authored) + wrapped body + default OK.
+// Apps own the HWND; the kit owns the chrome. Never MessageBox / OS widgets.
+inline AlertLayout paint_alert(Canvas &cv, const Appearance &ap, Rect win,
+                               const char *title, const char *body,
+                               AlertKind kind = AlertKind::Note,
+                               bool focused = true, int pressed_box = 0,
+                               bool ok_pressed = false) {
+    AlertLayout lay;
+    lay.gel = gel_layout(win.x, win.y, win.w, win.h, GelStyle::Dialog, &ap,
+                         focused);
+    paint_gel(cv, ap, win, title ? title : "Alert", focused, pressed_box,
+              GelStyle::Dialog);
+
+    CanvasClip clip(cv, lay.gel.client);
+    Rect cl = lay.gel.client;
+    const int icon_sz = 32;
+    const int pad = 12;
+    int tx = cl.x + pad;
+    int ty = cl.y + pad;
+    const char *slot = alert_icon_slot(kind, icon_sz);
+    if (!ap.icon(slot) && kind == AlertKind::Note && ap.icon("note.32"))
+        slot = "note.32";
+    if (ap.icon(slot)) {
+        lay.icon = paint_icon(cv, ap, tx, ty, slot, icon_sz);
+        tx = lay.icon.right() + 12;
+    } else {
+        lay.icon = {tx, ty, 0, 0};
+    }
+
+    int by = cl.bottom() - 12 - kDefaultButtonH;
+    if (by < cl.y + 4) by = cl.y + 4;
+    int ok_w = std::max(72, cv.text_width("OK") + 36);
+    lay.btn_ok =
+        default_button_rect(cl.right() - pad - ok_w - 2 * kDefaultButtonPad, by,
+                            ok_w);
+    if (lay.btn_ok.bottom() > cl.bottom() - 2)
+        lay.btn_ok.y = cl.bottom() - 2 - lay.btn_ok.h;
+
+    lay.text = {tx, ty, cl.right() - pad - tx, lay.btn_ok.y - 10 - ty};
+    if (lay.text.h < cv.line_height()) lay.text.h = cv.line_height();
+    if (lay.text.w < 40) lay.text.w = 40;
+    paint_wrapped_text(cv, lay.text, body ? body : "",
+                       label_ink(ap, ap.c("primary.label")));
+    paint_button(cv, ap, lay.btn_ok, "OK", ok_pressed, true);
+    return lay;
 }
 
 // Icon for a Haxial file type ("image/jpeg", "folder/uploads", "volume/hd"...).
@@ -2222,6 +3030,21 @@ inline Rect paint_file_icon(Canvas &cv, const Appearance &ap, int x, int y,
     return paint_icon(cv, ap, x, y, key, size);
 }
 
+// True when the requested icon (or a size fallback) is in the cache.
+inline bool has_icon(const Appearance &ap, const char *slot, int size = 16) {
+    if (ap.icon(slot)) return true;
+    if (std::strcmp(slot, "file.generic.16") == 0 ||
+        std::strcmp(slot, "document.16") == 0)
+        return ap.icon("document.16") || ap.icon("file.generic.16");
+    if (std::strcmp(slot, "file.generic.32") == 0 ||
+        std::strcmp(slot, "document.32") == 0)
+        return ap.icon("document.32") || ap.icon("file.generic.32");
+    if (std::strcmp(slot, "user.16") == 0)
+        return ap.icon("users.16") || ap.icon("user.16");
+    if (size >= 32) return ap.icon("file.generic.32") != nullptr;
+    return ap.icon("file.generic.16") != nullptr;
+}
+
 // Icon Button — Hap 49/50/51. Optional title drawn beside a centred icon.
 inline void paint_icon_button(Canvas &cv, const Appearance &ap, Rect r,
                               const char *icon_slot, const char *title,
@@ -2242,22 +3065,23 @@ inline void paint_icon_button(Canvas &cv, const Appearance &ap, Rect r,
     if (icon_sz < 8) icon_sz = std::max(8, std::min(r.h, r.w) - 2);
     int off = pressed ? 1 : 0;
     bool has_title = title && *title;
+    const char *islot = icon_slot ? icon_slot : "file.generic.16";
+    bool draw_icon = has_icon(ap, islot, icon_sz);
     if (has_title) {
         int tw = cv.text_width(title);
-        int gap = 4;
-        int total = icon_sz + gap + tw;
+        int gap = draw_icon ? 4 : 0;
+        int icon_part = draw_icon ? icon_sz : 0;
+        int total = icon_part + gap + tw;
         int ix = r.x + std::max(pad, (r.w - total) / 2) + off;
         int iy = r.y + (r.h - icon_sz) / 2 + off;
-        paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16",
-                   icon_sz);
-        Color ink = button_label_ink(ap, disabled, img != nullptr);
-        cv.text(ix + icon_sz + gap, r.y + (r.h - cv.line_height()) / 2 + off, title,
+if (draw_icon) paint_icon(cv, ap, ix, iy, islot, icon_sz);
+        Color ink = button_label_ink(ap, disabled, img != nullptr, img);
+        cv.text(ix + icon_part + gap, label_y_centered(cv, r, title, off), title,
                 ink);
-    } else {
+    } else if (draw_icon) {
         int ix = r.x + (r.w - icon_sz) / 2 + off;
         int iy = r.y + (r.h - icon_sz) / 2 + off;
-        paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16",
-                   icon_sz);
+        paint_icon(cv, ap, ix, iy, islot, icon_sz);
     }
 }
 
@@ -2285,13 +3109,16 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
                                            int ncols, const char *name,
                                            const char *size, const char *status,
                                            const char *rate, WonderLightState light,
-                                           int progress_pct, bool selected) {
+                                           int progress_pct, bool selected,
+                                           const char *icon_slot = "file.generic.16") {
     TransferRow tr;
     tr.bounds = row;
     if (selected)
         cv.fill(row, ap.c("list.hilite_background"));
     Color ink = selected ? ap.c("list.hilite_foreground") : ap.c("list.label");
-    int ty = row.y + (row.h - cv.line_height()) / 2;
+    // Keep content above the separator line for optical mid.
+    Rect content{row.x, row.y, row.w, std::max(1, row.h - 1)};
+    int ty = label_y_centered(cv, content, name && *name ? name : "Ag");
     int x = row.x;
     for (int i = 0; i < ncols; ++i) {
         Rect cell{x, row.y, cols[i].w, row.h};
@@ -2301,13 +3128,13 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
         if (max_w < 4) max_w = 4;
         if (std::strcmp(key, "") == 0 || std::strcmp(key, " ") == 0) {
             // Lamp column — WonderLight only.
-            int ly = row.y + (row.h - kWonderLight) / 2;
+            int ly = content.y + (content.h - kWonderLight) / 2;
             tr.light = paint_wonderlight(cv, ap, cell.x + (cell.w - kWonderLight) / 2,
                                          ly, light);
         } else if (std::strcmp(key, "Name") == 0) {
             int ix = cell.x + 2;
-            int iy = row.y + (row.h - 16) / 2;
-            paint_icon(cv, ap, ix, iy, "file.generic.16", 16);
+            int iy = content.y + (content.h - 16) / 2;
+            paint_icon(cv, ap, ix, iy, icon_slot ? icon_slot : "file.generic.16", 16);
             int text_x = ix + 18;
             int name_w = cell.right() - text_x - 2;
             if (name_w < 4) name_w = 4;
@@ -2318,11 +3145,13 @@ inline TransferRow paint_transfer_list_row(Canvas &cv, const Appearance &ap,
             int ph = progress_art_height(ap.art("progress.bar"), ap.art("progress.fill"));
             int pw = cell.w - 6;
             if (pw < 20) pw = std::max(8, cell.w - 2);
-            tr.progress = {cell.x + 3, row.y + (row.h - ph) / 2, pw, ph};
-            // Hap path: tile progress.fill art. Colour path: progress.transition.*
-            // (no WonderLight rainbow tint — that is not a Hap progress colour).
+            tr.progress = {cell.x + 3, content.y + (content.h - ph) / 2, pw, ph};
+            // Hap path: tile progress.fill art (theme owns LED colour).
+            // Colour path: tint LED body from WonderLight state.
+            Color tint = wonderlight_color(light);
+            const Color *led = ap.art("progress.fill") ? nullptr : &tint;
             paint_progress(cv, ap, tr.progress, progress_pct, 100,
-                           ProgressStyle::Segmented, nullptr);
+                           ProgressStyle::Segmented, led);
         } else if (std::strcmp(key, "Status") == 0) {
             paint_cell_text(cv, cell.x + text_pad, ty, max_w, status, ink);
         } else if (std::strcmp(key, "Rate") == 0) {
@@ -2351,12 +3180,15 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     CanvasClip clip(cv, ft.gel.client);
     Rect cl = ft.gel.client;
     constexpr int kPad = 6;
-    constexpr int kFootH = kButtonH + 8;
-    int list_h = cl.h - 2 * kPad - kFootH;
+    int hdr_h = kit_header_height(ap);
+    int row_h = kit_row_height(ap);
+    int btn_h = kit_button_height(ap);
+    int foot_h = btn_h + 8;
+    int list_h = cl.h - 2 * kPad - foot_h;
     if (list_h < 0) list_h = 0;
     // Never force the list taller than the gel client — that spills past the frame.
-    if (list_h < kHeaderH + kRowH && cl.h >= kHeaderH + kRowH + 2 * kPad + kFootH)
-        list_h = kHeaderH + kRowH;
+    if (list_h < hdr_h + row_h && cl.h >= hdr_h + row_h + 2 * kPad + foot_h)
+        list_h = hdr_h + row_h;
     ft.list = {cl.x + kPad, cl.y + kPad, std::max(0, cl.w - 2 * kPad), list_h};
 
     // Column widths: Status/Rate wide enough for sample strings; Name absorbs rest.
@@ -2395,14 +3227,14 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
     // Header plates per column (KDX list).
     int hx = ft.list.x;
     for (int i = 0; i < 6; ++i) {
-        Rect hdr{hx, ft.list.y, cols[i].w, kHeaderH};
+        Rect hdr{hx, ft.list.y, cols[i].w, hdr_h};
         const char *lab = cols[i].title;
         if (!lab || !*lab) lab = " ";
         paint_column_header(cv, ap, hdr, lab, i == 3); // Progress sorted
         hx += cols[i].w;
     }
 
-    Rect body{ft.list.x, ft.list.y + kHeaderH, ft.list.w, ft.list.h - kHeaderH};
+    Rect body{ft.list.x, ft.list.y + hdr_h, ft.list.w, ft.list.h - hdr_h};
     cv.fill(body, ap.c("list.background"));
     cv.frame(body, ap.c("primary.frame"));
 
@@ -2414,42 +3246,44 @@ inline FileTransfersLayout paint_file_transfers_window(Canvas &cv,
         WonderLightState light;
         int pct;
         bool sel;
+        const char *icon;
     };
     static const Sample samples[] = {
         {"server_info.txt", "1.1K", "Finished", "573/sec", WonderLightState::Finished,
-         100, false},
-        {"readme.txt", "48K", "Receiving", "12K/sec", WonderLightState::Go, 42, true},
-        {"patch.zip", "2.4M", "Awaiting", "—", WonderLightState::Pause, 10, false},
+         100, false, "file.generic.16"},
+        {"Uploads", "—", "Receiving", "12K/sec", WonderLightState::Go, 42, true,
+         "folder.uploads.16"},
+        {"alice", "—", "Awaiting", "—", WonderLightState::Pause, 10, false, "user.16"},
     };
     constexpr int kSamples = 3;
-    int visible = body.h / kRowH;
+    int visible = body.h / row_h;
     if (visible > kSamples) visible = kSamples;
     for (int i = 0; i < visible; ++i) {
-        Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+        Rect row{body.x + 1, body.y + 1 + i * row_h, body.w - 2, row_h};
         if (!samples[i].sel && i % 2)
             cv.fill(row, ap.c("list.sort_column_background"));
         paint_transfer_list_row(cv, ap, row, cols, 6, samples[i].name, samples[i].size,
                                 samples[i].status, samples[i].rate, samples[i].light,
-                                samples[i].pct, samples[i].sel);
+                                samples[i].pct, samples[i].sel, samples[i].icon);
     }
 
     // Footer buttons — Close / Stop All / Clear Finished
-    int by = cl.bottom() - kPad - kButtonH;
+    int by = cl.bottom() - kPad - btn_h;
     if (by < ft.list.bottom() + 2) by = ft.list.bottom() + 2;
-    if (by + kButtonH > cl.bottom() - 2) by = cl.bottom() - 2 - kButtonH;
+    if (by + btn_h > cl.bottom() - 2) by = cl.bottom() - 2 - btn_h;
     if (by < cl.y) by = cl.y;
     int bw = 88;
     int gap = 8;
     int bx = cl.x + kPad;
-    ft.btn_close = {bx, by, bw, kButtonH};
-    ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
-    ft.btn_clear = {bx + 2 * (bw + gap), by, 110, kButtonH};
+    ft.btn_close = {bx, by, bw, btn_h};
+    ft.btn_stop = {bx + bw + gap, by, bw, btn_h};
+    ft.btn_clear = {bx + 2 * (bw + gap), by, 110, btn_h};
     if (ft.btn_clear.right() > cl.right() - kPad) {
         int avail = cl.w - 2 * kPad - 2 * gap;
         bw = avail / 3;
-        ft.btn_close = {bx, by, bw, kButtonH};
-        ft.btn_stop = {bx + bw + gap, by, bw, kButtonH};
-        ft.btn_clear = {bx + 2 * (bw + gap), by, bw, kButtonH};
+        ft.btn_close = {bx, by, bw, btn_h};
+        ft.btn_stop = {bx + bw + gap, by, bw, btn_h};
+        ft.btn_clear = {bx + 2 * (bw + gap), by, bw, btn_h};
     }
     paint_button(cv, ap, ft.btn_close, "Close", false, false);
     paint_button(cv, ap, ft.btn_stop, "Stop All", false, false);
@@ -2510,10 +3344,23 @@ inline void paint_box(Canvas &cv, const Appearance &ap, Rect r, const char *titl
         cv.frame({r.x + 1, r.y + 1, r.w - 2, r.h - 2}, ap.c("primary.dark"));
     }
     if (title && *title) {
-        int tw = cv.text_width(title);
-        int tx = r.x + 8;
-        cv.fill({tx - 2, r.y, tw + 4, cv.line_height()}, ap.c("primary.background"));
-        cv.text(tx, r.y - cv.line_height() / 2 + 1, title, ap.c("primary.label"));
+        // Straddle the top edge on ink bounds so the label is not clipped
+        // into the frame (old path used kFontHeight/2 which rode too high).
+        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        Color ink = label_ink(ap, ap.c("primary.label"));
+        Color bg = ap.c("primary.background");
+        if (!cv.text_ink(title, x0, y0, x1, y1)) {
+            cv.text(r.x + 8, r.y - kFontHeight / 2 + 1, title, ink);
+            return;
+        }
+        int iw = x1 - x0 + 1;
+        int ih = y1 - y0 + 1;
+        int tx = r.x + 8 - x0;
+        int ty = r.y - ih / 2 - y0;
+        // Notch the top border behind the title.
+        cv.fill({tx + x0 - 2, r.y, iw + 4, 1}, bg);
+        if (img) cv.fill({tx + x0 - 2, r.y + 1, iw + 4, 1}, bg);
+        cv.text(tx, ty, title, ink);
     }
 }
 
@@ -2583,6 +3430,9 @@ inline Rect paint_disclosure(Canvas &cv, const Appearance &ap, int x, int y,
     if (img) {
         if (img->w == b.w && img->h == b.h)
             cv.blit_image(*img, b.x, b.y);
+        else if (img->w * 2 <= b.w || img->h * 2 <= b.h)
+            // Much smaller than dest (Milk medium 6×8 in 16×16) — centre, no smear.
+            cv.place(*img, b.x + (b.w - img->w) / 2, b.y + (b.h - img->h) / 2);
         else
             cv.nine_slice(*img, b);
         return b;
@@ -2636,6 +3486,7 @@ struct KitPreviewLayout {
     SliderLayout slider_lay{};
     Rect list{};
     Rect sbar{};
+    Rect hsbar{};
     int page_rows = 1;
     int row_count = 8;
 };
@@ -2643,23 +3494,41 @@ struct KitPreviewLayout {
 struct KitPreviewState {
     int pressed_btn = 0; // 0 none, 1 OK, 2 Cancel, 3 Pressed
     bool thumb_hot = false;
+    bool h_thumb_hot = false;
+    ScrollArrowHot arrow_hot = ScrollArrowHot::None;
+    ScrollArrowHot h_arrow_hot = ScrollArrowHot::None;
     bool dropdown_open = false;
     int menu_hot = -1;
     int menu_sel = 0;
     int slider_value = 40;
     bool slider_hot = false;
+    int h_scroll = 2;
+    bool colours_only = false; // AppearanceEdit Colors Preview (hide images/icons)
 };
 
 // Full kit preview panel inside a gel client rect.
 // All ink is clipped to `client` so nested gels / wide rows cannot spill the
 // host window frame. Sections that no longer fit vertically are skipped.
-inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
+#include "emoji_picker.h"
+
+inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
                                           Rect client, bool caret_on,
                                           int list_sel, int scroll_val,
                                           const KitPreviewState &st = {}) {
     KitPreviewLayout lay;
     lay.bounds = client;
     CanvasClip panel_clip(cv, client);
+
+    // Colours-only Preview (AppearanceEdit Colors Preview): hide images/icons.
+    Appearance ap_colours;
+    const Appearance *ap_ptr = &ap_in;
+    if (st.colours_only) {
+        ap_colours.skin = ap_in.skin;
+        ap_colours.stock = ap_in.stock;
+        // Leave art/icon caches empty → colour-path paint.
+        ap_ptr = &ap_colours;
+    }
+    const Appearance &ap = *ap_ptr;
 
     int pad = 10;
     int x = client.x + pad;
@@ -2669,59 +3538,70 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     const int right = client.right() - pad;
     auto fits = [&](int need_h) { return y + need_h <= client.bottom() - pad; };
 
-    cv.text(x, y, "Kit Preview", ap.c("primary.label"));
+    cv.text(x, y, st.colours_only ? "Kit Preview (colours)" : "Kit Preview",
+            label_ink(ap, ap.c("primary.label")));
     y += cv.line_height() + 8;
 
-    // P2 samples first so short editor panels still show them (Find gel is tall).
-    if (fits(kButtonH + kMenuBarH + 16)) {
-        cv.text(x, y, "P2  icon / menu / scroll", ap.c("important.label"));
-        y += cv.line_height() + 4;
-        Rect ib0{x, y, 28, kButtonH};
-        Rect ib1{ib0.right() + 6, y, 28, kButtonH};
-        Rect ib2{ib1.right() + 6, y, 72, kButtonH};
-        if (ib0.right() <= right)
-            paint_icon_button(cv, ap, ib0, "folder.16", nullptr, false, false);
-        if (ib1.right() <= right)
-            paint_icon_button(cv, ap, ib1, "file.generic.16", nullptr, true, false);
-        if (ib2.right() <= right)
-            paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
-        Rect ibd{ib2.right() + 6, y, 28, kButtonH};
-        if (ibd.right() <= right)
-            paint_icon_button(cv, ap, ibd, "file.generic.16", nullptr, false, true);
-        // Single + hilite scroll samples on the same row when width allows.
-        Rect v1{ibd.right() + 14, y, kScrollbarW, kButtonH + kMenuBarH + 4};
-        if (v1.bottom() <= client.bottom() - pad && v1.right() + 40 <= right) {
-            paint_scrollbar(cv, ap, v1, 2, 6, 2, true, true, false,
-                            ScrollArrowHot::FirstStart);
-            Rect h1{v1.right() + 8, y + 6, 72, kScrollbarW};
-            paint_scrollbar_h(cv, ap, h1, 2, 6, 2, true, false, false,
-                              ScrollArrowHot::FirstEnd);
-            Rect tiny{h1.right() + 6, h1.y, 10, kScrollbarW};
-            if (tiny.right() <= right)
-                paint_scrollbar_h(cv, ap, tiny, 0, 0, 1, false);
+    // Icon buttons + catalog strip + menu bar (one band).
+    {
+        const SkinImage *ib_hi = ap.art("icon_button.hilited");
+        const SkinImage *ib_n = ap.art("icon_button.normal");
+        int ib_w = 32;
+        int ib_h = std::max(kKitButtonH, ib_n ? ib_n->h : kKitButtonH);
+        if (ib_hi) {
+            ib_w = std::max(ib_w, ib_hi->caps[0] + ib_hi->caps[2] + 2);
+            ib_h = std::max(ib_h, ib_hi->h);
+        } else if (ib_n) {
+            ib_w = std::max(ib_w, ib_n->w);
         }
-        y += kButtonH + 6;
-        static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
-        paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
-                       1, 0);
-        y += kMenuBarH + 10;
+        int need = ib_h + 20 + kMenuBarH + 16;
+        if (fits(need)) {
+            Rect ib0{x, y, ib_w, ib_h};
+            Rect ib1{ib0.right() + 6, y, ib_w, ib_h};
+            Rect ib2{ib1.right() + 6, y, std::max(72, ib_w + 44), ib_h};
+            if (ib0.right() <= right)
+                paint_icon_button(cv, ap, ib0, "folder.16", nullptr, false, false);
+            if (ib1.right() <= right)
+                paint_icon_button(cv, ap, ib1, "file.generic.16", nullptr, true, false);
+            if (ib2.right() <= right)
+                paint_icon_button(cv, ap, ib2, "folder.16", "Open", false, false);
+            Rect ibd{ib2.right() + 6, y, ib_w, ib_h};
+            if (ibd.right() <= right)
+                paint_icon_button(cv, ap, ibd, "user.16", nullptr, false, false);
+            y += ib_h + 6;
+            // High-occupancy catalog strip used in lists/menus/FT.
+            static const char *strip[] = {
+                "file.generic.16", "folder.16", "folder.uploads.16", "user.16",
+                "document.text.16", "stop.16", "caution.16", "message.16"};
+            int ix = x;
+            for (const char *slot : strip) {
+                if (ix + 18 > right) break;
+                paint_icon(cv, ap, ix, y, slot, 16);
+                ix += 20;
+            }
+            y += 20;
+            static const char *bar_titles[] = {"File", "Edit", "View", "Help"};
+            paint_menu_bar(cv, ap, {x, y, std::min(w, 320), kMenuBarH}, bar_titles, 4,
+                           1, 0);
+            y += kMenuBarH + 10;
+        }
     }
 
-    // Find-sized dialog chrome — title bar / icons at real TextEdit proportions
-    // (Sagrado Find is 442×176). Not a stubby 72px nested gel.
+    // Find dialog — TextEdit-measured gel + 24px buttons (not kKitButtonH).
     if (fits(kFindDlgH)) {
         paint_find_chrome_sample(cv, ap, x, y, w, caret_on);
         y += kFindDlgH + 10;
     }
 
-    // Buttons — Find metrics: regular 24px; default OK 26px outer, same top.
-    if (fits(kDefaultButtonH)) {
+    // Push buttons — Hap art height when present (Milk is 23, not 20).
+    if (fits(std::max(kDefaultButtonH, kit_button_height(ap)))) {
         constexpr int kBtnW = 72;
         constexpr int kBtnGap = 10;
-        lay.btn_ok = default_button_rect(x, y, kBtnW);
-        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, kButtonH};
-        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, kButtonH};
-        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, kButtonH};
+        int bh = kit_button_height(ap);
+        lay.btn_ok = default_button_rect(ap, x, y, kBtnW);
+        lay.btn_cancel = {lay.btn_ok.right() + kBtnGap, y, kBtnW, bh};
+        lay.btn_press = {lay.btn_cancel.right() + kBtnGap, y, kBtnW, bh};
+        Rect btn_dis{lay.btn_press.right() + kBtnGap, y, kBtnW, bh};
         paint_button(cv, ap, lay.btn_ok, "OK", st.pressed_btn == 1, true);
         if (lay.btn_cancel.right() <= right)
             paint_button(cv, ap, lay.btn_cancel, "Cancel", st.pressed_btn == 2, false);
@@ -2729,10 +3609,10 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             paint_button(cv, ap, lay.btn_press, "Pressed", true, false);
         if (btn_dis.right() <= right)
             paint_button(cv, ap, btn_dis, "Disabled", false, false, true);
-        y += kDefaultButtonH + 8;
+        y += std::max(lay.btn_ok.h, bh) + 8;
     }
 
-    // Tick (checkbox) + Mutex (radio) + disclosure — only place what fits width.
+    // Tick / mutex / disclosure
     if (fits(kTickBox)) {
         paint_tick(cv, ap, x, y, TickMark::Ticked, "Tick on");
         if (x + 110 + 80 <= right)
@@ -2750,49 +3630,46 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += kTickBox + 10;
     }
 
-    // Progress + separators + box / framed samples
-    if (fits(kProgressH + 8)) {
-        cv.text(x, y + 1, "Progress", ap.c("primary.label"));
-        paint_progress(cv, ap, {x + 70, y, std::min(w - 70, 220), kProgressH}, 65, 100);
-        if (x + 340 <= right) {
-            paint_color_chooser(cv, ap, {x + 300, y, 34, kProgressH},
+    // Separators + medium disclosure + Flash WonderLights (static strip).
+    if (fits(kWonderLight + 8)) {
+        paint_separator_h(cv, ap, {x, y + 6, std::min(80, w / 4), 4});
+        paint_separator_v(cv, ap, {x + 90, y, 4, kWonderLight});
+        paint_disclosure(cv, ap, x + 110, y, DisclosureKind::PlusMedium);
+        paint_disclosure(cv, ap, x + 132, y, DisclosureKind::MinusMedium);
+        int lx = x + 160;
+        WonderLightState flash[] = {WonderLightState::FlashOff,
+                                    WonderLightState::FlashOn1,
+                                    WonderLightState::FlashOn2};
+        for (WonderLightState st : flash) {
+            if (lx + kWonderLight > right) break;
+            paint_wonderlight(cv, ap, lx, y, st);
+            lx += kWonderLight + 6;
+        }
+        y += kWonderLight + 10;
+    }
+
+    // Progress + box/framed (one band)
+    if (fits(std::max(kProgressH, 36) + 8)) {
+        int row_h = std::max(kProgressH, 36);
+        paint_progress(cv, ap, {x, y + (row_h - kProgressH) / 2,
+                                std::min(w / 2, 180), kProgressH}, 65, 100);
+        int bx = x + std::min(w / 2, 180) + 12;
+        if (bx + 100 <= right) {
+            paint_box(cv, ap, {bx, y, 100, 36}, "Box");
+            if (bx + 210 <= right) {
+                paint_framed_raised(cv, ap, {bx + 110, y, 100, 36});
+                cv.text(bx + 120, y + 12, "Framed",
+                        label_ink(ap, ap.c("primary.label")));
+            }
+        }
+        if (bx + 250 <= right)
+            paint_color_chooser(cv, ap, {bx + 220, y + (row_h - kProgressH) / 2, 34,
+                                         kProgressH},
                                 ap.c("focus.box"));
-        }
-        y += kProgressH + 8;
-    }
-    if (fits(14)) {
-        int sep_w = std::min(w, 220);
-        paint_separator_h(cv, ap, {x, y, sep_w, 4});
-        if (x + sep_w + 12 <= right)
-            paint_separator_v(cv, ap, {x + sep_w + 8, y - 6, 4, 20});
-        y += 10;
+        y += row_h + 10;
     }
 
-    if (fits(44)) {
-        paint_box(cv, ap, {x, y, std::min(120, w / 2), 36}, "Box");
-        if (x + 230 <= right) {
-            paint_framed_raised(cv, ap, {x + 130, y, 100, 36});
-            cv.text(x + 140, y + 12, "Framed", ap.c("primary.label"));
-        }
-        if (x + 290 <= right) {
-            paint_icon(cv, ap, x + 250, y + 8, "file.generic.16", 16);
-            paint_icon(cv, ap, x + 274, y + 8, "folder.16", 16);
-        }
-        y += 44;
-    }
-
-    // Compact Main gel (title + grip) sample — clip ink to its own frame.
-    if (fits(56)) {
-        int gel_w = std::min(w, 220);
-        Rect gel_win{x, y, gel_w, 56};
-        {
-            CanvasClip gel_clip(cv, gel_win);
-            paint_gel(cv, ap, gel_win, "Main Gel", true, 0, GelStyle::Main);
-        }
-        y += 64;
-    }
-
-    // Official-style KDX File Transfers window (columns + LEDs + footer).
+    // KDX File Transfers — the gel + list + progress LED sample.
     int ftw = std::min(w, 450);
     int fth = 158;
     if (fits(fth)) {
@@ -2800,10 +3677,9 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += fth + 8;
     }
 
-    // Field + dropdown — AppearanceEdit: usually 20px tall
+    // Field + popup (AppearanceEdit: usually 20px)
     if (fits(kFieldH)) {
         int field_w = std::min(w, 280);
-        // Leave room for optional no-title well.
         if (field_w + kDropArrowW + 8 > w) field_w = std::max(80, w - kDropArrowW - 8);
         lay.field = {x, y, field_w, kFieldH};
         paint_field(cv, ap, lay.field, "Edit colour roles...", true, caret_on);
@@ -2813,12 +3689,11 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += kFieldH + 8;
     }
 
-    // Popup buttons — real bevelled plates (KDX Settings), not text fields.
     static const char *menu_items[] = {"Standard", "Slate", "-", "Custom...", "Disabled"};
     static const unsigned kMenuDisabled = 1u << 4;
     const char *drop_label = menu_items[std::clamp(st.menu_sel, 0, 4)];
-    if (st.menu_sel == 2) drop_label = "Standard"; // separator not selectable
-    int pop_h = kButtonH;
+    if (st.menu_sel == 2) drop_label = "Standard";
+    int pop_h = kit_popup_height(ap);
     if (fits(pop_h)) {
         lay.dropdown = {x, y, std::min(w, 200), pop_h};
         paint_dropdown(cv, ap, lay.dropdown, drop_label, st.dropdown_open,
@@ -2830,92 +3705,59 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
         y += pop_h + 8;
     }
 
-    // Slider H + V (art-first when present)
-    if (fits(28)) {
-        cv.text(x, y + 2, "Slider", ap.c("primary.label"));
-        int slide_w = std::min(std::max(80, w - 100), 200);
-        lay.slider = {x + 56, y, slide_w, 22};
+    // One H slider + disabled + one pointed V — exercise fill/travel/disabled.
+    if (fits(48)) {
+        int slide_w = std::min(std::max(80, w - 120), 160);
+        lay.slider = {x, y, slide_w, 22};
         if (lay.slider.right() > right) lay.slider.w = std::max(40, right - lay.slider.x);
         lay.slider_lay =
             paint_slider(cv, ap, lay.slider, st.slider_value, 100, st.slider_hot);
         char sval[16];
         std::snprintf(sval, sizeof(sval), "%d", st.slider_value);
-        if (lay.slider.right() + 28 <= right)
-            cv.text(lay.slider.right() + 8, y + 3, sval, ap.c("primary.label"));
-        Rect vslide{lay.slider.right() + 48, y - 4, 22, 72};
+        int readout_x = lay.slider_lay.bar.right() + 8;
+        if (readout_x + 24 <= right)
+            cv.text(readout_x, label_y_centered(cv, lay.slider, sval), sval,
+                    label_ink(ap, ap.c("primary.label")));
+        Rect dis_slide{lay.slider.right() + 40, y, std::min(80, right - (lay.slider.right() + 40)),
+                       22};
+        if (dis_slide.w >= 40)
+            paint_slider(cv, ap, dis_slide, 30, 100, false, false, true);
+        Rect vslide{dis_slide.right() + 12, y - 2, 22, 48};
         if (vslide.right() <= right && vslide.bottom() <= client.bottom() - pad)
-            paint_slider_v(cv, ap, vslide, st.slider_value, 100, false);
-        // Pointed indicators (scale below / to the right)
-        Rect pslide{x + 56, y + 28, std::min(120, w / 3), 22};
-        if (pslide.bottom() <= client.bottom() - pad && fits(52)) {
-            paint_slider(cv, ap, pslide, st.slider_value, 100, false, true);
-            Rect pv{pslide.right() + 12, y + 24, 22, 48};
-            if (pv.right() <= right)
-                paint_slider_v(cv, ap, pv, st.slider_value, 100, true, true);
-            y += 28;
-        }
-        y += 28;
+            paint_slider_v(cv, ap, vslide, st.slider_value, 100, true, true);
+        y += 52;
     }
 
-    // Compact V + H scrollbar samples (double + single + arrow hilite + too-small)
-    if (fits(72)) {
-        cv.text(x, y + 2, "Scroll", ap.c("primary.label"));
-        Rect vdemo{x + 56, y, kScrollbarW, 72};
-        paint_scrollbar(cv, ap, vdemo, 3, 10, 4, false, false, false,
-                        ScrollArrowHot::FirstStart);
-        int after_v = vdemo.right() + 8;
-        Rect vsingle{after_v, y, kScrollbarW, 72};
-        if (vsingle.right() <= right) {
-            paint_scrollbar(cv, ap, vsingle, 3, 10, 4, true, true, false,
-                            ScrollArrowHot::FirstEnd);
-            after_v = vsingle.right() + 10;
-        }
-        Rect hdemo{after_v, y + (72 - kScrollbarW) / 2,
-                   std::min(std::max(40, right - after_v - 50), 160),
-                   kScrollbarW};
-        if (hdemo.w >= 40)
-            paint_scrollbar_h(cv, ap, hdemo, 2, 8, 4, true, false, false,
-                              ScrollArrowHot::SecondStart);
-        else
-            hdemo.w = 0;
-        Rect htiny{(hdemo.w > 0 ? hdemo.right() : after_v) + 8, y + (72 - kScrollbarW) / 2,
-                   12, kScrollbarW};
-        if (htiny.right() <= right)
-            paint_scrollbar_h(cv, ap, htiny, 0, 0, 1, false);
-        Rect vtiny{htiny.right() + 8, y, kScrollbarW, 12};
-        if (vtiny.right() <= right)
-            paint_scrollbar(cv, ap, vtiny, 0, 0, 1, false);
-        y += 80;
-    }
-
-    // List + header + scrollbar (file_label tints on unselected rows)
+    // List + header + V/H scrollbars (KDX list chrome: H inside list bounds).
     static const char *rows[] = {"Row One", "Row Two", "Row Three", "Row Four",
                                  "Row Five", "Row Six", "Row Seven", "Row Eight"};
+    static const char *row_icons[] = {
+        "file.generic.16", "folder.16", "user.16", "document.text.16",
+        "folder.uploads.16", "message.16", "hard_disk.16", "files.16"};
     lay.row_count = 8;
-    // Room for optional H-scrollbar under the list; never force past the panel.
-    int list_h = client.bottom() - y - pad - (kScrollbarW + 4);
-    if (list_h < kHeaderH + kRowH)
-        list_h = client.bottom() - y - pad; // drop H-scrollbar budget
-    if (list_h >= kHeaderH + kRowH) {
+    int hdr_h = kit_header_height(ap);
+    int row_h = kit_row_height(ap);
+    int list_h = client.bottom() - y - pad;
+    if (list_h >= hdr_h + row_h + kScrollbarW) {
         lay.list = {x, y, std::min(w, 320), list_h};
-        lay.page_rows = std::max(1, (lay.list.h - kHeaderH) / kRowH);
+        int body_h = lay.list.h - hdr_h - kScrollbarW;
+        lay.page_rows = std::max(1, body_h / row_h);
         int max_scroll = std::max(0, lay.row_count - lay.page_rows);
         if (scroll_val < 0) scroll_val = 0;
         if (scroll_val > max_scroll) scroll_val = max_scroll;
 
-        Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, kHeaderH};
+        Rect hdr{lay.list.x, lay.list.y, lay.list.w - kScrollbarW, hdr_h};
         int split = hdr.w * 2 / 3;
         paint_column_header(cv, ap, {hdr.x, hdr.y, split, hdr.h}, "Name", true);
         paint_column_header(cv, ap,
                             {hdr.x + split, hdr.y, hdr.w - split, hdr.h}, "Off",
                             false, true);
-        Rect body{lay.list.x, lay.list.y + kHeaderH, lay.list.w - kScrollbarW,
-                  lay.list.h - kHeaderH};
+        Rect body{lay.list.x, lay.list.y + hdr_h, lay.list.w - kScrollbarW, body_h};
         cv.fill(body, ap.c("list.background"));
         cv.frame(body, ap.c("primary.frame"));
         for (int i = 0; i < lay.page_rows; ++i) {
             int idx = scroll_val + i;
-            Rect row{body.x + 1, body.y + 1 + i * kRowH, body.w - 2, kRowH};
+            Rect row{body.x + 1, body.y + 1 + i * row_h, body.w - 2, row_h};
             bool sel = (idx == list_sel);
             if (sel)
                 cv.fill(row, ap.c("list.hilite_background"));
@@ -2924,18 +3766,52 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
             if (idx >= 0 && idx < lay.row_count) {
                 Color ink = sel ? ap.c("list.hilite_foreground")
                                 : file_label_color(ap, idx % 16);
-                cv.text(row.x + 6, row.y + (kRowH - cv.line_height()) / 2, rows[idx], ink);
+                Rect content{row.x, row.y, row.w, std::max(1, row.h - 1)};
+                int iy = content.y + (content.h - 16) / 2;
+                paint_icon(cv, ap, row.x + 4, iy, row_icons[idx], 16);
+                cv.text(row.x + 24, label_y_centered(cv, content, rows[idx]), rows[idx],
+                        ink);
             }
             cv.hline(row.x, row.right(), row.bottom() - 1, ap.c("list.separator"));
         }
-        lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y + kHeaderH, kScrollbarW,
-                    lay.list.h - kHeaderH};
+        // V bar spans header+body (stops above H bar); H sits under body.
+        lay.sbar = {lay.list.right() - kScrollbarW, lay.list.y, kScrollbarW,
+                    lay.list.h - kScrollbarW};
         paint_scrollbar(cv, ap, lay.sbar, scroll_val, max_scroll, lay.page_rows,
-                        st.thumb_hot);
+                        st.thumb_hot, false, false, st.arrow_hot);
 
-        Rect hsbar{lay.list.x, lay.list.bottom() + 4, lay.list.w, kScrollbarW};
-        if (hsbar.bottom() <= client.bottom() - 2)
-            paint_scrollbar_h(cv, ap, hsbar, 2, 8, 4, false);
+        lay.hsbar = {lay.list.x, lay.list.bottom() - kScrollbarW,
+                     lay.list.w - kScrollbarW, kScrollbarW};
+        int h_max = 8;
+        int h_page = 4;
+        int h_val = std::clamp(st.h_scroll, 0, h_max);
+        paint_scrollbar_h(cv, ap, lay.hsbar, h_val, h_max, h_page, st.h_thumb_hot,
+                          false, false, st.h_arrow_hot);
+
+        // Corner between V and H (KDX list join).
+        Rect corner{lay.hsbar.right(), lay.hsbar.y, kScrollbarW, kScrollbarW};
+        cv.fill(corner, ap.c("scrollbar.face"));
+        cv.frame(corner, ap.c("scrollbar.frame"));
+    }
+
+    // Emoji picker sample — full dialog when pack is loaded (kit surface).
+    if (!st.colours_only && sagrado::emoji_pack_ready() && fits(200)) {
+        cv.text(x, y, "Emoji Picker", label_ink(ap, ap.c("primary.label")));
+        y += cv.line_height() + 4;
+        int dw = 0, dh = 0;
+        sagrado::emoji_picker_size(&dw, &dh);
+        dw = std::min(dw, w);
+        dh = std::min(dh, 220);
+        if (fits(dh)) {
+            static sagrado::EmojiPickerState ep_st;
+            Rect box{x, y, dw, dh};
+            sagrado::paint_emoji_picker(cv, ap, box, ep_st, true);
+            y += dh + 10;
+        }
+    } else if (!st.colours_only && fits(cv.line_height() + 8)) {
+        cv.text(x, y, "Emoji Picker (load emoji_pack next to the app)",
+                ap.c("menu.disable_label"));
+        y += cv.line_height() + 8;
     }
 
     // Open dropdown menu painted last so it stacks above the list (still clipped).
@@ -2947,3 +3823,6 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap,
     }
     return lay;
 }
+
+#include "text_view.h"
+

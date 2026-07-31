@@ -326,6 +326,24 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"window.dark2", "Window Dark 2"},
         {"window.frame", "Window Frame"},
         {"window.label", "Window Label"},
+        {"window.transition.0", "Window Transition 1"},
+        {"window.transition.1", "Window Transition 2"},
+        {"window.transition.2", "Window Transition 3"},
+        {"window.transition.3", "Window Transition 4"},
+        {"window.transition.4", "Window Transition 5"},
+        {"window.transition.5", "Window Transition 6"},
+        {"window.transition.6", "Window Transition 7"},
+        {"window.transition.7", "Window Transition 8"},
+        {"window.transition.8", "Window Transition 9"},
+        {"window.transition.9", "Window Transition 10"},
+        {"window.transition.10", "Window Transition 11"},
+        {"window.transition.11", "Window Transition 12"},
+        {"window.transition.12", "Window Transition 13"},
+        {"window.transition.13", "Window Transition 14"},
+        {"window.transition.14", "Window Transition 15"},
+        {"window.transition.15", "Window Transition 16"},
+        {"window.transition.16", "Window Transition 17"},
+        {"window.transition.17", "Window Transition 18"},
         {"window_focus.light2", "Window Focus Light 2"},
         {"window_focus.light1", "Window Focus Light 1"},
         {"window_focus.face", "Window Focus Face"},
@@ -333,6 +351,24 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"window_focus.dark2", "Window Focus Dark 2"},
         {"window_focus.frame", "Window Focus Frame"},
         {"window_focus.label", "Window Focus Label"},
+        {"window_focus.transition.0", "Window Focus Transition 1"},
+        {"window_focus.transition.1", "Window Focus Transition 2"},
+        {"window_focus.transition.2", "Window Focus Transition 3"},
+        {"window_focus.transition.3", "Window Focus Transition 4"},
+        {"window_focus.transition.4", "Window Focus Transition 5"},
+        {"window_focus.transition.5", "Window Focus Transition 6"},
+        {"window_focus.transition.6", "Window Focus Transition 7"},
+        {"window_focus.transition.7", "Window Focus Transition 8"},
+        {"window_focus.transition.8", "Window Focus Transition 9"},
+        {"window_focus.transition.9", "Window Focus Transition 10"},
+        {"window_focus.transition.10", "Window Focus Transition 11"},
+        {"window_focus.transition.11", "Window Focus Transition 12"},
+        {"window_focus.transition.12", "Window Focus Transition 13"},
+        {"window_focus.transition.13", "Window Focus Transition 14"},
+        {"window_focus.transition.14", "Window Focus Transition 15"},
+        {"window_focus.transition.15", "Window Focus Transition 16"},
+        {"window_focus.transition.16", "Window Focus Transition 17"},
+        {"window_focus.transition.17", "Window Focus Transition 18"},
         {"menu.light", "Menu Light"},
         {"menu.background", "Menu Background"},
         {"menu.dark", "Menu Dark"},
@@ -354,6 +390,10 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"slider.indicator_hilite", "Slider Indicator Hilite"},
         {"slider.indicator_hilite_dark", "Slider Indicator Hilite Dark"},
         {"slider.indicator_hilite_frame", "Slider Indicator Hilite Frame"},
+        {"slider.disable_light", "Slider Disable Light"},
+        {"slider.disable", "Slider Disable"},
+        {"slider.disable_dark", "Slider Disable Dark"},
+        {"slider.disable_frame", "Slider Disable Frame"},
         {"scrollbar.frame", "ScrollBar Frame"},
         {"scrollbar.light", "ScrollBar Light"},
         {"scrollbar.face", "ScrollBar Face"},
@@ -409,6 +449,16 @@ inline const std::vector<ColorRole> &all_color_roles() {
         {"progress.bkgnd_dark", "Progress Background Dark"},
         {"progress.frame", "Progress Frame"},
         {"progress.label", "Progress Label"},
+        {"progress.transition.0", "Progress Transition 1"},
+        {"progress.transition.1", "Progress Transition 2"},
+        {"progress.transition.2", "Progress Transition 3"},
+        {"progress.transition.3", "Progress Transition 4"},
+        {"progress.transition.4", "Progress Transition 5"},
+        {"progress.transition.5", "Progress Transition 6"},
+        {"progress.transition.6", "Progress Transition 7"},
+        {"progress.transition.7", "Progress Transition 8"},
+        {"progress.transition.8", "Progress Transition 9"},
+        {"progress.transition.9", "Progress Transition 10"},
         {"workspace.background1", "Workspace Background 1"},
         {"workspace.background2", "Workspace Background 2"},
         {"workspace.background3", "Workspace Background 3"},
@@ -417,7 +467,7 @@ inline const std::vector<ColorRole> &all_color_roles() {
     return roles;
 }
 
-// --- Minimal TOML subset reader/writer for .skin.toml --------------------
+// --- Minimal TOML subset reader/writer for .sap (Sagrado Appearance) -----
 
 namespace skin_toml {
 inline std::string trim(const std::string &s) {
@@ -607,6 +657,14 @@ inline bool load(const std::string &path, Skin &skin) {
             parse_section_slot(section, "art_meta.", art_slot)) {
             ArtRef &ref = skin.art[art_slot];
             if ((key == "file" || key == "path") && is_str) ref.path = str;
+            else if (key == "text_color" && is_str) {
+                Color c;
+                if (parse_hex_color(str, c)) {
+                    ref.has_text_color = true;
+                    ref.text_color = (uint32_t(c.r) << 16) | (uint32_t(c.g) << 8) |
+                                    uint32_t(c.b);
+                }
+            }
             continue;
         }
         if (section == "icons" && is_str) {
@@ -647,7 +705,7 @@ inline bool save(const std::string &path, const Skin &skin) {
     std::ofstream f(path);
     if (!f) return false;
     f << "# SagradoKit skin\n";
-    f << "format = \"sagrado-skin\"\n";
+    f << "format = \"sap\"\n";
     f << "version = " << skin.format_version << "\n\n";
     f << "[meta]\n";
     f << "name = \"" << toml_escape(skin.meta.name) << "\"\n";
@@ -725,6 +783,11 @@ inline bool save(const std::string &path, const Skin &skin) {
             f << "positions = [" << int(ref.positions[0]) << ", "
               << int(ref.positions[1]) << ", " << int(ref.positions[2]) << ", "
               << int(ref.positions[3]) << "]\n";
+        }
+        if (ref.has_text_color && ref.text_color != 0) {
+            char hex[16];
+            std::snprintf(hex, sizeof(hex), "#%06x", ref.text_color & 0xffffffu);
+            f << "text_color = \"" << hex << "\"\n";
         }
         f << "\n";
     }

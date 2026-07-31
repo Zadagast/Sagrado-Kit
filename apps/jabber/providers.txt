@@ -1,0 +1,13 @@
+# Recommended public XMPP providers for Sagrado Jabber Get an Account.
+# Category A (in-band registration) from providers.xmpp.net — free.
+# Format: host | display name | note (optional; e.g. CAPTCHA)
+yax.im|yax.im|
+jabber.fr|jabber.fr|
+xmpp.party|xmpp.party|
+jabber.vg|jabber.vg|
+chat.between-us.online|between-us|
+07f.de|07f.de|CAPTCHA
+magicbroccoli.de|magicbroccoli|CAPTCHA
+jabjab.de|jabjab.de|CAPTCHA
+hookipa.net|hookipa|CAPTCHA
+chatterboxtown.us|chatterboxtown|CAPTCHA

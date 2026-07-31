@@ -24,12 +24,17 @@ SagradoKit keeps the *roles*, expressed as **named tokens**
 Authoring traps carried forward:
 
 - Prefer **primary.label** for titles and column-header ink. Bitmap themes
-  often leave window/header label slots at default white.
+  often leave window/header label slots at default white. The kit’s
+  `label_ink` / `button_label_ink` do this remap automatically.
+- **Button Label** is frequently stock-white on light Hap pills (Milk) —
+  never paint with raw `button.label`; use the kit helpers.
 - **Focus** outlines are a first-class role; default-button / window-focus
   rings often stayed stock-red in art themes — use the focus role when those
   look untouched.
 - Do **not** invent colour roles the kit does not expose. Reuse primary /
   focus / button / list / text groups.
+- Faces are per-`Canvas`. An unloaded `Font*` paints zero-width glyphs —
+  `Canvas::set_font` rejects unusable faces and keeps stock.
 
 ## Surfaces
 
@@ -38,16 +43,68 @@ icons. The authoritative plug-in map (AppearanceEdit docs + probes) lives in
 [`haxial-surface-map.md`](haxial-surface-map.md). Kit contract:
 [`contract.md`](contract.md).
 
-- **Images (art)** = widget chrome. **Caps** = 9-slice; **Positions** = travel,
-  frame thickness, or placement — meaning is per slot (see the surface map).
+- **Images (art)** = widget chrome. **Caps** = 9-slice fill into the app’s Rect;
+  **Positions** = travel, frame thickness, or placement — meaning is per slot
+  (see the surface map **Fill model**). Outer size is never taken from art pixels.
 - **Icons** = sparse marks (file, folder, user) — a separate namespace.
 - Many real themes are colour-only; art coverage is uneven. Fallbacks are
   mandatory.
 - **Hilited** means pressed/active in Haxial, not modern hover.
 
+Authoring rules from AppearanceEdit 1.200 (Groups, Import Colors, Transparent
+Color, 256 indexed, Preview colours-only, tick ≤18, sep ≤4, even frame
+thickness, title Disabled→hide, WonderLight 16×16, `Appearances/` host folder)
+and the full Images inventory (Primary Background tile, Focus Box, Medium
+disclosure, popup frame, window Disabled, menu item patterns) are recorded in
+the surface map — start there before inventing paint behaviour.
+
 ## Editor practice
 
 AppearanceEdit let authors edit colours (and art) against a live preview of
-kit controls. SagradoKit’s editor is the same job for `.skin.toml`: load,
+kit controls. SagradoKit’s editor is the same job for `.sap`: load,
 tweak named roles, watch the gel / button / field / list / scrollbar preview,
-save.
+save. Load a `.hap` for live import; **Save** writes a `.sap` plus `.skimg`
+art beside it so the authored format can carry the same colours, caps,
+positions, and images the Hap provided.
+
+## Live Hap load
+
+Live `.hap` import copies **only occupied** Hap slots (no blind donor of
+Primary Background or window frames). Incomplete themes still resolve
+**art → colour → stock**.
+
+After import, the Kit applies a small **soft-completion** pack
+(`format/skins/completion/`) that fills **empty** art/icon keys only
+(icons, WonderLight, focus box, popup frames when missing). Authored Hap art is
+never overwritten. Scroll **grips** are not soft-filled — themes that omit them
+usually bake thumb chrome into the indicator (e.g. Aluminum Alloy). Soft-complete
+also never invents open-menu chrome (`menu.background`, `menu.background_pattern`,
+`menu.item.*`, `menu.separator`): many light themes (Milk Redux) leave those
+slots empty on purpose and paint menus from colours. Injecting dark Boilerplate
+plates there reads as two skins mixed together. Tiny Hap `popup_frame` stubs
+(3×3, zero Positions) are ignored the same way — nine-slicing them draws a soft
+grey ghost ring when `menu.background` matches the editor. Colour-path menus use
+the Focus Box outer ring (and a light/dark bevel only when those roles differ).
+When tiling `menu.background_pattern`, always clip to the menu bounds —
+Boilerplate-Rusty's pattern is 128×128, and an unclipped last tile painted a
+floating rusty plate past the open menu. Pure Hap without the pack is still a
+valid colour path.
+
+**Menu fill art sanity** — authored Hap plates can still be chroma-key green /
+magenta (transparency keys used as opaque fills). `menu_fill_art_usable` rejects
+those the same way `popup_frame_usable` rejects 3×3 stubs; `paint_menu` then uses
+the colour path for that layer.
+
+**Chrome colour coherence** — Hap import starts from `stock_skin()` (a dark KDX CRT
+baseline: neon `text.foreground`, blood-red hilites). Roles the Hap leaves wrong
+leak into light grey gels. After soft-complete, `cohere_chrome_colors` remaps
+chroma fills and stock CRT green/red that clash with a light `primary.background`
+/ window face onto coherent neighbours (`primary.light` / `list.background` /
+`primary.label` / derived grey hilite). Policy is kit-wide — not a MacOS Classic
+patch.
+
+Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
+set, paint prefers that ink for button / header / menu / title labels on
+the matching plate. When unset, stock near-white Window / Column Header /
+Hilite / Button / Menu label roles remap to **Primary Label** (KDX practice)
+so light bitmap chrome stays readable.
