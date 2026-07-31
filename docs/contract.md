@@ -134,19 +134,22 @@ Painted by the engine into a software framebuffer (no OS widgets, no CSS):
 2. **Button** — raised bevel push button (pressed uses `button_hilite.*` / default / disabled)
 3. **Icon Button** — `paint_icon_button` (Hap 49–51 + optional title)
 4. **Tick / Mutex** — checkbox and radio (`paint_tick` / `paint_mutex`, blank/ticked/tristate)
-5. **Field** — sunken text field with focus ring and caret
-6. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
-7. **Menu Bar** — `paint_menu_bar` (colour path; optional `menu_bar.*` art)
-8. **Slider** — bar + indicator; optional pointed indicators (`paint_slider(..., pointed)`)
-9. **Progress** — empty bar + fill (`paint_progress`)
-10. **List + header** — column header normal/hilited/disabled + list rows with hilite / `file_label` tints
-11. **Scrollbar** — V/H art-first (double/single arrows, disabled, too-small, grips hilited, arrow-hilite overlays)
-12. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
-13. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
-14. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
-15. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
-16. **Alert / About** — gel dialog with optional alert icon + wrapped body + default OK (`paint_alert`). Apps own the HWND; never `MessageBox` / OS widgets for in-app chrome.
-17. **Emoji Picker** — Ubuntu Characters–style IA (`paint_emoji_picker_client` into a Gel Host client): search field, left rail (Recently Used + categories), 6-column scrollable grid of 48px glyphs, Cancel. Category labels are ASCII (kit font is Latin-1 — emoji are **not** drawn as Unicode text glyphs); on-screen tiles come from an **on-disk Noto Color Emoji pack** (`build/emoji_pack/` via `make emoji-pack`). Host with `gel_host_create` (`GelHostKind::Floating`) so the window moves and resizes; `paint_emoji_picker` remains for kit preview self-framing. `emoji_icon` / `paint_emoji_marks` blit PNGs into other surfaces. No new Hap art slots.
+5. **Field** — sunken single-line text field with focus ring and caret (`paint_field`)
+6. **Multiline text field** — `TextDoc` + soft-wrap `layout_lines` + `paint_text_editor` in a sunken rect (`engine/text_field.h` / `paint_text_field`). Hit-test, drag-select, arrows/Home/End, Ctrl+A/C/X/V/Z, scroll when wrapped content exceeds height. Enter inserts a newline by default; apps may treat Enter as Send (Shift+Enter = newline).
+7. **Dropdown** — popup button (`paint_dropdown`) + open menu (`paint_menu`)
+8. **Menu Bar** — `paint_menu_bar` (colour path; optional `menu_bar.*` art)
+9. **Context Menu** — kit `paint_menu` + `menu_place` via `engine/context_menu.h` (window-space). Apps supply labels + handle actions; the kit paints and hit-tests only. Never `TrackPopupMenu` for in-window chrome (tray may stay OS).
+10. **Slider** — bar + indicator; optional pointed indicators (`paint_slider(..., pointed)`)
+11. **Progress** — empty bar + fill (`paint_progress`)
+12. **List + header** — column header normal/hilited/disabled + list rows with hilite / `file_label` tints
+13. **Scrollbar** — V/H art-first (double/single arrows, disabled, too-small, grips hilited, arrow-hilite overlays)
+14. **Separators / box / disclosure** — `paint_separator_h/v`, `paint_box`, `paint_disclosure`
+15. **WonderLight** — 16×16 status lamp (`paint_wonderlight`)
+16. **Icons** — `paint_icon` from `[icons]` (file.generic.16/32)
+17. **File Transfers window** — KDX download sample (`paint_file_transfers_window`)
+18. **Alert / About** — gel dialog with optional alert icon + wrapped body + default OK (`paint_alert`). Apps own the HWND; never `MessageBox` / OS widgets for in-app chrome.
+19. **Emoji Picker** — Ubuntu Characters–style IA (`paint_emoji_picker_client` into a Gel Host client): search field, left rail (Recently Used + categories), 6-column scrollable grid of 48px glyphs, Cancel. Category labels are ASCII (kit font is Latin-1 — emoji are **not** drawn as Unicode text glyphs); on-screen tiles come from an **on-disk Noto Color Emoji pack** (`build/emoji_pack/` via `make emoji-pack`). Host with `gel_host_create` (`GelHostKind::Floating`) so the window moves and resizes; `paint_emoji_picker` remains for kit preview self-framing. `emoji_icon` / `paint_emoji_marks` blit PNGs into other surfaces. No new Hap art slots.
+20. **Clipboard** — kit `engine/clipboard.h` (`clipboard_set` / `clipboard_get`, Win32 `CF_TEXT`). Apps do not keep private OpenClipboard helpers.
 
 Apps that speak SagradoKit call these paint helpers (or compose from the same
 resolved colour roles). They do not hardcode a parallel palette.
@@ -185,7 +188,9 @@ layout (`paint_text_view` / `layout_lines`), not `text_elided`.
 | Rule | Meaning |
 |---|---|
 | Kit paints everything | Gel, menus, fields, scrollbars, alerts, **text** — `paint_*` into a `Canvas`, then blit. No OS widgets, no private colour tables. |
-| Kit owns plain text | Soft/hard wrap (`text_layout.h`), buffer (`TextDoc`), `paint_text_view` / `paint_text_editor`. Apps do not ship private wrap loops or Doc types. |
+| Kit owns plain text | Soft/hard wrap (`text_layout.h`), buffer (`TextDoc`), `paint_text_view` / `paint_text_editor` / `paint_text_field`. Apps do not ship private wrap loops or Doc types. |
+| Kit owns clipboard | `engine/clipboard.h` for CF_TEXT set/get. |
+| Context menus are kit paint | `context_menu.h` on `paint_menu` / `menu_place` — not OS popups for in-window chrome. |
 | One shared `Appearance` | All gels in the process load the same skin; switch live when the user picks one. |
 | Ooze Gel owns the frame | Title / hatch / Window Menu / close·zoom·min / grow box are kit chrome. Host decorations stay off (especially under Wine). |
 | Clip, don’t hide | Narrow windows clip menu titles and title text. No hamburger / overflow chrome. |
@@ -193,6 +198,8 @@ layout (`paint_text_view` / `layout_lines`), not `text_elided`.
 | Popups stay on-screen | Use `menu_place` (right-anchored Window Menus flip/clamp inside the window). |
 | Pattern tiles clip | Tiled art (`menu.background_pattern`, primary pattern, …) must clip to the destination — never spill past the control. |
 | Soft-complete is fill-only | Never invent open-menu plates over a colour-path theme; ignore unusable `popup_frame` stubs. |
+| Menu fill art must be sane | `menu_fill_art_usable` rejects empty, absurd, and chroma-key plates (hot green / magenta); paint falls back to the colour path. |
+| Hap chrome colours cohere | After Hap import, remap chroma fills and stock CRT neon green / blood-red hilites that clash with a light gel face (`cohere_chrome_colors`). |
 | Alerts are gel | About / notes use `paint_alert`, not `MessageBox`. |
 | Floating windows use Gel Host | Find, About, Emoji, and future tools are real HWNDs via `engine/gel_host.h` — title drag (move), grip/edges (resize when `Floating`), min size, close. Do not re-copy `WM_NCHITTEST` / size-drag per sheet. |
 | Overlays are modal-only | Fixed overlays that dim the parent are only for true blocking sheets (e.g. Sign On). New interactive tools must not ship as non-movable overlays. |
@@ -201,7 +208,8 @@ layout (`paint_text_view` / `layout_lines`), not `text_elided`.
 
 1. Main gel shell (borderless `WS_POPUP`, shared `Appearance`, kit `paint_*`).
 2. Every extra window → `gel_host_create` (`Dialog` or `Floating`); paint client contents only.
-3. Pass `make smoke` (load skin → paint gel → no clip spill).
+3. Multiline edit / compose → kit `text_field` + kit clipboard; context menus → kit `context_menu`.
+4. Pass `make smoke` (load skin → paint gel → no clip spill).
 
 New apps land under `apps/` and pass `make smoke` patterns established by
 TextEdit / Jabber.

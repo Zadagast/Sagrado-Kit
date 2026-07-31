@@ -90,6 +90,19 @@ Boilerplate-Rusty's pattern is 128×128, and an unclipped last tile painted a
 floating rusty plate past the open menu. Pure Hap without the pack is still a
 valid colour path.
 
+**Menu fill art sanity** — authored Hap plates can still be chroma-key green /
+magenta (transparency keys used as opaque fills). `menu_fill_art_usable` rejects
+those the same way `popup_frame_usable` rejects 3×3 stubs; `paint_menu` then uses
+the colour path for that layer.
+
+**Chrome colour coherence** — Hap import starts from `stock_skin()` (a dark KDX CRT
+baseline: neon `text.foreground`, blood-red hilites). Roles the Hap leaves wrong
+leak into light grey gels. After soft-complete, `cohere_chrome_colors` remaps
+chroma fills and stock CRT green/red that clash with a light `primary.background`
+/ window face onto coherent neighbours (`primary.light` / `list.background` /
+`primary.label` / derived grey hilite). Policy is kit-wide — not a MacOS Classic
+patch.
+
 Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
 set, paint prefers that ink for button / header / menu / title labels on
 the matching plate. When unset, stock near-white Window / Column Header /

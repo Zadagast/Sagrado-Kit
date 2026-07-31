@@ -1,6 +1,7 @@
 // Apply a loaded Hap Theme onto Appearance (Sagrado-style live Hap import).
 // Maps verified Hap colour indices + image slots → named SagradoKit roles/art.
 #pragma once
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -639,6 +640,93 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
     return filled;
 }
 
+// Stock CRT leftovers (neon green ink, blood-red hilites) and chroma-key
+// fills clash on light Hap gels. Remap chrome roles to coherent neighbours.
+// Policy lives here — every Hap, not a per-skin patch.
+inline bool hap_color_light(Color c) {
+    return int(c.r) + int(c.g) + int(c.b) >= 480; // mean ≥ 160
+}
+inline bool hap_color_chroma(Color c) {
+    if (c.g >= 200 && c.r <= 60 && c.b <= 60) return true;
+    if (c.r >= 200 && c.b >= 200 && c.g <= 60) return true;
+    return false;
+}
+inline bool hap_stock_crt_green(Color c) {
+    return c.r <= 40 && c.g >= 180 && c.b <= 40;
+}
+inline bool hap_stock_crt_red(Color c) {
+    return c.r >= 100 && c.g <= 40 && c.b <= 40 && int(c.r) >= int(c.g) * 3;
+}
+inline Color hap_mix(Color a, Color b, int t /* 0..256 */) {
+    t = std::clamp(t, 0, 256);
+    return rgb(uint8_t((int(a.r) * (256 - t) + int(b.r) * t) >> 8),
+               uint8_t((int(a.g) * (256 - t) + int(b.g) * t) >> 8),
+               uint8_t((int(a.b) * (256 - t) + int(b.b) * t) >> 8));
+}
+
+template <typename AppearanceT>
+inline void cohere_chrome_colors(AppearanceT &ap) {
+    Color face = ap.c("primary.background");
+    Color win = ap.c("window.face");
+    const bool light = hap_color_light(face) || hap_color_light(win);
+
+    auto needs_remap = [&](Color cur) {
+        if (hap_color_chroma(cur)) return true;
+        if (light && (hap_stock_crt_green(cur) || hap_stock_crt_red(cur)))
+            return true;
+        return false;
+    };
+
+    Color ink = ap.c("primary.label");
+    if (light && (hap_color_light(ink) || needs_remap(ink))) ink = rgb(32, 32, 32);
+
+    Color fill = ap.c("list.background");
+    if (needs_remap(fill) || (light && hap_stock_crt_green(fill)))
+        fill = ap.c("primary.light");
+    if (needs_remap(fill) || (light && !hap_color_light(fill) &&
+                              hap_stock_crt_green(ap.c("list.background"))))
+        fill = face;
+    if (light && int(fill.r) + int(fill.g) + int(fill.b) < 200)
+        fill = ap.c("primary.light");
+    if (light && needs_remap(fill)) fill = rgb(236, 236, 236);
+
+    Color hilite = light ? hap_mix(face, rgb(0, 0, 0), 56)
+                         : hap_mix(face, rgb(255, 255, 255), 72);
+    if (needs_remap(hilite)) hilite = light ? rgb(180, 180, 190) : rgb(80, 80, 90);
+    Color hi_ink = hap_color_light(hilite) ? rgb(16, 16, 16) : rgb(255, 255, 255);
+
+    auto fix = [&](const char *role, Color repl) {
+        if (needs_remap(ap.c(role))) ap.set_color(role, repl);
+    };
+
+    fix("menu.background", fill);
+    fix("menu.light", ap.c("primary.light"));
+    fix("menu.dark", ap.c("primary.dark"));
+    fix("menu.label", ink);
+    fix("menu.disable_label", hap_mix(ink, fill, 120));
+    fix("menu.hilite_background", hilite);
+    fix("menu.hilite_light", hap_mix(hilite, rgb(255, 255, 255), 90));
+    fix("menu.hilite_dark", hap_mix(hilite, rgb(0, 0, 0), 90));
+    fix("menu.hilite_label", hi_ink);
+
+    fix("list.background", fill);
+    fix("list.label", ink);
+    fix("list.hilite_background", hilite);
+    fix("list.hilite_foreground", hi_ink);
+
+    fix("text.foreground", ink);
+    // Stock CRT field is black; on a light gel remap to a paper face.
+    Color tbg = ap.c("text.background");
+    if (needs_remap(tbg) ||
+        (light && tbg.r <= 8 && tbg.g <= 8 && tbg.b <= 8))
+        ap.set_color("text.background", rgb(255, 255, 255));
+    fix("text.hilite_background", hilite);
+    fix("text.hilite_foreground", hi_ink);
+    fix("text.insertion_point", light ? rgb(0, 0, 0) : ink);
+
+    fix("focus.box", light ? rgb(0, 0, 0) : ap.c("primary.dark"));
+}
+
 // Fill Skin colours + art/icon caches from a Hap Theme (incomplete OK).
 // soft_complete_path: optional Kit completion.sap for empty slots only.
 template <typename AppearanceT>
@@ -712,6 +800,7 @@ inline bool apply_hap_theme(AppearanceT &ap, Theme &theme,
     std::string pack = soft_complete_path;
     if (pack.empty()) pack = find_completion_pack();
     if (!pack.empty()) soft_complete(ap, pack);
+    cohere_chrome_colors(ap);
     return true;
 }
 

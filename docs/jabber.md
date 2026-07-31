@@ -45,8 +45,11 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 2. **Left Buddies** — roster groups (default **Buddies**); online-first within each group;
    buddy icon + presence mark + name + status text
 3. **Center** — IM tabs (close with **x**), soft-wrapped transcript (kit `layout_lines`),
-   compose + Send; peer typing line when composing. Click a line to select it; reactions
-   show as Noto PNG marks under the line (`paint_emoji_marks` — kit font is Latin-1)
+   kit multiline compose (`paint_text_field`) + Send; peer typing line when composing.
+   **Enter** sends; **Shift+Enter** inserts a newline. Click a line to select it; reactions
+   show as Noto PNG marks under the line (`paint_emoji_marks` — kit font is Latin-1).
+   Right-click compose → Copy / Paste; right-click a message → Copy / Paste / React…
+   (kit `context_menu` + clipboard; React opens the floating emoji host)
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
 5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 6. **Status strip** — durable line: signed on as / presence / buddies online / active
@@ -58,7 +61,9 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    normal taskbar minimize. Tray menu: Open / Sign On / Sign Off / Quit; inbound IM
    can balloon while hidden
 
-Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_menu` — no OS widgets for identity.
+Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_text_field` /
+`paint_menu` / `context_menu` — no OS widgets for identity. Wire features track the
+[XEP registry](https://xmpp.org/extensions/); this UI pass adds no new protocol stack.
 
 ## Auto join server
 
@@ -86,13 +91,14 @@ AIM-shaped chat rooms in gel — not a Discord server rail. Wire is XEP-0045.
   server supports it, with Private XML `storage:bookmarks` as fallback. Autojoin
   rooms rejoin on Sign On.
 
-**React…** — select a line (or the last reactable one), then Chat → React… opens a
-**floating gel window** (`gel_host` + emoji picker client): drag the title to move,
-grip/edges to resize, search/categories/recents/grid as usual. Choosing a cell sends
-the reaction (XEP-0444); pick the same emoji again to clear yours. Recent picks
-persist in `emoji_recent.txt` beside the exe. The Noto pack must sit at
-`emoji_pack/` next to `SagradoJabber.exe`. Rooms use the MUC `stanza-id` when the
-server provides one. Interoperable with Gajim/Conversations on the wire.
+**React…** — select a line (or the last reactable one), then Chat → React… **or**
+right-click the line → React… opens a **floating gel window** (`gel_host` + emoji
+picker client): drag the title to move, grip/edges to resize, search/categories/
+recents/grid as usual. Choosing a cell sends the reaction (XEP-0444); pick the same
+emoji again to clear yours. Recent picks persist in `emoji_recent.txt` beside the
+exe. The Noto pack must sit at `emoji_pack/` next to `SagradoJabber.exe`. Rooms use
+the MUC `stanza-id` when the server provides one. Interoperable with
+Gajim/Conversations on the wire.
 
 Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, or MAM history
 browser in this pass.

@@ -65,6 +65,51 @@ int main(int argc, char **argv) {
             }
             std::printf("Milk open menus: colour path (no invented menu art)\n");
         }
+        // Light Haps: open-menu sample must not be hot-green dominated (stock CRT
+        // leak or chroma fill plates). Coherence + menu_fill_art_usable own this.
+        if (path.find("MacOS Classic") != std::string::npos ||
+            path.find("Milk Redux") != std::string::npos ||
+            path.find("milk-redux") != std::string::npos ||
+            path.find("Ashen") != std::string::npos) {
+            Color face = ap.c("primary.background");
+            int face_lum = (int(face.r) + int(face.g) + int(face.b)) / 3;
+            if (face_lum >= 160) {
+                Color fg = ap.c("text.foreground");
+                if (fg.g >= 180 && fg.r <= 40 && fg.b <= 40) {
+                    std::fprintf(stderr,
+                                 "light Hap leaked stock CRT green text.foreground\n");
+                    return 1;
+                }
+                Color mh = ap.c("menu.hilite_background");
+                if (mh.r >= 100 && mh.g <= 40 && mh.b <= 40 &&
+                    int(mh.r) >= int(mh.g) * 3) {
+                    std::fprintf(stderr,
+                                 "light Hap leaked stock CRT red menu.hilite\n");
+                    return 1;
+                }
+                Canvas mcv;
+                mcv.resize(240, 120);
+                mcv.clear(face);
+                static const char *items[] = {"Copy", "Paste", "React…"};
+                MenuLayout ml =
+                    paint_menu(mcv, ap, 8, 8, 120, items, 3, 1);
+                int sx = ml.items_bounds.x + ml.items_bounds.w / 2;
+                int sy = ml.items_bounds.y + ml.item_h + ml.item_h / 2;
+                uint32_t px =
+                    mcv.data()[size_t(sy) * mcv.width() + sx];
+                int pr = int((px >> 16) & 255), pg = int((px >> 8) & 255),
+                    pb = int(px & 255);
+                if (pg >= 180 && pr <= 60 && pb <= 60) {
+                    std::fprintf(stderr,
+                                 "light Hap open-menu sample is hot-green "
+                                 "#%02x%02x%02x\n",
+                                 pr, pg, pb);
+                    return 1;
+                }
+                std::printf("light Hap menu sample OK (#%02x%02x%02x)\n", pr, pg,
+                            pb);
+            }
+        }
     }
 
     Color bg = ap.c("primary.background");

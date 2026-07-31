@@ -16,9 +16,12 @@
 #include <vector>
 
 #include "../../engine/appearance.h"
+#include "../../engine/clipboard.h"
+#include "../../engine/context_menu.h"
 #include "../../engine/emoji_picker.h"
 #include "../../engine/gel_host.h"
 #include "../../engine/hfnt.h"
+#include "../../engine/text_field.h"
 #include "xmpp/client.h"
 
 namespace {
@@ -38,9 +41,12 @@ constexpr int kBuddyRowH = 36;
 constexpr int kGroupHeaderH = 20;
 constexpr UINT_PTR kTypingTimerId = 1;
 constexpr UINT_PTR kStatusFlashTimerId = 2;
+constexpr UINT_PTR kCaretTimerId = 3;
 constexpr UINT kTypingPauseMs = 2000;
 constexpr UINT kStatusFlashMs = 3500;
 constexpr int kMaxRecentAccounts = 8; // JIDs only — never passwords
+
+enum CtxKind : int { CtxNone = 0, CtxCompose, CtxTranscript };
 
 enum : UINT {
     WM_JABBER_EVENT = WM_APP + 40,
@@ -243,7 +249,10 @@ struct App {
     };
     std::vector<BrowseRow> browse_rows;
 
-    std::string compose;
+    TextFieldState compose{};
+    Rect compose_field_r{};
+    ContextMenuState ctx{};
+    int ctx_kind = CtxNone;
     std::string status_msg; // own presence <status> draft (identity field)
     bool status_field_focus = false;
     bool presence_menu = false; // popup anchored to identity strip
@@ -258,6 +267,9 @@ struct App {
 };
 
 App g;
+
+bool pick_react_target(std::string *react_id_out);
+void open_react_dialog();
 
 std::string exe_dir() {
     char buf[MAX_PATH];
@@ -787,6 +799,8 @@ void layout() {
                       g.compose_r.y - g.tabs_r.bottom()};
     g.btn_send = {g.compose_r.right() - 72, g.compose_r.y + 8, 64,
                   g.compose_r.h - 16};
+    g.compose_field_r = {g.compose_r.x + 8, g.compose_r.y + 8,
+                         g.btn_send.x - g.compose_r.x - 16, g.compose_r.h - 16};
     g.progress_r = {};
     if (g.file_progress >= 0) {
         g.progress_r = {g.status_r.right() - 140, g.status_r.y + 3, 128,
@@ -802,6 +816,9 @@ void layout() {
         g.transcript_r.w -= occ_w;
         g.compose_r.w -= occ_w;
         g.btn_send.x = g.compose_r.right() - 72;
+        g.compose_field_r = {g.compose_r.x + 8, g.compose_r.y + 8,
+                             g.btn_send.x - g.compose_r.x - 16,
+                             g.compose_r.h - 16};
     }
 }
 
@@ -1138,6 +1155,149 @@ void bump_typing_composing() {
         g.typing_peer = to;
     }
     if (g.hwnd) SetTimer(g.hwnd, kTypingTimerId, kTypingPauseMs, nullptr);
+}
+
+void clear_compose() {
+    g.compose.doc.text.clear();
+    g.compose.doc.caret = g.compose.doc.anchor = 0;
+    g.compose.scroll_y = 0;
+    g.compose.lines.clear();
+}
+
+void send_compose() {
+    std::string body = text_field_trimmed(g.compose);
+    if (g.active_tab < 0 || body.empty()) return;
+    auto &tab = g.tabs[g.active_tab];
+    if (tab.muc)
+        g.client.send_muc_message(tab.jid, body);
+    else {
+        stop_typing_indicator();
+        g.client.send_message(tab.jid, body);
+    }
+    clear_compose();
+}
+
+void close_ctx_menu() {
+    context_menu_close(g.ctx);
+    g.ctx_kind = CtxNone;
+}
+
+std::string format_chat_line(const jabber::ChatLine &ln, bool muc) {
+    if (ln.system) return ln.body;
+    if (muc) {
+        std::string who = ln.mine ? "You" : ln.from;
+        if (who.empty()) who = "?";
+        return who + ": " + ln.body;
+    }
+    std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+    std::string text = who + ": " + ln.body;
+    if (ln.mine && ln.delivered) text += "  ok";
+    return text;
+}
+
+// Hit-test transcript line under cursor; sets chat_sel when non-system.
+int hit_transcript_line(int x, int y) {
+    if (g.active_tab < 0 || !g.transcript_r.contains(x, y)) return -1;
+    if (g.chat_sbar.w > 0 && g.chat_sbar.contains(x, y)) return -1;
+    std::string key = g.tabs[g.active_tab].jid;
+    bool muc = g.tabs[g.active_tab].muc;
+    std::vector<jabber::ChatLine> lines;
+    std::string subject;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        lines = g.client.chats[key];
+        if (muc) {
+            auto it = g.client.muc_subjects.find(key);
+            if (it != g.client.muc_subjects.end()) subject = it->second;
+        }
+    }
+    const int pad = 6;
+    const int lh = g.canvas.line_height();
+    const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
+    int top = g.transcript_r.y + 4;
+    if (muc && !subject.empty()) {
+        std::string sub = "Topic: " + subject;
+        top += text_content_height(layout_lines(g.canvas, sub, wrap_w, true), lh) +
+               4;
+    }
+    Rect body{g.transcript_r.x, top, g.transcript_r.w,
+              g.transcript_r.bottom() - top};
+    if (!body.contains(x, y)) return -1;
+    int ty = body.y - g.chat_scroll;
+    for (int i = 0; i < (int)lines.size(); ++i) {
+        int h = text_content_height(
+                    layout_lines(g.canvas, format_chat_line(lines[i], muc),
+                                 wrap_w, true),
+                    lh);
+        h += reaction_row_height(lines[i], lh);
+        h += 2;
+        if (y >= ty && y < ty + h) return lines[i].system ? -1 : i;
+        ty += h;
+    }
+    return -1;
+}
+
+void run_ctx_menu(int row) {
+    if (!g.ctx.open || row < 0 || row >= (int)g.ctx.items.size()) {
+        close_ctx_menu();
+        return;
+    }
+    if (g.ctx.items[size_t(row)].sep || !g.ctx.items[size_t(row)].enabled) {
+        close_ctx_menu();
+        return;
+    }
+    const char *lab = g.ctx.items[size_t(row)].label;
+    int kind = g.ctx_kind;
+    close_ctx_menu();
+    if (!lab) return;
+    if (std::strcmp(lab, "Copy") == 0) {
+        if (kind == CtxCompose) {
+            text_field_copy(g.hwnd, g.compose);
+        } else if (kind == CtxTranscript && g.active_tab >= 0 &&
+                   g.chat_sel >= 0) {
+            std::string key = g.tabs[g.active_tab].jid;
+            bool muc = g.tabs[g.active_tab].muc;
+            std::vector<jabber::ChatLine> lines;
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                lines = g.client.chats[key];
+            }
+            if (g.chat_sel < (int)lines.size())
+                sagrado::clipboard_set(
+                    g.hwnd, format_chat_line(lines[g.chat_sel], muc));
+        }
+    } else if (std::strcmp(lab, "Paste") == 0) {
+        g.compose.focused = true;
+        text_field_paste(g.hwnd, g.compose);
+        if (!g.compose.doc.text.empty()) bump_typing_composing();
+    } else if (std::strcmp(lab, "React…") == 0 ||
+               std::strcmp(lab, "React...") == 0) {
+        open_react_dialog();
+    }
+}
+
+void open_compose_ctx(int x, int y) {
+    ContextMenuItem items[] = {
+        {"Copy", g.compose.doc.has_sel(), false},
+        {"Paste", true, false},
+    };
+    g.ctx_kind = CtxCompose;
+    context_menu_open(g.ctx, x, y, items, 2);
+}
+
+void open_transcript_ctx(int x, int y) {
+    bool can_react = false;
+    if (g.chat_sel >= 0 && g.active_tab >= 0) {
+        std::string rid;
+        can_react = pick_react_target(&rid);
+    }
+    ContextMenuItem items[] = {
+        {"Copy", g.chat_sel >= 0, false},
+        {"Paste", true, false},
+        {"React…", can_react && g.emoji_pack_ok, false},
+    };
+    g.ctx_kind = CtxTranscript;
+    context_menu_open(g.ctx, x, y, items, 3);
 }
 
 const char *show_label(jabber::Show s) {
@@ -2040,11 +2200,10 @@ void paint() {
                 g.peer_typing.c_str(), g.ap.c("menu.disable_label"));
     }
 
-    // Compose
+    // Compose — kit multiline field (Enter sends; Shift+Enter newline).
     cv.fill(g.compose_r, g.ap.c("primary.background"));
-    Rect field{g.compose_r.x + 8, g.compose_r.y + 8,
-               g.btn_send.x - g.compose_r.x - 16, g.compose_r.h - 16};
-    paint_field(cv, g.ap, field, g.compose.c_str(), g.dialog == DlgNone, true);
+    g.compose.focused = (g.dialog == DlgNone && g.focused && !g.ctx.open);
+    paint_text_field(cv, g.ap, g.compose_field_r, g.compose, g.compose.focused);
     paint_button(cv, g.ap, g.btn_send, "Send", false, true);
 
     // Status — durable account/roster/context line (not a chat firehose).
@@ -2086,6 +2245,11 @@ void paint() {
         }
         g.popup = paint_menu(cv, g.ap, mx, my, mw, md.items, md.count, g.menu_item_hot);
         if (g.presence_menu) paint_presence_menu_marks(cv, g.popup);
+    }
+
+    if (g.ctx.open) {
+        Rect win{0, 0, cv.width(), cv.height()};
+        paint_context_menu(cv, g.ap, win, g.ctx);
     }
 
     paint_dialog(cv);
@@ -2509,6 +2673,16 @@ void apply_size_drag() {
 
 void mouse_down(int x, int y) {
     layout();
+    if (g.ctx.open) {
+        int row = context_menu_hit(g.ctx, x, y);
+        if (row >= 0) {
+            run_ctx_menu(row);
+            redraw();
+            return;
+        }
+        close_ctx_menu();
+        // Fall through so the click still lands on the surface under the menu.
+    }
     // Main gel X always hides to tray — even with Sign On / dialogs up.
     if (g.gel.close_box.contains(x, y)) {
         g.drag = DragClose;
@@ -2744,15 +2918,16 @@ void mouse_down(int x, int y) {
         return;
     }
 
-    if (g.btn_send.contains(x, y) && g.active_tab >= 0 && !g.compose.empty()) {
-        auto &tab = g.tabs[g.active_tab];
-        if (tab.muc)
-            g.client.send_muc_message(tab.jid, g.compose);
-        else {
-            stop_typing_indicator();
-            g.client.send_message(tab.jid, g.compose);
-        }
-        g.compose.clear();
+    if (g.btn_send.contains(x, y) && g.active_tab >= 0) {
+        send_compose();
+        redraw();
+        return;
+    }
+
+    if (g.dialog == DlgNone &&
+        text_field_mouse_down(g.compose, g.canvas, g.compose_field_r, x, y,
+                              (GetKeyState(VK_SHIFT) & 0x8000) != 0)) {
+        g.status_field_focus = false;
         redraw();
         return;
     }
@@ -2842,66 +3017,45 @@ void mouse_down(int x, int y) {
     // Click a transcript line to select it (Chat → React…).
     if (g.active_tab >= 0 && g.transcript_r.contains(x, y) &&
         !(g.chat_sbar.w > 0 && g.chat_sbar.contains(x, y))) {
-        std::string key = g.tabs[g.active_tab].jid;
-        bool muc = g.tabs[g.active_tab].muc;
-        std::vector<jabber::ChatLine> lines;
-        std::string subject;
-        {
-            std::lock_guard<std::mutex> lock(g.client.mu);
-            lines = g.client.chats[key];
-            if (muc) {
-                auto it = g.client.muc_subjects.find(key);
-                if (it != g.client.muc_subjects.end()) subject = it->second;
-            }
-        }
-        const int pad = 6;
-        const int lh = g.canvas.line_height();
-        const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
-        auto format_line = [&](const jabber::ChatLine &ln) {
-            if (ln.system) return ln.body;
-            if (muc) {
-                std::string who = ln.mine ? "You" : ln.from;
-                if (who.empty()) who = "?";
-                return who + ": " + ln.body;
-            }
-            std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-            std::string text = who + ": " + ln.body;
-            if (ln.mine && ln.delivered) text += "  ok";
-            return text;
-        };
-        int top = g.transcript_r.y + 4;
-        if (muc && !subject.empty()) {
-            std::string sub = "Topic: " + subject;
-            top += text_content_height(layout_lines(g.canvas, sub, wrap_w, true), lh) +
-                   4;
-        }
-        Rect body{g.transcript_r.x, top, g.transcript_r.w,
-                  g.transcript_r.bottom() - top};
-        if (body.contains(x, y)) {
-            int ty = body.y - g.chat_scroll;
-            int hit = -1;
-            for (int i = 0; i < (int)lines.size(); ++i) {
-                int h = text_content_height(
-                            layout_lines(g.canvas, format_line(lines[i]), wrap_w, true),
-                            lh);
-                h += reaction_row_height(lines[i], lh);
-                h += 2;
-                if (y >= ty && y < ty + h) {
-                    hit = lines[i].system ? -1 : i;
-                    break;
-                }
-                ty += h;
-            }
-            if (hit != g.chat_sel) {
-                g.chat_sel = hit;
-                redraw();
-            }
+        int hit = hit_transcript_line(x, y);
+        if (hit != g.chat_sel) {
+            g.chat_sel = hit;
+            redraw();
         }
         return;
     }
 }
 
+void mouse_right_down(int x, int y) {
+    layout();
+    if (g.dialog != DlgNone || g.menu_open >= 0 || g.sub_ask_open ||
+        g.muc_invite_open || g.about_open)
+        return;
+    if (g.compose_field_r.contains(x, y)) {
+        g.compose.focused = true;
+        open_compose_ctx(x, y);
+        redraw();
+        return;
+    }
+    if (g.active_tab >= 0 && g.transcript_r.contains(x, y) &&
+        !(g.chat_sbar.w > 0 && g.chat_sbar.contains(x, y))) {
+        int hit = hit_transcript_line(x, y);
+        if (hit >= 0) g.chat_sel = hit;
+        open_transcript_ctx(x, y);
+        redraw();
+        return;
+    }
+    if (g.ctx.open) {
+        close_ctx_menu();
+        redraw();
+    }
+}
+
 void mouse_up(int x, int y) {
+    if (text_field_mouse_up(g.compose)) {
+        redraw();
+        return;
+    }
     if (g.drag == DragSize) {
         apply_size_drag();
         g.drag = DragNone;
@@ -2945,6 +3099,19 @@ void mouse_up(int x, int y) {
 }
 
 void mouse_move(int x, int y) {
+    if (g.compose.dragging) {
+        text_field_mouse_move(g.compose, g.canvas, g.compose_field_r, x, y);
+        redraw();
+        return;
+    }
+    if (g.ctx.open) {
+        int row = context_menu_hit(g.ctx, x, y);
+        if (row != g.ctx.hot) {
+            g.ctx.hot = row;
+            redraw();
+        }
+        return;
+    }
     if (g.drag == DragSize) {
         apply_size_drag();
         return;
@@ -3072,28 +3239,48 @@ void handle_char(WPARAM wp) {
         redraw();
         return;
     }
-    if (g.menu_open >= 0) return;
+    if (g.menu_open >= 0 || g.ctx.open) return;
     if (g.sub_ask_open || g.muc_invite_open || g.about_open) return;
-    if (wp == 8) {
-        if (!g.compose.empty()) g.compose.pop_back();
-        if (g.compose.empty()) stop_typing_indicator();
+    g.compose.focused = true;
+    // Enter / Shift+Enter handled in WM_KEYDOWN (enter_sends).
+    if (wp == '\r' || wp == '\n') return;
+    if (text_field_char(g.compose, g.canvas, g.compose_field_r, wp, true)) {
+        if (g.compose.doc.text.empty()) stop_typing_indicator();
         else bump_typing_composing();
-    } else if (wp == '\r') {
-        if (g.active_tab >= 0 && !g.compose.empty()) {
-            auto &tab = g.tabs[g.active_tab];
-            if (tab.muc)
-                g.client.send_muc_message(tab.jid, g.compose);
-            else {
-                stop_typing_indicator();
-                g.client.send_message(tab.jid, g.compose);
-            }
-            g.compose.clear();
-        }
-    } else if (wp >= 32 && wp < 127) {
-        g.compose.push_back(char(wp));
-        bump_typing_composing();
+        redraw();
     }
-    redraw();
+}
+
+void handle_keydown(WPARAM wp) {
+    if (g.dialog != DlgNone || g.menu_open >= 0 || g.sub_ask_open ||
+        g.muc_invite_open || g.about_open)
+        return;
+    if (g.ctx.open) {
+        if (wp == VK_ESCAPE) {
+            close_ctx_menu();
+            redraw();
+        }
+        return;
+    }
+    bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    g.compose.focused = true;
+    if (wp == VK_RETURN && !shift) {
+        send_compose();
+        redraw();
+        return;
+    }
+    if (text_field_keydown(g.compose, g.canvas, g.hwnd, wp, shift, ctrl,
+                           g.compose_field_r, true)) {
+        bool nav = wp == VK_LEFT || wp == VK_RIGHT || wp == VK_UP ||
+                   wp == VK_DOWN || wp == VK_HOME || wp == VK_END;
+        bool copyish = ctrl && (wp == 'C' || wp == 'A');
+        if (!nav && !copyish) {
+            if (g.compose.doc.text.empty()) stop_typing_indicator();
+            else bump_typing_composing();
+        }
+        redraw();
+    }
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -3111,6 +3298,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         load_providers();
         load_accounts();
         if (!g.recent_jids.empty()) g.field_jid = g.recent_jids[0];
+        SetTimer(hwnd, kCaretTimerId, 500, nullptr);
+        g.compose.focused = true;
         return 0;
     }
     case WM_JABBER_EVENT: {
@@ -3279,11 +3468,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_KILLFOCUS:
         g.focused = false;
+        if (g.ctx.open) close_ctx_menu();
         redraw();
         return 0;
     case WM_LBUTTONDOWN:
         SetCapture(hwnd);
         mouse_down(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+        return 0;
+    case WM_RBUTTONDOWN:
+        mouse_right_down(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_LBUTTONDBLCLK: {
         int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
@@ -3309,7 +3502,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g.drag == DragSize || g.drag == DragThumbChat ||
             g.drag == DragThumbRoster || g.drag == DragThumbBrowse ||
             g.drag == DragThumbProvider || g.drag == DragThumbRecent ||
-            (wp & MK_LBUTTON) || g.menu_open >= 0)
+            (wp & MK_LBUTTON) || g.menu_open >= 0 || g.ctx.open ||
+            g.compose.dragging)
             mouse_move(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEWHEEL: {
@@ -3356,11 +3550,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             redraw();
             return 0;
         }
+        if (wp == kCaretTimerId) {
+            g.compose.caret_on = !g.compose.caret_on;
+            if (g.dialog == DlgNone && g.focused) redraw();
+            return 0;
+        }
         break;
     case WM_KEYDOWN:
         if (wp == VK_ESCAPE) {
             if (sagrado::gel_host_is_visible(g.emoji_host)) {
                 close_emoji_host();
+            } else if (g.ctx.open) {
+                close_ctx_menu();
+                redraw();
             } else if (g.sub_ask_open) {
                 close_subscribe_ask(false);
                 redraw();
@@ -3383,6 +3585,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        handle_keydown(wp);
         return 0;
     case WM_NCHITTEST: {
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
@@ -3393,7 +3596,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g.gel.close_box.contains(pt.x, pt.y) || g.gel.max_box.contains(pt.x, pt.y) ||
             g.gel.min_box.contains(pt.x, pt.y) || g.gel.hatch_box.contains(pt.x, pt.y))
             return HTCLIENT;
-        if (g.menu_open >= 0 || g.dialog != DlgNone) return HTCLIENT;
+        if (g.menu_open >= 0 || g.ctx.open || g.dialog != DlgNone) return HTCLIENT;
         if (g.gel.grip.contains(pt.x, pt.y)) return HTCLIENT;
         const int edge = 4;
         bool left = pt.x < edge, right = pt.x >= W - edge;

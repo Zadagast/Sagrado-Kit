@@ -6,6 +6,7 @@
 #include <string>
 
 #include "appearance.h"
+#include "text_field.h"
 
 int main(int argc, char **argv) {
     Appearance ap;
@@ -100,7 +101,11 @@ int main(int argc, char **argv) {
 
     cv.fill(compose, ap.c("primary.background"));
     Rect field{compose.x + 8, compose.y + 8, compose.w - 96, compose.h - 16};
-    paint_field(cv, ap, field, "Type a message…", true, true);
+    TextFieldState compose_st;
+    compose_st.doc.text = "Type a message…\nShift+Enter for a new line";
+    compose_st.doc.caret = compose_st.doc.anchor = compose_st.doc.text.size();
+    compose_st.focused = true;
+    paint_text_field(cv, ap, field, compose_st, true);
     paint_button(cv, ap, {compose.right() - 72, compose.y + 8, 64, compose.h - 16},
                  "Send", false, true);
 

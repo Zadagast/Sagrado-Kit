@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../../engine/appearance.h"
+#include "../../engine/clipboard.h"
 #include "../../engine/hfnt.h"
 #include "../../engine/text_doc.h"
 
@@ -273,37 +274,13 @@ void sync_about_font() {
 
 void set_status(const std::string &s) { g.status = s; }
 
-// --- Clipboard -------------------------------------------------------------
+// --- Clipboard (kit CF_TEXT) -----------------------------------------------
 
 void clipboard_set(const std::string &s) {
-    if (!OpenClipboard(g.hwnd)) return;
-    EmptyClipboard();
-    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, s.size() + 1);
-    if (h) {
-        char *p = (char *)GlobalLock(h);
-        if (p) {
-            std::memcpy(p, s.c_str(), s.size() + 1);
-            GlobalUnlock(h);
-            SetClipboardData(CF_TEXT, h);
-        }
-    }
-    CloseClipboard();
+    sagrado::clipboard_set(g.hwnd, s);
 }
 
-std::string clipboard_get() {
-    std::string out;
-    if (!OpenClipboard(g.hwnd)) return out;
-    HANDLE h = GetClipboardData(CF_TEXT);
-    if (h) {
-        const char *p = (const char *)GlobalLock(h);
-        if (p) {
-            out = p;
-            GlobalUnlock(h);
-        }
-    }
-    CloseClipboard();
-    return out;
-}
+std::string clipboard_get() { return sagrado::clipboard_get(g.hwnd); }
 
 // --- Layout / paint (main) -------------------------------------------------
 

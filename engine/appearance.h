@@ -1764,6 +1764,44 @@ inline bool popup_frame_usable(const SkinImage *frame) {
     return frame->w >= 7 && frame->h >= 7;
 }
 
+// Hot green / hot magenta typical of Hap transparency keys used as opaque fills.
+inline bool color_is_chroma_key(Color c) {
+    if (c.g >= 200 && c.r <= 60 && c.b <= 60) return true;
+    if (c.r >= 200 && c.b >= 200 && c.g <= 60) return true;
+    return false;
+}
+
+// Menu fill / item plates: reject empty, absurd sizes, blank stubs, and chroma
+// key plates (same spirit as popup_frame_usable). Failed → colour path only.
+inline bool menu_fill_art_usable(const SkinImage *img) {
+    if (!img || img->empty()) return false;
+    if (img->w < 3 || img->h < 3) return false;
+    if (img->w > 512 || img->h > 512) return false;
+    int samples = 0, chroma = 0;
+    int64_t sum = 0, sum2 = 0;
+    int step_x = std::max(1, img->w / 6);
+    int step_y = std::max(1, img->h / 6);
+    for (int y = 0; y < img->h; y += step_y) {
+        for (int x = 0; x < img->w; x += step_x) {
+            uint32_t p = img->at(x, y);
+            if ((p >> 24) < 128) continue;
+            Color c{uint8_t((p >> 16) & 255), uint8_t((p >> 8) & 255),
+                    uint8_t(p & 255)};
+            int lum = (int(c.r) + int(c.g) + int(c.b)) / 3;
+            sum += lum;
+            sum2 += lum * lum;
+            if (color_is_chroma_key(c)) ++chroma;
+            ++samples;
+        }
+    }
+    if (samples < 3) return false;
+    double mean = double(sum) / samples;
+    double var = double(sum2) / samples - mean * mean;
+    if (var < 40.0 && chroma * 2 >= samples) return false;
+    if (chroma * 5 >= samples * 3) return false; // ≥60% chroma samples
+    return true;
+}
+
 // Place a popup under `anchor` so it stays inside `win`. Prefers below-left;
 // if that clips the right edge, right-aligns to the anchor; may flip above.
 // `menu_h` may be an estimate (pad + count * kMenuItemH is fine).
@@ -1837,7 +1875,7 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
                 cv.blit_image(*pat, px, py);
     }
     const SkinImage *mbg = ap.art("menu.background");
-    if (mbg) {
+    if (menu_fill_art_usable(mbg)) {
         CanvasClip clip(cv, lay.items_bounds);
         cv.nine_slice(*mbg, lay.items_bounds);
     }
@@ -1887,8 +1925,9 @@ const char *pslot = dis ? "menu.item.pattern.disabled"
                                 : (is_hot ? "menu.item.pattern.hilited"
                                           : "menu.item.pattern.normal");
         const SkinImage *ipat = ap.art(pslot);
-        if (!ipat && is_hot) ipat = ap.art("menu.item.pattern.normal");
-        if (ipat && !ipat->empty() && ipat->w > 0 && ipat->h > 0) {
+        if (!menu_fill_art_usable(ipat) && is_hot)
+            ipat = ap.art("menu.item.pattern.normal");
+        if (menu_fill_art_usable(ipat)) {
             CanvasClip clip(cv, row);
             for (int py = row.y; py < row.bottom(); py += ipat->h)
                 for (int px = row.x; px < row.right(); px += ipat->w)
@@ -1904,10 +1943,10 @@ const char *pslot = dis ? "menu.item.pattern.disabled"
             const SkinImage *end = nullptr;
             if (i == 0) end = ap.art("menu.item.first_hilited");
             else if (i == count - 1) end = ap.art("menu.item.last_hilited");
-            if (end) item = end;
+            if (menu_fill_art_usable(end)) item = end;
         }
-        if (!item && is_hot) item = ap.art("menu.item.normal");
-        if (item) {
+        if (!menu_fill_art_usable(item) && is_hot) item = ap.art("menu.item.normal");
+        if (menu_fill_art_usable(item)) {
             cv.nine_slice(*item, row);
         } else if (is_hot) {
             cv.fill(row, ap.c("menu.hilite_background"));
