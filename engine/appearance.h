@@ -9,6 +9,7 @@
 
 #include "skin.h"
 #include "hap_skin.h"
+#include "text_layout.h"
 
 // RAII clip nest — intersects Canvas clip with `r`, restores on scope exit.
 struct CanvasClip {
@@ -2873,40 +2874,24 @@ inline Rect paint_icon(Canvas &cv, const Appearance &ap, int x, int y,
 }
 
 // Word-wrap `text` into `r` (honours '\n'). Returns line count painted.
+// Uses kit layout_lines — apps must not ship a private wrap loop.
 inline int paint_wrapped_text(Canvas &cv, Rect r, const char *text, Color ink) {
     if (!text || r.w <= 0 || r.h <= 0) return 0;
+    std::string body = text;
+    auto lines = layout_lines(cv, body, r.w, true);
     const int lh = cv.line_height();
+    int painted = 0;
     int y = r.y;
-    int lines = 0;
-    const char *p = text;
-    while (*p && y + lh <= r.bottom()) {
-        const char *eol = p;
-        while (*eol && *eol != '\n') ++eol;
-        const char *seg = p;
-        while (seg < eol && y + lh <= r.bottom()) {
-            int fit = 0, last_space = -1;
-            int wsum = 0;
-            for (int i = 0; seg + i < eol; ++i) {
-                char ch[2] = {seg[i], 0};
-                int cw = cv.text_width(ch);
-                if (wsum + cw > r.w && fit > 0) break;
-                wsum += cw;
-                fit = i + 1;
-                if (seg[i] == ' ') last_space = i;
-            }
-            if (fit == 0) fit = 1;
-            int take = (last_space > 0 && seg + fit < eol) ? last_space + 1 : fit;
-            std::string line(seg, seg + take);
-            while (!line.empty() && line.back() == ' ') line.pop_back();
-            cv.text(r.x, y, line.c_str(), ink);
-            y += lh;
-            ++lines;
-            seg += take;
-            while (seg < eol && *seg == ' ') ++seg;
-        }
-        p = (*eol == '\n') ? eol + 1 : eol;
+    CanvasClip clip(cv, r);
+    for (const auto &vl : lines) {
+        if (y + lh > r.bottom()) break;
+        std::string line = body.substr(vl.start, vl.len);
+        while (!line.empty() && line.back() == ' ') line.pop_back();
+        cv.text(r.x, y, line.c_str(), ink);
+        y += lh;
+        ++painted;
     }
-    return lines;
+    return painted;
 }
 
 enum class AlertKind { Note, Stop, Caution, Question };
@@ -3773,4 +3758,6 @@ inline KitPreviewLayout paint_kit_preview(Canvas &cv, const Appearance &ap_in,
     }
     return lay;
 }
+
+#include "text_view.h"
 

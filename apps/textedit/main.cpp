@@ -14,6 +14,7 @@
 
 #include "../../engine/appearance.h"
 #include "../../engine/hfnt.h"
+#include "../../engine/text_doc.h"
 
 namespace {
 
@@ -73,193 +74,32 @@ static const MenuDef kMenus[MenuCount] = {
 };
 static const MenuDef kWindowMenu = {kWindowItems, 4};
 
-// --- Document --------------------------------------------------------------
+// --- Document (kit TextDoc + app file path / Sort Lines) -------------------
 
-struct VisLine {
-    size_t start = 0;
-    size_t len = 0;
-};
-
-struct Doc {
-    std::string text;
-    size_t caret = 0;
-    size_t anchor = 0; // selection other end; equal → no selection
-    bool dirty = false;
-    std::string path;
-    std::string undo_text;
-    size_t undo_caret = 0;
-
-    size_t sel_lo() const { return std::min(caret, anchor); }
-    size_t sel_hi() const { return std::max(caret, anchor); }
-    bool has_sel() const { return caret != anchor; }
-
-    void push_undo() {
-        undo_text = text;
-        undo_caret = caret;
-    }
-
-    void undo() {
-        if (undo_text == text && undo_caret == caret) return;
-        std::string cur = text;
-        size_t cc = caret;
-        text = undo_text;
-        caret = anchor = undo_caret;
-        undo_text = cur;
-        undo_caret = cc;
-        dirty = true;
-    }
-
-    void replace_range(size_t lo, size_t hi, const std::string &ins) {
-        if (lo > text.size()) lo = text.size();
-        if (hi > text.size()) hi = text.size();
-        if (lo > hi) std::swap(lo, hi);
-        push_undo();
-        text.replace(lo, hi - lo, ins);
-        caret = anchor = lo + ins.size();
-        dirty = true;
-    }
-
-    void insert(const std::string &s) {
-        if (has_sel()) replace_range(sel_lo(), sel_hi(), s);
-        else replace_range(caret, caret, s);
-    }
-
-    void backspace() {
-        if (has_sel()) {
-            replace_range(sel_lo(), sel_hi(), "");
-            return;
-        }
-        if (caret == 0) return;
-        replace_range(caret - 1, caret, "");
-    }
-
-    void del_forward() {
-        if (has_sel()) {
-            replace_range(sel_lo(), sel_hi(), "");
-            return;
-        }
-        if (caret >= text.size()) return;
-        replace_range(caret, caret + 1, "");
-    }
-
-    void select_all() {
-        anchor = 0;
-        caret = text.size();
-    }
-
-    std::string selected() const {
-        if (!has_sel()) return {};
-        return text.substr(sel_lo(), sel_hi() - sel_lo());
-    }
-
-    void sort_lines() {
-        push_undo();
-        std::vector<std::string> lines;
-        size_t i = 0;
-        while (i <= text.size()) {
-            size_t nl = text.find('\n', i);
-            if (nl == std::string::npos) {
-                lines.push_back(text.substr(i));
-                break;
-            }
-            std::string line = text.substr(i, nl - i);
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            lines.push_back(line);
-            i = nl + 1;
-        }
-        std::sort(lines.begin(), lines.end());
-        std::string out;
-        for (size_t n = 0; n < lines.size(); ++n) {
-            if (n) out.push_back('\n');
-            out += lines[n];
-        }
-        text = std::move(out);
-        caret = anchor = 0;
-        dirty = true;
-    }
-};
-
-// Soft-wrap (or hard) visual lines for a given pixel width.
-inline std::vector<VisLine> layout_lines(const Canvas &cv, const std::string &text,
-                                         int wrap_w, bool soft_wrap) {
-    std::vector<VisLine> out;
-    if (wrap_w < 8) wrap_w = 8;
+void sort_doc_lines(TextDoc &doc) {
+    doc.push_undo();
+    std::vector<std::string> lines;
     size_t i = 0;
-    const size_t n = text.size();
-    while (i < n || (i == n && out.empty())) {
-        if (i >= n) {
-            out.push_back({i, 0});
+    while (i <= doc.text.size()) {
+        size_t nl = doc.text.find('\n', i);
+        if (nl == std::string::npos) {
+            lines.push_back(doc.text.substr(i));
             break;
         }
-        size_t line_end = text.find('\n', i);
-        if (line_end == std::string::npos) line_end = n;
-        size_t para = line_end; // exclusive content end (before \n)
-        // Drop CR before LF
-        size_t content_end = para;
-        if (content_end > i && text[content_end - 1] == '\r') --content_end;
-
-        if (!soft_wrap || wrap_w <= 0) {
-            out.push_back({i, content_end - i});
-            i = (para < n) ? para + 1 : n;
-            if (i >= n && para < n) out.push_back({n, 0}); // trailing newline → empty line
-            continue;
-        }
-
-        size_t pos = i;
-        while (pos < content_end) {
-            size_t start = pos;
-            int w = 0;
-            size_t last_break = start;
-            size_t p = start;
-            while (p < content_end) {
-                char ch = text[p];
-                char tmp[2] = {ch, 0};
-                int aw = cv.text_width(tmp);
-                if (w + aw > wrap_w && p > start) break;
-                w += aw;
-                ++p;
-                if (ch == ' ' || ch == '\t') last_break = p;
-            }
-            if (p < content_end && last_break > start) p = last_break;
-            if (p == start) p = start + 1; // at least one char
-            out.push_back({start, p - start});
-            pos = p;
-            while (pos < content_end && text[pos] == ' ') ++pos; // skip wrap spaces
-        }
-        if (pos == i) out.push_back({i, 0}); // empty paragraph
-        i = (para < n) ? para + 1 : n;
-        if (i >= n && para < n) out.push_back({n, 0});
+        std::string line = doc.text.substr(i, nl - i);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        lines.push_back(line);
+        i = nl + 1;
     }
-    if (out.empty()) out.push_back({0, 0});
-    return out;
-}
-
-inline int vis_index_at(const std::vector<VisLine> &lines, size_t offset) {
-    for (int i = 0; i < (int)lines.size(); ++i) {
-        size_t end = lines[i].start + lines[i].len;
-        if (offset < end || (offset == end && i + 1 == (int)lines.size()))
-            return i;
-        if (offset == end && i + 1 < (int)lines.size() &&
-            lines[i + 1].start > end)
-            return i; // at end of wrapped segment before next
-        if (offset <= lines[i].start) return i;
+    std::sort(lines.begin(), lines.end());
+    std::string out;
+    for (size_t n = 0; n < lines.size(); ++n) {
+        if (n) out.push_back('\n');
+        out += lines[n];
     }
-    return (int)lines.size() - 1;
-}
-
-inline size_t offset_at_xy(const Canvas &cv, const std::vector<VisLine> &lines,
-                           const std::string &text, int line, int x_in_line) {
-    if (lines.empty()) return 0;
-    line = std::clamp(line, 0, (int)lines.size() - 1);
-    const VisLine &vl = lines[size_t(line)];
-    int x = 0;
-    for (size_t i = 0; i < vl.len; ++i) {
-        char tmp[2] = {text[vl.start + i], 0};
-        int aw = cv.text_width(tmp);
-        if (x + aw / 2 >= x_in_line) return vl.start + i;
-        x += aw;
-    }
-    return vl.start + vl.len;
+    doc.text = std::move(out);
+    doc.caret = doc.anchor = 0;
+    doc.dirty = true;
 }
 
 // --- App state -------------------------------------------------------------
@@ -334,7 +174,8 @@ struct App {
     GelLayout gel{};
     MenuBarLayout menu_bar{};
     MenuLayout popup{};
-    Doc doc;
+    TextDoc doc;
+    std::string path; // file path — app-owned; kit TextDoc is the buffer
     FindState find;
     AboutState about;
 
@@ -404,7 +245,7 @@ std::string find_default_skin() {
 }
 
 std::string window_title() {
-    std::string name = g.doc.path.empty() ? "Untitled" : g.doc.path;
+    std::string name = g.path.empty() ? "Untitled" : g.path;
     auto slash = name.find_last_of("/\\");
     if (slash != std::string::npos) name = name.substr(slash + 1);
     if (g.doc.dirty) name += " *";
@@ -510,77 +351,15 @@ void layout_main() {
 }
 
 void paint_document(Canvas &cv) {
-    Appearance &ap = g.ap;
-    cv.fill(g.text_rect, ap.c("text.background"));
-    CanvasClip clip(cv, g.text_rect);
-
-    const int lh = cv.line_height();
-    const int page = std::max(1, (g.text_rect.h - 2 * kTextPad) / lh);
-    const size_t lo = g.doc.sel_lo();
-    const size_t hi = g.doc.sel_hi();
-    Color fg = ap.c("text.foreground");
-    Color hi_bg = ap.c("text.hilite_background");
-    Color hi_fg = ap.c("text.hilite_foreground");
-    Color caret_c = ap.c("text.insertion_point");
-
-    for (int row = 0; row < page; ++row) {
-        int li = g.scroll_y + row;
-        if (li < 0 || li >= (int)g.lines.size()) break;
-        const VisLine &vl = g.lines[size_t(li)];
-        int y = g.text_rect.y + kTextPad + row * lh;
-        int x = g.text_rect.x + kTextPad - g.scroll_x;
-
-        // Selection background per glyph
-        size_t a = vl.start;
-        size_t b = vl.start + vl.len;
-        size_t s0 = std::max(a, lo);
-        size_t s1 = std::min(b, hi);
-        if (s0 < s1) {
-            int x0 = x;
-            for (size_t i = a; i < s0; ++i) {
-                char t[2] = {g.doc.text[i], 0};
-                x0 += cv.text_width(t);
-            }
-            int x1 = x0;
-            for (size_t i = s0; i < s1; ++i) {
-                char t[2] = {g.doc.text[i], 0};
-                x1 += cv.text_width(t);
-            }
-            if (x1 == x0) x1 = x0 + 4; // empty line / end mark
-            cv.fill({x0, y, x1 - x0, lh}, hi_bg);
-        }
-
-        // Draw text (split around selection for hilite ink)
-        int pen = x;
-        for (size_t i = a; i < b; ++i) {
-            char t[2] = {g.doc.text[i], 0};
-            Color ink = (i >= lo && i < hi) ? hi_fg : fg;
-            cv.text(pen, y, t, ink);
-            pen += cv.text_width(t);
-        }
-
-        // Caret
-        if (g.focused && g.caret_on && g.menu_open < 0 && g.doc.caret >= a &&
-            g.doc.caret <= b &&
-            !(g.doc.caret == b && li + 1 < (int)g.lines.size() &&
-              g.lines[size_t(li + 1)].start == b && g.doc.caret == b &&
-              vl.len > 0 && li + 1 < (int)g.lines.size() &&
-              g.doc.caret == g.lines[size_t(li + 1)].start)) {
-            // Prefer the line that owns the caret start; at wrap boundary put
-            // caret on the next line when caret == next.start.
-            bool at_wrap_end = (g.doc.caret == b && vl.len > 0 &&
-                                li + 1 < (int)g.lines.size() &&
-                                g.lines[size_t(li + 1)].start == b);
-            if (!at_wrap_end) {
-                int cx = x;
-                for (size_t i = a; i < g.doc.caret; ++i) {
-                    char t[2] = {g.doc.text[i], 0};
-                    cx += cv.text_width(t);
-                }
-                cv.vline(cx, y, y + lh, caret_c);
-            }
-        }
-    }
+    TextEditorPaint ep;
+    ep.r = g.text_rect;
+    ep.pad = kTextPad;
+    ep.scroll_y = g.scroll_y;
+    ep.scroll_x = g.scroll_x;
+    ep.focused = g.focused;
+    ep.caret_on = g.caret_on;
+    ep.show_caret = g.menu_open < 0;
+    paint_text_editor(cv, g.ap, g.doc, g.lines, ep);
 }
 
 void paint_main() {
@@ -884,7 +663,7 @@ bool load_text_file(const std::string &path) {
         data.erase(0, 3);
     g.doc.push_undo();
     g.doc.text = std::move(data);
-    g.doc.path = path;
+    g.path = path;
     g.doc.caret = g.doc.anchor = 0;
     g.doc.dirty = false;
     g.scroll_y = g.scroll_x = 0;
@@ -897,7 +676,7 @@ bool save_text_file(const std::string &path) {
     if (!f) return false;
     std::fwrite(g.doc.text.data(), 1, g.doc.text.size(), f);
     std::fclose(f);
-    g.doc.path = path;
+    g.path = path;
     g.doc.dirty = false;
     set_status("Saved");
     return true;
@@ -917,8 +696,8 @@ void do_open() {
 
 void do_save_as() {
     char file[MAX_PATH] = "untitled.txt";
-    if (!g.doc.path.empty()) {
-        std::snprintf(file, sizeof(file), "%s", g.doc.path.c_str());
+    if (!g.path.empty()) {
+        std::snprintf(file, sizeof(file), "%s", g.path.c_str());
     }
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
@@ -932,14 +711,14 @@ void do_save_as() {
 }
 
 void do_save() {
-    if (g.doc.path.empty()) do_save_as();
-    else save_text_file(g.doc.path);
+    if (g.path.empty()) do_save_as();
+    else save_text_file(g.path);
 }
 
 void do_new() {
     g.doc.push_undo();
     g.doc.text.clear();
-    g.doc.path.clear();
+    g.path.clear();
     g.doc.caret = g.doc.anchor = 0;
     g.doc.dirty = false;
     g.scroll_y = g.scroll_x = 0;
@@ -1026,7 +805,7 @@ void run_menu_command(int menu, int item) {
             if (g.doc.has_sel())
                 g.doc.replace_range(g.doc.sel_lo(), g.doc.sel_hi(), "");
         } else if (item == 7) g.doc.select_all();
-        else if (item == 8) g.doc.sort_lines();
+        else if (item == 8) sort_doc_lines(g.doc);
     } else if (menu == MenuFind) {
         if (item == 0) show_find(false);
         else if (item == 1) do_find_next();

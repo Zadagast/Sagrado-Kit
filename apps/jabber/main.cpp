@@ -1123,7 +1123,7 @@ void paint() {
         tx += tw + 4;
     }
 
-    // Transcript (+ sticky subject for MUC)
+    // Transcript (+ sticky subject for MUC) — kit soft-wrap, not elide.
     cv.fill(g.transcript_r, g.ap.c("text.background"));
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) {
         std::string key = g.tabs[g.active_tab].jid;
@@ -1138,19 +1138,47 @@ void paint() {
                 if (it != g.client.muc_subjects.end()) subject = it->second;
             }
         }
+        const int pad = 6;
+        const int lh = cv.line_height();
+        const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
         int top = g.transcript_r.y + 4;
         if (muc && !subject.empty()) {
             std::string sub = "Topic: " + subject;
-            cv.text_elided(g.transcript_r.x + 6, top, sub.c_str(),
-                           g.transcript_r.w - 12, g.ap.c("menu.disable_label"));
-            top += cv.line_height() + 4;
+            auto sub_lines = layout_lines(cv, sub, wrap_w, true);
+            int sy = top;
+            for (const auto &vl : sub_lines) {
+                cv.text(g.transcript_r.x + pad, sy,
+                        sub.substr(vl.start, vl.len).c_str(),
+                        g.ap.c("menu.disable_label"));
+                sy += lh;
+            }
+            top = sy + 4;
             cv.hline(g.transcript_r.x + 4, g.transcript_r.right() - 4, top - 2,
                      g.ap.c("list.separator"));
         }
-        CanvasClip clip(cv, {g.transcript_r.x, top, g.transcript_r.w,
-                             g.transcript_r.bottom() - top});
-        int ty = top - g.chat_scroll;
-        int clh = cv.line_height() + 2;
+        Rect body{g.transcript_r.x, top, g.transcript_r.w,
+                  g.transcript_r.bottom() - top};
+        // Measure content height, clamp scroll, then paint.
+        int content_h = 0;
+        for (auto &ln : lines) {
+            std::string text;
+            if (ln.system) text = ln.body;
+            else if (muc) {
+                std::string who = ln.mine ? "You" : ln.from;
+                if (who.empty()) who = "?";
+                text = who + ": " + ln.body;
+            } else {
+                std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+                text = who + ": " + ln.body;
+            }
+            content_h += text_content_height(layout_lines(cv, text, wrap_w, true), lh);
+            content_h += 2; // gap between messages
+        }
+        int max_scroll = std::max(0, content_h - std::max(0, body.h));
+        g.chat_scroll = std::clamp(g.chat_scroll, 0, max_scroll);
+
+        CanvasClip clip(cv, body);
+        int ty = body.y - g.chat_scroll;
         for (auto &ln : lines) {
             Color ink = ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
             if (ln.file) ink = g.ap.c("menu.hilite_label");
@@ -1159,7 +1187,6 @@ void paint() {
             if (ln.system) {
                 text = ln.body;
             } else if (muc) {
-                // from is already occupant nick for groupchat lines
                 std::string who = ln.mine ? "You" : ln.from;
                 if (who.empty()) who = "?";
                 text = who + ": " + ln.body;
@@ -1167,9 +1194,14 @@ void paint() {
                 std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
                 text = who + ": " + ln.body;
             }
-            cv.text_elided(g.transcript_r.x + 6, ty, text.c_str(),
-                           g.transcript_r.w - 12, ink);
-            ty += clh;
+            auto vlines = layout_lines(cv, text, wrap_w, true);
+            for (const auto &vl : vlines) {
+                if (ty + lh > body.y && ty < body.bottom())
+                    cv.text(body.x + pad, ty, text.substr(vl.start, vl.len).c_str(),
+                            ink);
+                ty += lh;
+            }
+            ty += 2;
         }
     } else {
         cv.text(g.transcript_r.x + 12, g.transcript_r.y + 12,

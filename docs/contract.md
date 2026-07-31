@@ -175,12 +175,16 @@ Same shape as Haxial and Sagrado `native/`. No OS widgets, no CSS, no web host.
 
 **Sagrado TextEdit** (`apps/textedit/`) is the reference consumer — the bar for
 every later Sagrado app. Copy its shape; do not invent a parallel UI stack.
+Its document buffer and wrap/paint live in the kit (`TextDoc`, `layout_lines`,
+`paint_text_editor`); the app is the thin shell (files, Find, menus).
 **Sagrado Jabber** (`apps/jabber/`) is the second consumer (IM + XMPP); see
-[`docs/jabber.md`](jabber.md).
+[`docs/jabber.md`](jabber.md). Chat transcripts soft-wrap through the same kit
+layout (`paint_text_view` / `layout_lines`), not `text_elided`.
 
 | Rule | Meaning |
 |---|---|
-| Kit paints everything | Gel, menus, fields, scrollbars, alerts — `paint_*` into a `Canvas`, then blit. No OS widgets, no private colour tables. |
+| Kit paints everything | Gel, menus, fields, scrollbars, alerts, **text** — `paint_*` into a `Canvas`, then blit. No OS widgets, no private colour tables. |
+| Kit owns plain text | Soft/hard wrap (`text_layout.h`), buffer (`TextDoc`), `paint_text_view` / `paint_text_editor`. Apps do not ship private wrap loops or Doc types. |
 | One shared `Appearance` | All gels in the process load the same skin; switch live when the user picks one. |
 | Ooze Gel owns the frame | Title / hatch / Window Menu / close·zoom·min / grow box are kit chrome. Host decorations stay off (especially under Wine). |
 | Clip, don’t hide | Narrow windows clip menu titles and title text. No hamburger / overflow chrome. |

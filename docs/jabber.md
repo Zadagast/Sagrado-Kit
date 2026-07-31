@@ -35,7 +35,7 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    click → Sign On). When online, click your avatar (or Buddy → Set Picture…) to
    change your icon — published as your vCard photo (max ~96 KB).
 2. **Left Buddies** — online first; buddy icon + presence mark + name + status text
-3. **Center** — IM tabs, transcript, compose + Send
+3. **Center** — IM tabs, soft-wrapped transcript (kit `layout_lines`), compose + Send
 4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 5. **Status strip** — “Signed on as …”, presence alerts, upload progress
 6. **MUC** — full-height “In room” rail beside transcript **and** compose; sticky topic
