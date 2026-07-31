@@ -11,7 +11,7 @@ EDITOR   := $(BUILD)/SagradoKitEditor.exe
 TEXTEDIT := $(BUILD)/SagradoTextEdit.exe
 JABBER   := $(BUILD)/SagradoJabber.exe
 JABBER_CONNECT_SMOKE := $(BUILD)/jabber_connect_smoke.exe
-JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32
+JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32 -lshell32
 include apps/jabber/mbedtls_sources.mk
 MBEDTLS_LIB := $(BUILD)/libmbedtls_jabber.a
 MBEDTLS_CFLAGS := -O2 -Wall \

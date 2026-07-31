@@ -39,8 +39,17 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 5. **Status strip** — “Signed on as …”, presence alerts, upload progress
 6. **MUC** — occupants column on room tabs; sticky topic under the transcript top;
    Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
+7. **System tray** — close / minimize hides to the notification area; tray menu has
+   Open / Sign On / Sign Off / Quit; inbound IM can balloon while hidden
 
 Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_menu` — no OS widgets for identity.
+
+## Auto join server
+
+On launch, if `accounts.txt` has a remembered JID, **Sign On** opens with that name
+and focus on the password field — passwords are still never stored. Enter the
+password to join the server (and any bookmarked autojoin rooms). Quit from
+**File → Quit** or the tray menu; the gel close box only hides to the tray.
 
 ## Chat rooms (everyday MUC)
 

@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <commdlg.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -35,7 +36,9 @@ constexpr int kMaxRecentAccounts = 8; // JIDs only — never passwords
 
 enum : UINT {
     WM_JABBER_EVENT = WM_APP + 40,
+    WM_TRAYICON = WM_APP + 41,
 };
+constexpr UINT kTrayId = 1;
 
 static const char *kMenuTitles[] = {"File", "Buddy", "Chat", "Appearance", "Help"};
 enum MenuId : int {
@@ -186,6 +189,9 @@ struct App {
     Rect identity_r{}, avatar_r{}, presence_r{}, status_field_r{};
     Rect roster_r{}, tabs_r{}, transcript_r{}, compose_r{}, status_r{};
     Rect btn_send{}, occ_r{}, progress_r{};
+
+    bool tray_added = false;
+    bool in_tray = false; // window hidden; live in the notification area
 };
 
 App g;
@@ -219,7 +225,121 @@ std::string find_default_skin() {
     return {};
 }
 
-void set_status(const std::string &s) { g.status = s; }
+void tray_update_tip();
+void tray_balloon(const std::string &title, const std::string &body);
+void open_sign_on();
+void redraw();
+
+void set_status(const std::string &s) {
+    g.status = s;
+    tray_update_tip();
+}
+
+void tray_add() {
+    if (g.tray_added || !g.hwnd) return;
+    NOTIFYICONDATAA nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g.hwnd;
+    nid.uID = kTrayId;
+    nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+    nid.uCallbackMessage = WM_TRAYICON;
+    nid.hIcon = LoadIconA(nullptr, IDI_APPLICATION);
+    lstrcpynA(nid.szTip, "Sagrado Jabber", sizeof(nid.szTip));
+    if (Shell_NotifyIconA(NIM_ADD, &nid)) g.tray_added = true;
+}
+
+void tray_remove() {
+    if (!g.tray_added || !g.hwnd) return;
+    NOTIFYICONDATAA nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g.hwnd;
+    nid.uID = kTrayId;
+    Shell_NotifyIconA(NIM_DELETE, &nid);
+    g.tray_added = false;
+}
+
+void tray_update_tip() {
+    if (!g.tray_added || !g.hwnd) return;
+    std::string tip = "Sagrado Jabber";
+    if (g.client.state == jabber::ConnState::Online && !g.client.jid.empty())
+        tip = g.client.jid + " — Sagrado Jabber";
+    else if (!g.status.empty())
+        tip = g.status.size() > 120 ? g.status.substr(0, 117) + "…" : g.status;
+    NOTIFYICONDATAA nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g.hwnd;
+    nid.uID = kTrayId;
+    nid.uFlags = NIF_TIP;
+    lstrcpynA(nid.szTip, tip.c_str(), sizeof(nid.szTip));
+    Shell_NotifyIconA(NIM_MODIFY, &nid);
+}
+
+void tray_balloon(const std::string &title, const std::string &body) {
+    if (!g.tray_added || !g.hwnd) return;
+    NOTIFYICONDATAA nid{};
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = g.hwnd;
+    nid.uID = kTrayId;
+    nid.uFlags = NIF_INFO;
+    nid.dwInfoFlags = NIIF_INFO;
+    nid.uTimeout = 8000;
+    lstrcpynA(nid.szInfoTitle, title.c_str(), sizeof(nid.szInfoTitle));
+    lstrcpynA(nid.szInfo, body.c_str(), sizeof(nid.szInfo));
+    Shell_NotifyIconA(NIM_MODIFY, &nid);
+}
+
+void hide_to_tray() {
+    if (!g.hwnd) return;
+    if (!g.tray_added) tray_add();
+    ShowWindow(g.hwnd, SW_HIDE);
+    g.in_tray = true;
+    tray_update_tip();
+}
+
+void show_from_tray() {
+    if (!g.hwnd) return;
+    ShowWindow(g.hwnd, SW_SHOW);
+    ShowWindow(g.hwnd, SW_RESTORE);
+    SetForegroundWindow(g.hwnd);
+    g.in_tray = false;
+    redraw();
+}
+
+void quit_app() {
+    tray_remove();
+    g.client.disconnect();
+    PostQuitMessage(0);
+}
+
+void tray_popup_menu() {
+    POINT pt{};
+    GetCursorPos(&pt);
+    HMENU menu = CreatePopupMenu();
+    if (!menu) return;
+    AppendMenuA(menu, MF_STRING, 1, "Open Sagrado Jabber");
+    AppendMenuA(menu, MF_STRING, 2, "Sign On...");
+    AppendMenuA(menu, MF_STRING, 3, "Sign Off");
+    AppendMenuA(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuA(menu, MF_STRING, 4, "Quit");
+    SetForegroundWindow(g.hwnd);
+    int cmd = (int)TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y,
+                                  0, g.hwnd, nullptr);
+    DestroyMenu(menu);
+    PostMessageA(g.hwnd, WM_NULL, 0, 0);
+    if (cmd == 1) {
+        show_from_tray();
+    } else if (cmd == 2) {
+        show_from_tray();
+        open_sign_on();
+        redraw();
+    } else if (cmd == 3) {
+        g.client.disconnect();
+        set_status("Signed off");
+        redraw();
+    } else if (cmd == 4) {
+        quit_app();
+    }
+}
 
 std::string find_providers_path() {
     std::string base = exe_dir();
@@ -1098,13 +1218,13 @@ void run_menu(int menu, int row) {
         return;
     }
     if (menu == MenuWindow) {
-        if (row == 0) ShowWindow(g.hwnd, SW_MINIMIZE);
+        if (row == 0) hide_to_tray();
         else if (row == 1) {
             WINDOWPLACEMENT wp{};
             wp.length = sizeof(wp);
             GetWindowPlacement(g.hwnd, &wp);
             ShowWindow(g.hwnd, wp.showCmd == SW_MAXIMIZE ? SW_RESTORE : SW_MAXIMIZE);
-        } else if (row == 3) PostQuitMessage(0);
+        } else if (row == 3) hide_to_tray();
         return;
     }
     if (menu == MenuFile) {
@@ -1124,7 +1244,10 @@ void run_menu(int menu, int row) {
         } else if (row == 2) {
             g.client.disconnect();
             set_status("Signed off");
-        } else if (row == 4) PostQuitMessage(0);
+        } else if (row == 4) {
+            quit_app();
+            return;
+        }
     } else if (menu == MenuBuddy) {
         if (row == 0) {
             g.dialog = DlgAddBuddy;
@@ -1571,7 +1694,7 @@ void mouse_up(int x, int y) {
         return;
     }
     if (g.drag == DragClose) {
-        if (g.gel.close_box.contains(x, y)) PostQuitMessage(0);
+        if (g.gel.close_box.contains(x, y)) hide_to_tray();
         g.pressed_box = 0;
         g.drag = DragNone;
         redraw();
@@ -1590,7 +1713,7 @@ void mouse_up(int x, int y) {
         return;
     }
     if (g.drag == DragMin) {
-        if (g.gel.min_box.contains(x, y)) ShowWindow(g.hwnd, SW_MINIMIZE);
+        if (g.gel.min_box.contains(x, y)) hide_to_tray();
         g.pressed_box = 0;
         g.drag = DragNone;
         redraw();
@@ -1742,11 +1865,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 if (!muc) {
                     ding();
                     set_status("You've got mail from " + jabber::jid_node(e->jid));
+                    if (g.in_tray || !IsWindowVisible(g.hwnd))
+                        tray_balloon("You've Got Mail",
+                                     jabber::jid_node(e->jid) + ": " + e->text);
                 } else {
                     set_status(jabber::jid_node(e->jid) + ": " + e->text);
                 }
             }
         }
+        if (e->type == jabber::ClientEvent::State ||
+            e->type == jabber::ClientEvent::Identity)
+            tray_update_tip();
         if (e->type == jabber::ClientEvent::MucSubject) {
             open_tab(e->jid, true);
         }
@@ -1917,7 +2046,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_NCCALCSIZE:
         return 0;
+    case WM_TRAYICON:
+        if (lp == WM_LBUTTONDBLCLK || lp == WM_LBUTTONUP) {
+            show_from_tray();
+        } else if (lp == WM_RBUTTONUP) {
+            tray_popup_menu();
+        }
+        return 0;
     case WM_DESTROY:
+        tray_remove();
         g.client.disconnect();
         PostQuitMessage(0);
         return 0;
@@ -1951,6 +2088,13 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int show) {
                      SWP_NOZORDER | SWP_NOACTIVATE);
     }
     UpdateWindow(g.hwnd);
+    tray_add();
+    // Auto join server: remembered JID → Sign On dialog (password still asked).
+    if (!g.recent_jids.empty()) {
+        open_sign_on();
+        set_status("Enter password to join " + g.recent_jids[0]);
+        redraw();
+    }
     MSG msg;
     while (GetMessageA(&msg, nullptr, 0, 0)) {
         TranslateMessage(&msg);
