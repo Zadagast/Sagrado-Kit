@@ -778,29 +778,41 @@ private:
     }
 
     bool auth_flow_from_tcp() {
-        set_state(ConnState::Connecting, "Connecting to " + host_ + "…");
+        set_state(ConnState::Connecting, "Opening stream to " + host_ + "…");
         if (!open_stream(false)) {
-            set_state(ConnState::Error, "No stream from server");
+            set_state(ConnState::Error,
+                      sock_.last_error.empty() ? "No stream from server"
+                                               : sock_.last_error);
             return false;
         }
         if (stream_buf_.find("starttls") != std::string::npos) {
+            set_state(ConnState::Connecting, "Starting TLS…");
             sock_.send_all(
                 "<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>");
             if (!read_until("proceed")) {
-                set_state(ConnState::Error, "STARTTLS failed");
+                set_state(ConnState::Error,
+                          sock_.last_error.empty() ? "STARTTLS failed"
+                                                   : sock_.last_error);
                 return false;
             }
             stream_buf_.clear();
+            set_state(ConnState::Connecting, "Securing connection…");
             if (!sock_.start_tls(host_)) {
-                set_state(ConnState::Error, "TLS handshake failed");
+                set_state(ConnState::Error,
+                          sock_.last_error.empty() ? "TLS handshake failed"
+                                                   : sock_.last_error);
                 return false;
             }
+            set_state(ConnState::Connecting, "Opening secure stream…");
             if (!open_stream(true)) {
-                set_state(ConnState::Error, "TLS stream failed");
+                set_state(ConnState::Error,
+                          sock_.last_error.empty() ? "TLS stream failed"
+                                                   : sock_.last_error);
                 return false;
             }
         }
         if (mode_ == Mode::Register) return register_flow();
+        set_state(ConnState::Connecting, "Signing on…");
         if (stream_buf_.find("PLAIN") == std::string::npos) {
             set_state(ConnState::Error, "Server does not offer PLAIN auth");
             return false;
@@ -828,8 +840,10 @@ private:
         set_state(ConnState::Connecting, "Connecting to " + host_ + "…");
         if (!sock_.connect_tcp(host_, 5222)) {
             set_state(ConnState::Error,
-                      "Could not reach " + host_ +
-                          ". Check your network, or pick another public server.");
+                      sock_.last_error.empty()
+                          ? ("Could not reach " + host_ +
+                             ". Check your network, or pick another public server.")
+                          : sock_.last_error);
             return;
         }
         stream_buf_.clear();

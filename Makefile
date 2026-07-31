@@ -10,9 +10,20 @@ BUILD    := build
 EDITOR   := $(BUILD)/SagradoKitEditor.exe
 TEXTEDIT := $(BUILD)/SagradoTextEdit.exe
 JABBER   := $(BUILD)/SagradoJabber.exe
-JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lsecur32 -lcrypt32
+JABBER_CONNECT_SMOKE := $(BUILD)/jabber_connect_smoke.exe
+JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32
+include apps/jabber/mbedtls_sources.mk
+MBEDTLS_LIB := $(BUILD)/libmbedtls_jabber.a
+MBEDTLS_CFLAGS := -O2 -Wall \
+	-Iapps/jabber/xmpp \
+	-Iapps/jabber/third_party/mbedtls/include \
+	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
+CC_MINGW := i686-w64-mingw32-gcc
+JABBER_CXXFLAGS := $(CXXFLAGS) -Iapps/jabber -Iapps/jabber/xmpp \
+	-Iapps/jabber/third_party/mbedtls/include \
+	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
 
-.PHONY: all clean run run-textedit run-jabber skins smoke
+.PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke
 
 all: $(EDITOR) $(TEXTEDIT) $(JABBER) skins
 
@@ -25,9 +36,28 @@ $(EDITOR): editor/main.cpp engine/*.h | $(BUILD)
 $(TEXTEDIT): apps/textedit/main.cpp engine/*.h | $(BUILD)
 	$(CXX) $(CXXFLAGS) apps/textedit/main.cpp -o $@ $(LDFLAGS)
 
-$(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h apps/jabber/third_party/stb_image.h engine/*.h | $(BUILD)
-	$(CXX) $(CXXFLAGS) -Iapps/jabber apps/jabber/main.cpp -o $@ $(JABBER_LDFLAGS)
+$(MBEDTLS_LIB): $(MBEDTLS_SRCS) apps/jabber/xmpp/jabber_mbedtls_config.h | $(BUILD)
+	@mkdir -p $(BUILD)/mbedtls
+	@for f in $(MBEDTLS_SRCS); do \
+	  obj=$(BUILD)/mbedtls/$$(basename $$f .c).o; \
+	  echo "CC $$f"; \
+	  $(CC_MINGW) $(MBEDTLS_CFLAGS) -c $$f -o $$obj || exit 1; \
+	done
+	i686-w64-mingw32-ar rcs $@ $(BUILD)/mbedtls/*.o
+
+$(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h apps/jabber/third_party/stb_image.h \
+           $(MBEDTLS_LIB) engine/*.h | $(BUILD)
+	$(CXX) $(JABBER_CXXFLAGS) apps/jabber/main.cpp $(MBEDTLS_LIB) -o $@ $(JABBER_LDFLAGS)
 	cp -f apps/jabber/providers.txt $(BUILD)/providers.txt
+
+$(JABBER_CONNECT_SMOKE): apps/jabber/connect_smoke.cpp apps/jabber/xmpp/*.h $(MBEDTLS_LIB) | $(BUILD)
+	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/connect_smoke.cpp $(MBEDTLS_LIB) \
+	  -o $@ -lws2_32 -lcrypt32
+
+jabber-connect-smoke: $(JABBER_CONNECT_SMOKE)
+	@WINE=$$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null); \
+	if [ -z "$$WINE" ]; then echo "wine not found"; exit 127; fi; \
+	$$WINE $(JABBER_CONNECT_SMOKE) yax.im
 
 # Copy example skins next to the binary for Load dialog convenience.
 skins: | $(BUILD)

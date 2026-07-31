@@ -49,13 +49,14 @@ Jabber is federated: a screen name is a **JID** (`name@server`).
 | Piece | Choice |
 |---|---|
 | UI thread | Win32 + Appearance Engine canvas |
-| XMPP | Thin C++ client (`apps/jabber/xmpp/`) — Winsock + Schannel STARTTLS |
+| XMPP | Thin C++ client (`apps/jabber/xmpp/`) — Winsock + **mbedTLS** STARTTLS |
 | HTTPS | WinHTTP (CAPTCHA media + HTTP Upload PUT) |
 | Images | `stb_image` → `SkinImage` for gel blit |
 | Events | Worker thread → `WM_JABBER_EVENT` on the UI queue |
 
-libstrophe / OpenSSL were skipped for the MinGW cross-build: Schannel + WinHTTP
-cover the same product surface (TLS XMPP, CAPTCHA fetch, upload PUT).
+STARTTLS uses vendored mbedTLS (Wine-safe; select-based deadlines). WinHTTP
+covers CAPTCHA fetch and HTTP Upload PUT. libstrophe / system OpenSSL are not
+required for the MinGW cross-build.
 
 ## Build / run
 
@@ -63,6 +64,7 @@ cover the same product surface (TLS XMPP, CAPTCHA fetch, upload PUT).
 make                 # includes SagradoJabber.exe
 make run-jabber      # Wine
 make smoke           # includes jabber paint smoke (no network)
+make jabber-connect-smoke   # Wine: TCP + mbedTLS STARTTLS + register form (yax.im)
 ```
 
 Home servers live in `apps/jabber/providers.txt` (copied next to the exe).
