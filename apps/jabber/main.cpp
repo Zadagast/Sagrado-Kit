@@ -7,6 +7,7 @@
 #include <shellapi.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -54,7 +55,7 @@ static const char *kFileItems[] = {
     "Sign On...", "Get an Account...", "Sign Off", "-", "Quit",
 };
 static const char *kBuddyItems[] = {
-    "Add Buddy...", "-", "Available", "Away", "Busy", "Invisible",
+    "Add Buddy...", "Set Picture...", "-", "Available", "Away", "Busy", "Invisible",
 };
 static const char *kChatItems[] = {
     "Send File...",
@@ -78,7 +79,7 @@ struct MenuDef {
     int count;
 };
 static const MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 6}, {kChatItems, 7},
+    {kFileItems, 5}, {kBuddyItems, 7}, {kChatItems, 7},
     {kAppearanceItems, 2}, {kHelpItems, 1},
 };
 
@@ -629,6 +630,47 @@ void paint_presence_menu_marks(Canvas &cv, const MenuLayout &lay) {
     }
 }
 
+std::string mime_for_path(const std::string &path) {
+    std::string lower = path;
+    for (char &c : lower) c = (char)std::tolower((unsigned char)c);
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".png") == 0)
+        return "image/png";
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".gif") == 0)
+        return "image/gif";
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".bmp") == 0)
+        return "image/bmp";
+    if (lower.size() >= 5 && lower.compare(lower.size() - 5, 5, ".jpeg") == 0)
+        return "image/jpeg";
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, ".jpg") == 0)
+        return "image/jpeg";
+    return "image/png";
+}
+
+void pick_and_set_picture() {
+    if (g.client.state != jabber::ConnState::Online) {
+        set_status("Sign on first");
+        return;
+    }
+    OPENFILENAMEA ofn{};
+    char file[MAX_PATH] = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g.hwnd;
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter =
+        "Pictures (*.png;*.jpg;*.jpeg;*.gif;*.bmp)\0*.png;*.jpg;*.jpeg;*.gif;*.bmp\0"
+        "All Files\0*.*\0";
+    ofn.Flags = OFN_FILEMUSTEXIST;
+    if (!GetOpenFileNameA(&ofn)) return;
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        set_status("Could not open picture");
+        return;
+    }
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), {});
+    g.client.set_own_photo(data, mime_for_path(file));
+}
+
 void paint_avatar_tile(Canvas &cv, const Appearance &ap, Rect r, const SkinImage *img,
                        const std::string &initials) {
     cv.fill(r, ap.c("list.background"));
@@ -1036,12 +1078,21 @@ void paint() {
             (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddies[i].jid))
             ink = g.ap.c("list.hilite_foreground");
         CanvasClip clip(cv, g.roster_r);
-        // Presence mark
-        Rect dot{row.x + 6, row.y + (row.h - 8) / 2, 8, 8};
+        constexpr int kAv = 28;
+        Rect av{row.x + 4, row.y + (row.h - kAv) / 2, kAv, kAv};
+        std::string initials =
+            buddies[i].name.empty()
+                ? jabber::jid_node(buddies[i].jid).substr(0, 1)
+                : buddies[i].name.substr(0, 1);
+        const SkinImage *aimg =
+            buddies[i].avatar.empty() ? nullptr : &buddies[i].avatar;
+        paint_avatar_tile(cv, g.ap, av, aimg, initials);
+        Rect dot{av.right() - 8, av.bottom() - 8, 8, 8};
         cv.fill(dot, presence_color(g.ap, buddies[i].show));
+        cv.frame(dot, g.ap.c("list.separator"));
         std::string lab =
             buddies[i].name.empty() ? buddies[i].jid : buddies[i].name;
-        int text_x = dot.right() + 6;
+        int text_x = av.right() + 6;
         int text_w = row.right() - 4 - text_x;
         cv.text_elided(text_x, row.y + 4, lab.c_str(), text_w, ink);
         if (!buddies[i].status.empty()) {
@@ -1263,13 +1314,15 @@ void run_menu(int menu, int row) {
         if (row == 0) {
             g.dialog = DlgAddBuddy;
             g.focus_field = 0;
-        } else if (row == 2)
+        } else if (row == 1) {
+            pick_and_set_picture();
+        } else if (row == 3)
             g.client.set_show(jabber::Show::Chat);
-        else if (row == 3)
-            g.client.set_show(jabber::Show::Away);
         else if (row == 4)
-            g.client.set_show(jabber::Show::Dnd);
+            g.client.set_show(jabber::Show::Away);
         else if (row == 5)
+            g.client.set_show(jabber::Show::Dnd);
+        else if (row == 6)
             g.client.set_show(jabber::Show::Unavailable);
     } else if (menu == MenuChat) {
         if (row == 0) {
@@ -1659,6 +1712,11 @@ void mouse_down(int x, int y) {
     if (g.identity_r.h > 0 && g.identity_r.contains(x, y)) {
         if (g.client.state != jabber::ConnState::Online) {
             open_sign_on();
+            redraw();
+            return;
+        }
+        if (g.avatar_r.contains(x, y)) {
+            pick_and_set_picture();
             redraw();
             return;
         }

@@ -4,10 +4,13 @@
 #include "image_dec.h"
 #include "socket_tls.h"
 
+#include <mbedtls/sha1.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <condition_variable>
+#include <cstdio>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -154,6 +157,40 @@ inline bool jid_ieq(const std::string &a, const std::string &b) {
     return true;
 }
 
+inline std::string sha1_hex(const uint8_t *data, size_t len) {
+    unsigned char dig[20];
+    if (mbedtls_sha1(data, len, dig) != 0) return {};
+    char hex[41];
+    for (int i = 0; i < 20; ++i)
+        std::snprintf(hex + i * 2, 3, "%02x", dig[i]);
+    return std::string(hex, 40);
+}
+
+inline std::string sha1_hex(const std::vector<uint8_t> &data) {
+    return sha1_hex(data.data(), data.size());
+}
+
+// Remove <PHOTO>…</PHOTO> / self-closing PHOTO from a vCard fragment.
+inline std::string vcard_strip_photo(std::string vcard) {
+    for (;;) {
+        size_t a = vcard.find("<PHOTO");
+        if (a == std::string::npos) a = vcard.find("<photo");
+        if (a == std::string::npos) break;
+        size_t gt = vcard.find('>', a);
+        if (gt == std::string::npos) break;
+        if (gt > a && vcard[gt - 1] == '/') {
+            vcard.erase(a, gt + 1 - a);
+            continue;
+        }
+        size_t b = vcard.find("</PHOTO>", gt);
+        size_t b2 = vcard.find("</photo>", gt);
+        if (b == std::string::npos || (b2 != std::string::npos && b2 < b)) b = b2;
+        if (b == std::string::npos) break;
+        vcard.erase(a, b + 8 - a);
+    }
+    return vcard;
+}
+
 inline ClientEvent make_event(ClientEvent::Type t, const std::string &text = {},
                               const std::string &jid = {}, int progress = 0) {
     ClientEvent e;
@@ -281,6 +318,7 @@ public:
     std::string own_status;
     std::string own_nick;
     SkinImage own_avatar;
+    static constexpr size_t kMaxPhotoBytes = 96 * 1024;
 
     using EventFn = std::function<void(const ClientEvent &)>;
     EventFn on_event;
@@ -302,6 +340,10 @@ public:
             muc_subjects.clear();
             muc_rooms.clear();
             conference_host.clear();
+            own_vcard_xml_.clear();
+            own_photo_hash_.clear();
+            pending_photo_bytes_.clear();
+            pending_photo_mime_.clear();
             vcard_inflight_.clear();
             while (!vcard_queue_.empty()) vcard_queue_.pop();
         }
@@ -534,6 +576,70 @@ public:
         queue_send(iq);
     }
 
+    // Publish own icon via XEP-0054 vCard PHOTO (AIM-shaped Set Picture).
+    bool set_own_photo(const std::vector<uint8_t> &bytes, const std::string &mime_in) {
+        if (bytes.empty()) {
+            emit(make_event(ClientEvent::StatusText, "No image selected"));
+            return false;
+        }
+        if (bytes.size() > kMaxPhotoBytes) {
+            emit(make_event(ClientEvent::StatusText, "Picture too large (max 96 KB)"));
+            return false;
+        }
+        SkinImage av;
+        if (!decode_image_vec(bytes, av)) {
+            emit(make_event(ClientEvent::StatusText, "Could not read that image"));
+            return false;
+        }
+        std::string mime = mime_in.empty() ? "image/png" : mime_in;
+        std::string hash = sha1_hex(bytes);
+        std::string nick;
+        std::string cached;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            own_avatar = std::move(av);
+            own_photo_hash_ = hash;
+            pending_photo_bytes_ = bytes;
+            pending_photo_mime_ = mime;
+            nick = own_nick.empty() ? jid_node(jid) : own_nick;
+            cached = own_vcard_xml_;
+        }
+        emit(make_event(ClientEvent::Identity));
+        emit(make_event(ClientEvent::StatusText, "Updating picture…"));
+
+        std::string photo =
+            "<PHOTO><TYPE>" + xml_escape(mime) + "</TYPE><BINVAL>" +
+            b64(std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size())) +
+            "</BINVAL></PHOTO>";
+        std::string vcard;
+        if (!cached.empty()) {
+            vcard = vcard_strip_photo(cached);
+            size_t close = vcard.rfind("</vCard>");
+            if (close == std::string::npos) close = vcard.rfind("</vcard>");
+            if (close != std::string::npos)
+                vcard.insert(close, photo);
+            else
+                vcard.clear();
+        }
+        if (vcard.empty()) {
+            vcard = "<vCard xmlns='vcard-temp'><FN>" + xml_escape(nick) +
+                    "</FN><NICKNAME>" + xml_escape(nick) + "</NICKNAME>" + photo +
+                    "</vCard>";
+        } else if (vcard.find("xmlns=") == std::string::npos) {
+            // Ensure xmlns on root if stripped cache lacked it.
+            size_t gt = vcard.find('>');
+            if (gt != std::string::npos && vcard.find("vcard-temp") == std::string::npos)
+                vcard.insert(gt, " xmlns='vcard-temp'");
+        }
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            own_vcard_xml_ = vcard;
+        }
+        std::string id = "vcset" + std::to_string(iq_seq_++);
+        queue_send("<iq type='set' id='" + id + "'>" + vcard + "</iq>");
+        return true;
+    }
+
     void add_buddy(const std::string &buddy) {
         queue_send("<iq type='set' id='roster_add'><query xmlns='jabber:iq:roster'>"
                    "<item jid='" +
@@ -579,6 +685,10 @@ private:
     std::vector<uint8_t> pending_upload_data_;
     std::set<std::string> vcard_inflight_;
     std::queue<std::string> vcard_queue_;
+    std::string own_vcard_xml_;   // last self vCard fragment for PHOTO merge
+    std::string own_photo_hash_;  // SHA-1 hex of PHOTO BINVAL (XEP-0153)
+    std::vector<uint8_t> pending_photo_bytes_;
+    std::string pending_photo_mime_;
 
     void emit(const ClientEvent &e) {
         EventFn fn;
@@ -608,10 +718,12 @@ private:
     void publish_presence() {
         Show s;
         std::string st;
+        std::string photo_hash;
         {
             std::lock_guard<std::mutex> lock(mu);
             s = own_show;
             st = own_status;
+            photo_hash = own_photo_hash_;
             show_ = s;
         }
         std::string stanza = "<presence";
@@ -627,6 +739,13 @@ private:
             stanza += std::string("<show>") + sh + "</show>";
             if (!st.empty())
                 stanza += "<status>" + xml_escape(st) + "</status>";
+            // XEP-0153 — tell buddies the vCard photo changed.
+            stanza += "<x xmlns='vcard-temp:x:update'>";
+            if (!photo_hash.empty())
+                stanza += "<photo>" + photo_hash + "</photo>";
+            else
+                stanza += "<photo/>";
+            stanza += "</x>";
             stanza += "</presence>";
         }
         queue_send(stanza);
@@ -669,6 +788,7 @@ private:
         nick = xml_unescape(nick);
         fn = xml_unescape(fn);
         SkinImage avatar;
+        std::string photo_hash;
         if (!binval.empty()) {
             std::vector<uint8_t> bytes;
             // Strip whitespace from base64
@@ -676,7 +796,10 @@ private:
             cleaned.reserve(binval.size());
             for (char c : binval)
                 if (c != ' ' && c != '\n' && c != '\r' && c != '\t') cleaned.push_back(c);
-            if (b64_decode(cleaned, &bytes)) decode_image_vec(bytes, avatar);
+            if (b64_decode(cleaned, &bytes)) {
+                decode_image_vec(bytes, avatar);
+                photo_hash = sha1_hex(bytes);
+            }
         }
         bool self = bare.empty() || bare_jid(bare) == bare_jid(jid);
         {
@@ -685,9 +808,16 @@ private:
             vcard_inflight_.erase(key);
             if (self) vcard_inflight_.erase(jid);
             if (self) {
+                size_t a = st.find("<vCard");
+                if (a == std::string::npos) a = st.find("<vcard");
+                size_t b = st.find("</vCard>");
+                if (b == std::string::npos) b = st.find("</vcard>");
+                if (a != std::string::npos && b != std::string::npos)
+                    own_vcard_xml_ = st.substr(a, b + 8 - a);
                 if (!nick.empty()) own_nick = nick;
                 else if (!fn.empty()) own_nick = fn;
                 if (!avatar.empty()) own_avatar = std::move(avatar);
+                if (!photo_hash.empty()) own_photo_hash_ = photo_hash;
             } else if (roster.count(key)) {
                 if (!nick.empty()) roster[key].name = nick;
                 else if (!fn.empty() &&
@@ -866,9 +996,37 @@ private:
             }
             emit(make_event(ClientEvent::Presence, status_s, bare));
             if (muc) emit(make_event(ClientEvent::MucOccupants, {}, bare));
+            // Buddy published a new picture — refresh their vCard.
+            if (!muc && st.find("vcard-temp:x:update") != std::string::npos) {
+                bool on_roster = false;
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    if (roster.count(bare)) {
+                        roster[bare].vcard_fetched = false;
+                        on_roster = true;
+                    }
+                }
+                if (on_roster) request_vcard(bare);
+            }
             return;
         }
         if (st.find("<iq") == 0) {
+            std::string iq_id = attr(st, "id");
+            std::string iq_type = attr(st, "type");
+            if (iq_id.rfind("vcset", 0) == 0) {
+                if (iq_type == "result") {
+                    emit(make_event(ClientEvent::StatusText, "Picture updated"));
+                    publish_presence();
+                } else if (iq_type == "error") {
+                    emit(make_event(ClientEvent::StatusText, "Server rejected picture"));
+                }
+            } else if (st.find("vcard-temp") != std::string::npos ||
+                       st.find("<vCard") != std::string::npos ||
+                       st.find("<vcard") != std::string::npos) {
+                std::string from = attr(st, "from");
+                std::string bare = from.empty() ? bare_jid(jid) : bare_jid(from);
+                apply_vcard(bare, st);
+            }
             if (st.find("jabber:iq:roster") != std::string::npos) {
                 parse_roster(st);
                 emit(make_event(ClientEvent::Roster));
@@ -892,12 +1050,6 @@ private:
                 handle_bookmarks_iq(st);
             if (st.find("jabber:iq:register") != std::string::npos) {
                 // handled in register_flow synchronously via stream_buf
-            }
-            if (st.find("vcard-temp") != std::string::npos ||
-                st.find("<vCard") != std::string::npos) {
-                std::string from = attr(st, "from");
-                std::string bare = from.empty() ? bare_jid(jid) : bare_jid(from);
-                apply_vcard(bare, st);
             }
         }
     }

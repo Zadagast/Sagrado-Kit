@@ -17,7 +17,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Available / Away / Busy / Invisible | Click presence mark (or Buddy menu); marks are fixed green / amber / red / grey (not skin roles) | `<show>` / unavailable |
 | Buddy list | Two-line rows: name + status | Roster IQ + presence |
 | Buddy signed on / off | Status strip alert | Presence stanzas |
-| Avatar / display name | Tile + nick | [XEP-0054](https://xmpp.org/extensions/xep-0054.html) vCard |
+| Avatar / display name | Tile + nick; Buddy → Set Picture… (or click your tile) | [XEP-0054](https://xmpp.org/extensions/xep-0054.html) vCard PHOTO (+ [XEP-0153](https://xmpp.org/extensions/xep-0153.html) update) |
 | IM windows / tabs | Center tab strip + transcript | `<message type='chat'>` |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
@@ -32,8 +32,9 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 
 1. **Left identity strip** — avatar, display name, presence mark, status message field.
    When signed off but a JID is remembered, the strip still shows you (`Signed off`;
-   click → Sign On).
-2. **Left Buddies** — online first; presence mark + name + status text
+   click → Sign On). When online, click your avatar (or Buddy → Set Picture…) to
+   change your icon — published as your vCard photo (max ~96 KB).
+2. **Left Buddies** — online first; buddy icon + presence mark + name + status text
 3. **Center** — IM tabs, transcript, compose + Send
 4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 5. **Status strip** — “Signed on as …”, presence alerts, upload progress
