@@ -1197,6 +1197,7 @@ std::string format_chat_line(const jabber::ChatLine &ln, bool muc) {
     }
     std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
     std::string text = who + ": " + ln.body;
+    if (ln.omemo) text += "  *";
     if (ln.mine && ln.delivered) text += "  ok";
     return text;
 }
@@ -1330,7 +1331,10 @@ void open_tab(const std::string &jid, bool muc) {
             g.chat_scroll = 0;
             g.chat_sel = -1;
             // Cold open: pull recent archive if this chat is still empty.
-            if (!muc) g.client.request_mam_history(bare);
+            if (!muc) {
+                g.client.request_mam_history(bare);
+                g.client.ensure_omemo_peer(bare);
+            }
             redraw();
             return;
         }
@@ -1340,7 +1344,10 @@ void open_tab(const std::string &jid, bool muc) {
     g.active_tab = (int)g.tabs.size() - 1;
     g.chat_scroll = 0;
     g.chat_sel = -1;
-    if (!muc) g.client.request_mam_history(bare);
+    if (!muc) {
+        g.client.request_mam_history(bare);
+        g.client.ensure_omemo_peer(bare);
+    }
     redraw();
 }
 
@@ -2055,6 +2062,7 @@ void paint() {
             } else {
                 std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
                 text = who + ": " + ln.body;
+                if (ln.omemo) text += "  *";
                 if (ln.mine && ln.delivered) text += "  ok";
             }
             return text;
@@ -2557,6 +2565,7 @@ void dialog_ok() {
     if (g.dialog == DlgSignOn) {
         if (g.field_jid.empty() || g.field_pass.empty()) return;
         // Remember JID only after Online succeeds (see WM_JABBER_EVENT).
+        g.client.store_root = exe_dir();
         g.client.sign_on(g.field_jid, g.field_pass);
         g.dialog = DlgNone;
         set_status("Signing on…");
@@ -2569,6 +2578,7 @@ void dialog_ok() {
         } else {
             if (g.field_server.empty() || g.field_user.empty() || g.field_pass.empty())
                 return;
+            g.client.store_root = exe_dir();
             g.client.begin_register(g.field_server, g.field_user, g.field_pass);
             g.field_jid = g.field_user + "@" + g.field_server;
             g.dialog = DlgNone;

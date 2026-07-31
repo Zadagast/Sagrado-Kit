@@ -25,6 +25,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Delivered | “ ok” on your 1:1 lines when the peer acks | [XEP-0184](https://xmpp.org/extensions/xep-0184.html) receipts |
 | Multi-device | Other resources’ chats land in this transcript | [XEP-0280](https://xmpp.org/extensions/xep-0280.html) carbons |
 | Recent history | Opening a 1:1 chat loads the last ~40 lines; scroll up for older | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
+| Encrypted 1:1 | `*` on OMEMO lines; keys in `omemo/` beside the exe | [XEP-0384](https://xmpp.org/extensions/xep-0384.html) 0.3 (`eu.siacs.conversations.axolotl`) |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
 | React to a line | Click a transcript line → Chat → React… (floating gel emoji window) | [XEP-0444](https://xmpp.org/extensions/xep-0444.html) Message Reactions |
@@ -106,6 +107,14 @@ lines (RSM `before`); the viewport stays put while older lines prepend. A quiet
 “Loading older messages…” line shows while a page is in flight. Rooms still use
 live MUC only (no MAM room archive in this pass).
 
+**OMEMO (1:1)** — on Sign On, Jabber creates or loads a device identity under
+`omemo/<jid>/` next to the exe, publishes the device list + bundle on PEP
+(`eu.siacs.conversations.axolotl`), and encrypts 1:1 sends when a session exists
+with the peer (Conversations / Gajim compatible, AES-128-GCM). Opening a chat
+fetches their device list and bundles. Encrypted lines show a trailing `*`.
+Trust is TOFU (no fingerprint UI yet). Rooms stay plaintext. Linking
+**libomemo-c** makes the Jabber binary **GPLv3**.
+
 Still **not** Matrix: no spaces rail, kick/ban UI, or room config forms.
 
 ## Accounts
@@ -129,13 +138,15 @@ picker sits between screen name and password.
 |---|---|
 | UI thread | Win32 + Appearance Engine canvas |
 | XMPP | Thin C++ client (`apps/jabber/xmpp/`) — Winsock + **mbedTLS** STARTTLS |
+| OMEMO | Vendored **libomemo-c** (GPLv3) + mbedTLS crypto provider |
 | HTTPS | WinHTTP (CAPTCHA media + HTTP Upload PUT) |
 | Images | `stb_image` → `SkinImage` for gel blit |
 | Events | Worker thread → `WM_JABBER_EVENT` on the UI queue |
 
 STARTTLS uses vendored mbedTLS (Wine-safe; select-based deadlines). WinHTTP
 covers CAPTCHA fetch and HTTP Upload PUT. libstrophe / system OpenSSL are not
-required for the MinGW cross-build.
+required for the MinGW cross-build. OMEMO uses libomemo-c (Signal protocol v3
+wire) with AES-128-GCM payloads for the axolotl 0.3 namespace.
 
 ## Build / run
 
@@ -145,6 +156,7 @@ make emoji-pack      # Noto Color Emoji → build/emoji_pack/ (catalog + PNGs)
 make run-jabber      # Wine
 make smoke           # includes jabber paint smoke (no network)
 make jabber-connect-smoke   # Wine: TCP + mbedTLS STARTTLS + register form (yax.im)
+make jabber-omemo-smoke     # Wine: local OMEMO encrypt/decrypt round-trip
 ```
 
 Home servers live in `apps/jabber/providers.txt` (copied next to the exe).
@@ -158,7 +170,8 @@ exe for React… / transcript marks.
 - Matrix / Spaces / Discord server rail
 - Browser or OOB web registration as a supported path
 - Saved passwords / keyring
-- OMEMO, Jingle, Adium HTML message styles
+- MUC OMEMO, OMEMO fingerprint / trust UI, OMEMO 0.8+ SCE
+- Jingle, Adium HTML message styles
 - MUC archived history (MAM paging is 1:1 only for now)
 - Move-to-group UI (groups display from roster; adds use **Buddies**)
 - libpurple multi-protocol

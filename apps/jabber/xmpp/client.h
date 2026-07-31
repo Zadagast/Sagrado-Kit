@@ -2,6 +2,7 @@
 #pragma once
 #include "http_win.h"
 #include "image_dec.h"
+#include "omemo.h"
 #include "socket_tls.h"
 
 #include <mbedtls/sha1.h>
@@ -58,6 +59,7 @@ struct ChatLine {
     bool mine = false;
     bool file = false;
     bool system = false; // subject / join notices
+    bool omemo = false;  // decrypted / sent via OMEMO 0.3
     std::string id;      // message @id (XEP-0184)
     bool delivered = false;
     std::string react_id; // XEP-0444 target: 1:1 @id, MUC stanza-id
@@ -447,6 +449,7 @@ public:
     std::string http_upload_host;
     bool upload_available = false;
     bool mam_available = false; // urn:xmpp:mam:2 advertised
+    bool omemo_ready = false;   // local device keys loaded / published
 
     // Own identity (Yahoo-shaped strip): presence + status + vCard.
     Show own_show = Show::Unavailable;
@@ -454,6 +457,9 @@ public:
     std::string own_nick;
     SkinImage own_avatar;
     static constexpr size_t kMaxPhotoBytes = 96 * 1024;
+
+    // Directory for omemo/ beside the exe (set from UI before sign-on).
+    std::string store_root;
 
     using EventFn = std::function<void(const ClientEvent &)>;
     EventFn on_event;
@@ -466,6 +472,7 @@ public:
         if (thread_.joinable()) thread_.join();
         sock_.close();
         stop_ = false;
+        omemo_.close();
         {
             std::lock_guard<std::mutex> lock(mu);
             own_show = Show::Unavailable;
@@ -480,11 +487,13 @@ public:
             chat_states.clear();
             reaction_sets.clear();
             mam_available = false;
+            omemo_ready = false;
             mam_initial_done_.clear();
             mam_complete_.clear();
             mam_oldest_.clear();
             mam_pending_.clear();
             mam_inflight_.clear();
+            omemo_bundle_inflight_.clear();
             own_vcard_xml_.clear();
             own_photo_hash_.clear();
             pending_photo_bytes_.clear();
@@ -505,6 +514,14 @@ public:
         user_ = jid_node(jid);
         stop_ = false;
         thread_ = std::thread([this] { run(); });
+    }
+
+    // Fetch contact device list + missing bundles (1:1). Safe to call often.
+    void ensure_omemo_peer(const std::string &with_bare) {
+        std::string with = bare_jid(with_bare);
+        if (with.empty() || !omemo_.ready()) return;
+        std::string iq = omemo_.iq_request_device_list(with);
+        if (!iq.empty()) queue_send(iq);
     }
 
     void begin_register(const std::string &host, const std::string &user,
@@ -595,21 +612,39 @@ public:
 
     void send_message(const std::string &to, const std::string &body) {
         std::string mid = "m" + std::to_string(msg_seq_++);
-        std::string stanza =
-            "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
-            "'><body>" + xml_escape(body) +
-            "</body><request xmlns='urn:xmpp:receipts'/>"
-            "<active xmlns='http://jabber.org/protocol/chatstates'/>"
-            "</message>";
+        std::string peer = bare_jid(to);
+        std::string enc_xml, enc_err;
+        bool use_omemo =
+            omemo_.ready() && omemo_.encrypt_message(peer, body, &enc_xml, &enc_err);
+        std::string stanza;
+        if (use_omemo) {
+            // Fallback body for non-OMEMO clients; real text is in <encrypted>.
+            stanza = "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
+                     "'><body>I sent you an OMEMO encrypted message but your client "
+                     "doesn't seem to support that.</body>" +
+                     enc_xml +
+                     "<request xmlns='urn:xmpp:receipts'/>"
+                     "<active xmlns='http://jabber.org/protocol/chatstates'/>"
+                     "<store xmlns='urn:xmpp:hints'/>"
+                     "</message>";
+        } else {
+            if (omemo_.ready()) ensure_omemo_peer(peer);
+            stanza = "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
+                     "'><body>" + xml_escape(body) +
+                     "</body><request xmlns='urn:xmpp:receipts'/>"
+                     "<active xmlns='http://jabber.org/protocol/chatstates'/>"
+                     "</message>";
+        }
         {
             std::lock_guard<std::mutex> lock(mu);
             ChatLine ln;
             ln.from = jid;
             ln.body = body;
             ln.mine = true;
+            ln.omemo = use_omemo;
             ln.id = mid;
             ln.react_id = mid;
-            chats[bare_jid(to)].push_back(std::move(ln));
+            chats[peer].push_back(std::move(ln));
         }
         queue_send(stanza);
     }
@@ -1080,6 +1115,8 @@ private:
     std::string own_photo_hash_;  // SHA-1 hex of PHOTO BINVAL (XEP-0153)
     std::vector<uint8_t> pending_photo_bytes_;
     std::string pending_photo_mime_;
+    omemo::Manager omemo_;
+    std::set<std::string> omemo_bundle_inflight_; // "bare#deviceId"
 
     void emit(const ClientEvent &e) {
         EventFn fn;
@@ -1137,6 +1174,10 @@ private:
             else
                 stanza += "<photo/>";
             stanza += "</x>";
+            // Advertise OMEMO 0.3 (axolotl) for Conversations/Gajim discovery.
+            stanza += "<c xmlns='http://jabber.org/protocol/caps' "
+                      "hash='sha-1' node='https://github.com/Zadagast/Sagrado-Kit' "
+                      "ver='omemo-axolotl'/>";
             stanza += "</presence>";
         }
         queue_send(stanza);
@@ -1394,6 +1435,22 @@ private:
         std::string body;
         extract_tag(st, "body", &body);
         body = xml_unescape(body);
+        bool omemo_line = false;
+        if (st.find(omemo::NS) != std::string::npos &&
+            st.find("<encrypted") != std::string::npos) {
+            bool mine_guess = sent_carbon || jid_ieq(bare_jid(from), bare_jid(jid));
+            std::string sender = mine_guess ? bare_jid(jid) : bare_jid(from);
+            std::string plain;
+            bool was = false;
+            std::string err;
+            if (omemo_.decrypt_message(sender, st, &plain, &was, &err) && was) {
+                body = plain;
+                omemo_line = true;
+            } else if (was) {
+                body = "[Unable to decrypt OMEMO message]";
+                omemo_line = true;
+            }
+        }
         if (body.empty()) return false;
 
         bool mine = sent_carbon;
@@ -1420,6 +1477,7 @@ private:
         ln.from = who;
         ln.body = body;
         ln.mine = mine;
+        ln.omemo = omemo_line;
         ln.id = mid;
         ln.react_id = react_id;
         *key_out = key;
@@ -1614,6 +1672,29 @@ private:
         extract_tag(st, "subject", &subject);
         body = xml_unescape(body);
         subject = xml_unescape(subject);
+        bool omemo_line = false;
+        if (type != "groupchat" && st.find("<encrypted") != std::string::npos &&
+            st.find(omemo::NS) != std::string::npos) {
+            std::string sender =
+                carbon_sent || jid_ieq(bare_jid(from), bare_jid(jid)) ? bare_jid(jid)
+                                                                     : bare_jid(from);
+            std::string plain;
+            bool was = false;
+            std::string err;
+            if (omemo_.decrypt_message(sender, st, &plain, &was, &err) && was) {
+                body = plain;
+                omemo_line = true;
+            } else if (was) {
+                // Same-device carbon of our outbound may lack a key for us — keep
+                // empty so dedupe/local echo wins; otherwise show a placeholder.
+                if (!(carbon_sent && jid_ieq(bare_jid(from), bare_jid(jid)))) {
+                    body = "[Unable to decrypt OMEMO message]";
+                    omemo_line = true;
+                } else {
+                    body.clear();
+                }
+            }
+        }
 
         // XEP-0444 reactions (often body-less).
         if (try_apply_reactions(st, carbon_sent)) return;
@@ -1720,6 +1801,7 @@ private:
             ln.from = who;
             ln.body = body;
             ln.mine = mine;
+            ln.omemo = omemo_line;
             ln.id = mid;
             ln.react_id = react_id;
             chats[key].push_back(std::move(ln));
@@ -1959,6 +2041,9 @@ private:
             if (st.find("urn:xmpp:bookmarks:1") != std::string::npos ||
                 st.find("storage:bookmarks") != std::string::npos)
                 handle_bookmarks_iq(st);
+            if (st.find(omemo::NS) != std::string::npos ||
+                iq_id.rfind("om", 0) == 0)
+                handle_omemo_iq(st);
             if (iq_id.rfind("mam", 0) == 0) {
                 MamPending pend;
                 bool have = false;
@@ -2546,9 +2631,109 @@ private:
         // XEP-0280 Message Carbons — mirror other resources into this session.
         sock_.send_all(
             "<iq type='set' id='carb1'><enable xmlns='urn:xmpp:carbons:2'/></iq>");
+        bootstrap_omemo();
         set_state(ConnState::Online, "Signed on as " + jid);
         emit(make_event(ClientEvent::Identity));
         return true;
+    }
+
+    void bootstrap_omemo() {
+        std::string root = store_root.empty() ? "." : store_root;
+        if (!omemo_.open(root, bare_jid(jid))) {
+            std::lock_guard<std::mutex> lock(mu);
+            omemo_ready = false;
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            omemo_ready = true;
+        }
+        // Merge our device into the published list, publish bundle, then refresh
+        // our PEP device list (may include other of our clients).
+        std::string pub_list = omemo_.iq_publish_device_list();
+        if (!pub_list.empty()) queue_send(pub_list);
+        std::string pub_bundle = omemo_.iq_publish_bundle();
+        if (!pub_bundle.empty()) queue_send(pub_bundle);
+        std::string get_own = omemo_.iq_request_device_list(bare_jid(jid));
+        if (!get_own.empty()) queue_send(get_own);
+        emit(make_event(ClientEvent::StatusText,
+                        "OMEMO device " + std::to_string(omemo_.device_id())));
+    }
+
+    void request_omemo_bundles(const std::string &bare,
+                               const std::vector<uint32_t> &ids) {
+        for (uint32_t id : ids) {
+            if (jid_ieq(bare, bare_jid(jid)) && id == omemo_.device_id()) continue;
+            std::string key = bare + "#" + std::to_string(id);
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                if (omemo_bundle_inflight_.count(key)) continue;
+                omemo_bundle_inflight_.insert(key);
+            }
+            std::string iq = omemo_.iq_request_bundle(bare, id);
+            if (!iq.empty()) queue_send(iq);
+        }
+    }
+
+    void handle_omemo_iq(const std::string &st) {
+        std::string iq_type = attr(st, "type");
+        std::string from = bare_jid(attr(st, "from"));
+        if (from.empty()) from = bare_jid(jid);
+
+        // Device list items
+        if (st.find(omemo::NS_DEVICELIST) != std::string::npos ||
+            (st.find("<list") != std::string::npos &&
+             st.find(omemo::NS) != std::string::npos)) {
+            if (iq_type == "error") return;
+            auto ids = omemo::Manager::parse_device_list(st);
+            if (ids.empty() && jid_ieq(from, bare_jid(jid))) {
+                // Empty own list — publish ours alone.
+                std::string pub = omemo_.iq_publish_device_list();
+                if (!pub.empty()) queue_send(pub);
+                return;
+            }
+            omemo_.set_devices(from, ids);
+            if (jid_ieq(from, bare_jid(jid))) {
+                // Ensure we are listed; republish if our id was missing.
+                bool have_us = false;
+                uint32_t our = omemo_.device_id();
+                for (uint32_t id : ids)
+                    if (id == our) have_us = true;
+                if (!have_us) {
+                    std::string pub = omemo_.iq_publish_device_list(ids);
+                    if (!pub.empty()) queue_send(pub);
+                }
+                // Fetch bundles for our other devices (carbon decrypt / multi-client).
+                request_omemo_bundles(from, ids);
+            } else {
+                request_omemo_bundles(from, ids);
+            }
+            return;
+        }
+
+        // Bundle response
+        if (st.find(".bundles:") != std::string::npos ||
+            st.find("<bundle") != std::string::npos) {
+            std::string iq_id = attr(st, "id");
+            (void)iq_id;
+            // Node may be on <items node='…bundles:ID'>
+            uint32_t device_id = 0;
+            size_t np = st.find(".bundles:");
+            if (np != std::string::npos) {
+                device_id = (uint32_t)strtoul(st.c_str() + np + 9, nullptr, 10);
+            }
+            if (!device_id) return;
+            std::string key = from + "#" + std::to_string(device_id);
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                omemo_bundle_inflight_.erase(key);
+            }
+            if (iq_type == "error") return;
+            if (omemo_.ingest_bundle(from, device_id, st)) {
+                emit(make_event(ClientEvent::StatusText,
+                                "OMEMO session ready with " + from));
+            }
+        }
     }
 
     void run() {
