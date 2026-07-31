@@ -1288,8 +1288,12 @@ void open_compose_ctx(int x, int y) {
 void open_transcript_ctx(int x, int y) {
     bool can_react = false;
     if (g.chat_sel >= 0 && g.active_tab >= 0) {
-        std::string rid;
-        can_react = pick_react_target(&rid);
+        std::string key = g.tabs[g.active_tab].jid;
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        const auto &lines = g.client.chats[key];
+        if (g.chat_sel < (int)lines.size() && !lines[g.chat_sel].system &&
+            !lines[g.chat_sel].react_id.empty())
+            can_react = true;
     }
     ContextMenuItem items[] = {
         {"Copy", g.chat_sel >= 0, false},
