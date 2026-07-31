@@ -37,14 +37,12 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 Jabber is federated: a screen name is a **JID** (`name@server`).
 
 **Sign On** — existing JID + password (SASL PLAIN over STARTTLS).  
-**Get an Account** — pick a **public** recommended server, then nick + password:
+**Get an Account** — screen name + password on a curated home server:
 
-1. Choose a host from `providers.txt` (Category A IBR from [providers.xmpp.net](https://providers.xmpp.net/) — no localhost)
+1. Choose a host from `providers.txt` (Category A IBR from [providers.xmpp.net](https://providers.xmpp.net/))
 2. IQ-get `jabber:iq:register`
 3. If the form embeds a CAPTCHA image URI → HTTPS GET → decode → blit in gel
 4. User answers in the same dialog → IQ-set → auto Sign On
-
-There is no “run Prosody on your laptop” happy path. Localhost is not offered.
 
 ## Stack
 
@@ -67,8 +65,8 @@ make run-jabber      # Wine
 make smoke           # includes jabber paint smoke (no network)
 ```
 
-Curated **public** providers live in `apps/jabber/providers.txt` (copied next to
-the exe). Default pick is the first entry (`yax.im`).
+Home servers live in `apps/jabber/providers.txt` (copied next to the exe).
+Default pick is the first entry (`yax.im`).
 
 ## Non-goals (v1)
 

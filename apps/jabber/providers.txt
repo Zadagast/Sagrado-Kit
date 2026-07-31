@@ -1,16 +1,13 @@
 # Recommended public XMPP providers for Sagrado Jabber Get an Account.
-# Category A from providers.xmpp.net — in-band registration (app signup), free.
-# Format: host | display name | notes
-# Re-verify before each release — public policy changes.
-#
-# Prefer hosts with IBR; CAPTCHA is painted in gel when the server asks.
-yax.im|yax.im|Public · usually no CAPTCHA
-jabber.fr|jabber.fr|Public · usually no CAPTCHA
-xmpp.party|xmpp.party|Public · usually no CAPTCHA
-jabber.vg|jabber.vg|Public · usually no CAPTCHA
-chat.between-us.online|between-us|Public · usually no CAPTCHA
-07f.de|07f.de|Public · CAPTCHA in gel
-magicbroccoli.de|magicbroccoli|Public · CAPTCHA in gel
-jabjab.de|jabjab.de|Public · CAPTCHA in gel
-hookipa.net|hookipa|Public · CAPTCHA in gel
-chatterboxtown.us|chatterboxtown|Public · CAPTCHA in gel
+# Category A (in-band registration) from providers.xmpp.net — free.
+# Format: host | display name | note (optional; e.g. CAPTCHA)
+yax.im|yax.im|
+jabber.fr|jabber.fr|
+xmpp.party|xmpp.party|
+jabber.vg|jabber.vg|
+chat.between-us.online|between-us|
+07f.de|07f.de|CAPTCHA
+magicbroccoli.de|magicbroccoli|CAPTCHA
+jabjab.de|jabjab.de|CAPTCHA
+hookipa.net|hookipa|CAPTCHA
+chatterboxtown.us|chatterboxtown|CAPTCHA

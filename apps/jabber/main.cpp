@@ -229,9 +229,9 @@ void load_providers() {
     }
     if (g.providers.empty()) {
         // Hard fallback — public Category A IBR hosts (no localhost).
-        g.providers.push_back({"yax.im", "yax.im", "Public · usually no CAPTCHA"});
-        g.providers.push_back({"jabber.fr", "jabber.fr", "Public · usually no CAPTCHA"});
-        g.providers.push_back({"xmpp.party", "xmpp.party", "Public · usually no CAPTCHA"});
+        g.providers.push_back({"yax.im", "yax.im", {}});
+        g.providers.push_back({"jabber.fr", "jabber.fr", {}});
+        g.providers.push_back({"xmpp.party", "xmpp.party", {}});
     }
     g.provider_sel = 0;
     g.provider_scroll = 0;
@@ -343,8 +343,8 @@ void open_tab(const std::string &jid, bool muc) {
 void ding() { MessageBeep(MB_OK); }
 
 void register_dialog_size(int *dw, int *dh) {
-    *dw = 420;
-    *dh = g.captcha_visible ? 420 : 360;
+    *dw = 400;
+    *dh = g.captcha_visible ? 400 : 340;
 }
 
 void paint_dialog(Canvas &cv) {
@@ -385,15 +385,27 @@ void paint_dialog(Canvas &cv) {
         field("JID (you@server)", g.field_jid, 0, false);
         field("Password", g.field_pass, 1, true);
     } else if (g.dialog == DlgRegister) {
-        cv.text(cl.x + 12, y, "Pick a public server — no local hosting",
-                g.ap.c("primary.label"));
-        y += lh + 4;
-        int list_h = g.captcha_visible ? 88 : 120;
+        // Screen name first (AIM-shaped), then home server, then password.
+        cv.text(cl.x + 12, y, "Screen name", g.ap.c("primary.label"));
+        y += lh + 2;
+        Rect fr{cl.x + 12, y, cl.w - 24, 24};
+        paint_field(cv, g.ap, fr, g.field_user.c_str(), g.focus_field == 0, true);
+        y += 28;
+        {
+            std::string preview =
+                (g.field_user.empty() ? "you" : g.field_user) + "@" + g.field_server;
+            cv.text(cl.x + 12, y, preview.c_str(), g.ap.c("menu.disable_label"));
+        }
+        y += lh + 8;
+
+        cv.text(cl.x + 12, y, "Home server", g.ap.c("primary.label"));
+        y += lh + 2;
+        int list_h = g.captcha_visible ? 72 : 96;
         g.provider_list_r = {cl.x + 12, y, cl.w - 24, list_h};
         cv.fill(g.provider_list_r, g.ap.c("list.background"));
         {
             CanvasClip clip(cv, g.provider_list_r);
-            int row_h = lh + 6;
+            int row_h = lh + 4;
             int yy = g.provider_list_r.y + 2 - g.provider_scroll;
             for (int i = 0; i < (int)g.providers.size(); ++i) {
                 Rect row{g.provider_list_r.x + 2, yy, g.provider_list_r.w - 4, row_h};
@@ -401,37 +413,28 @@ void paint_dialog(Canvas &cv) {
                     cv.fill(row, g.ap.c("list.hilite_background"));
                 Color ink = i == g.provider_sel ? g.ap.c("list.hilite_foreground")
                                                 : g.ap.c("list.label");
-                std::string lab = g.providers[i].name;
-                if (!g.providers[i].notes.empty())
-                    lab += "  —  " + g.providers[i].notes;
-                cv.text_elided(row.x + 6, row.y + 3, lab.c_str(), row.w - 12, ink);
+                cv.text_elided(row.x + 6, row.y + 2, g.providers[i].host.c_str(),
+                               row.w - 12, ink);
+                if (!g.providers[i].notes.empty()) {
+                    int nw = cv.text_width(g.providers[i].notes.c_str());
+                    Color note = i == g.provider_sel ? ink : g.ap.c("menu.disable_label");
+                    cv.text(row.right() - nw - 8, row.y + 2, g.providers[i].notes.c_str(),
+                            note);
+                }
                 yy += row_h;
             }
         }
-        y = g.provider_list_r.bottom() + 8;
-        cv.text(cl.x + 12, y,
-                ("Screen name will be: " +
-                 (g.field_user.empty() ? "you" : g.field_user) + "@" + g.field_server)
-                    .c_str(),
-                g.ap.c("menu.disable_label"));
-        y += lh + 6;
-        // Username = focus 0, password = 1, captcha = 2
-        {
-            cv.text(cl.x + 12, y, "Username", g.ap.c("primary.label"));
-            y += lh + 2;
-            Rect fr{cl.x + 12, y, cl.w - 24, 24};
-            paint_field(cv, g.ap, fr, g.field_user.c_str(), g.focus_field == 0, true);
-            y += 30;
-            cv.text(cl.x + 12, y, "Password", g.ap.c("primary.label"));
-            y += lh + 2;
-            fr = {cl.x + 12, y, cl.w - 24, 24};
-            paint_field(cv, g.ap, fr, std::string(g.field_pass.size(), '*').c_str(),
-                        g.focus_field == 1, true);
-            y += 30;
-        }
+        y = g.provider_list_r.bottom() + 10;
+
+        cv.text(cl.x + 12, y, "Password", g.ap.c("primary.label"));
+        y += lh + 2;
+        fr = {cl.x + 12, y, cl.w - 24, 24};
+        paint_field(cv, g.ap, fr, std::string(g.field_pass.size(), '*').c_str(),
+                    g.focus_field == 1, true);
+        y += 30;
+
         if (g.captcha_visible && !g.client.captcha_image.empty()) {
-            cv.text(cl.x + 12, y, "CAPTCHA (solved here — no browser)",
-                    g.ap.c("primary.label"));
+            cv.text(cl.x + 12, y, "CAPTCHA", g.ap.c("primary.label"));
             y += lh + 2;
             SkinImage &img = g.client.captcha_image;
             int iw = std::min(img.w, cl.w - 24);
@@ -439,11 +442,8 @@ void paint_dialog(Canvas &cv) {
             CanvasClip clip(cv, {cl.x + 12, y, iw, ih});
             cv.blit_image(img, cl.x + 12, y);
             y += ih + 6;
-            cv.text(cl.x + 12, y, "Answer", g.ap.c("primary.label"));
-            y += lh + 2;
-            Rect fr{cl.x + 12, y, cl.w - 24, 24};
-            paint_field(cv, g.ap, fr, g.field_captcha.c_str(), g.focus_field == 2,
-                        true);
+            fr = {cl.x + 12, y, cl.w - 24, 24};
+            paint_field(cv, g.ap, fr, g.field_captcha.c_str(), g.focus_field == 2, true);
         }
     } else if (g.dialog == DlgAddBuddy) {
         field("Buddy JID", g.field_buddy, 0, false);
