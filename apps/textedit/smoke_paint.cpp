@@ -86,6 +86,31 @@ int main(int argc, char **argv) {
         std::printf("Milk Edit menu colour-path OK (mw=%d, focus ring)\n", mw);
     }
 
+    // Pattern menus (Boilerplate-Rusty slot 200 = 128×128) must not spill
+    // tiles past the open-menu frame — that was the floating rusty plate.
+    if (ap.art("menu.background_pattern")) {
+        Canvas pad;
+        pad.resize(320, 320);
+        Color bg{20, 20, 20};
+        pad.clear(bg);
+        MenuLayout m =
+            paint_menu(pad, ap, 24, 24, mw, edit_items, 9, 2);
+        size_t spill = 0;
+        for (int y = 0; y < pad.height(); ++y)
+            for (int x = 0; x < pad.width(); ++x) {
+                if (m.frame.contains(x, y)) continue;
+                uint32_t p = pad.data()[size_t(y) * pad.width() + x];
+                int r = int((p >> 16) & 255), g = int((p >> 8) & 255),
+                    b = int(p & 255);
+                if (r != bg.r || g != bg.g || b != bg.b) ++spill;
+            }
+        std::printf("menu pattern spill outside frame: %zu pixels\n", spill);
+        if (spill != 0) {
+            std::fprintf(stderr, "open-menu pattern spilled past frame\n");
+            return 1;
+        }
+    }
+
     cv.fill(status, ap.c("primary.background"));
     cv.text(status.x + 8, status.y + (status.h - cv.line_height()) / 2,
             "Soft Wrap    Ln 1", ap.c("primary.label"));

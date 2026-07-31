@@ -85,7 +85,10 @@ plates there reads as two skins mixed together. Tiny Hap `popup_frame` stubs
 (3×3, zero Positions) are ignored the same way — nine-slicing them draws a soft
 grey ghost ring when `menu.background` matches the editor. Colour-path menus use
 the Focus Box outer ring (and a light/dark bevel only when those roles differ).
-Pure Hap without the pack is still a valid colour path.
+When tiling `menu.background_pattern`, always clip to the menu bounds —
+Boilerplate-Rusty's pattern is 128×128, and an unclipped last tile painted a
+floating rusty plate past the open menu. Pure Hap without the pack is still a
+valid colour path.
 
 Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
 set, paint prefers that ink for button / header / menu / title labels on

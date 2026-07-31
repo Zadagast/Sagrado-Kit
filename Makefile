@@ -72,6 +72,7 @@ smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp e
 	  -o $(BUILD)/textedit_smoke
 	$(BUILD)/textedit_smoke format/skins/milk-redux/milk-redux.sap
 	$(BUILD)/textedit_smoke "research/haps/Milk Redux.hap"
+	$(BUILD)/textedit_smoke "research/haps/Boilerplate-Rusty.hap"
 
 clean:
 	rm -rf $(BUILD)

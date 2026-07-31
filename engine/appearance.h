@@ -1760,13 +1760,18 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
     cv.fill(lay.frame, ap.c("menu.background"));
     const SkinImage *pat = ap.art("menu.background_pattern");
     if (pat && !pat->empty() && lay.items_bounds.w > 0 && lay.items_bounds.h > 0) {
+        // Must clip — Boilerplate-Rusty's pattern is 128×128; without a clip the
+        // last tile paints past the menu and reads as a floating rusty plate.
+        CanvasClip clip(cv, lay.items_bounds);
         for (int py = lay.items_bounds.y; py < lay.items_bounds.bottom(); py += pat->h)
             for (int px = lay.items_bounds.x; px < lay.items_bounds.right(); px += pat->w)
                 cv.blit_image(*pat, px, py);
     }
     const SkinImage *mbg = ap.art("menu.background");
-    if (mbg)
+    if (mbg) {
+        CanvasClip clip(cv, lay.items_bounds);
         cv.nine_slice(*mbg, lay.items_bounds);
+    }
 
     if (frame) {
         cv.nine_slice(*frame, lay.frame);
