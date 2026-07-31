@@ -19,6 +19,10 @@ namespace {
 
 constexpr int kWinW = 720;
 constexpr int kWinH = 520;
+// Haxial TextEdit 1.700 clamps the resize grip here (measured under Wine).
+// Menus/title clip past this — they do not hide or overflow into a hamburger.
+constexpr int kMinWinW = 212;
+constexpr int kMinWinH = 128;
 constexpr int kStatusH = 20;
 constexpr int kTextPad = 4;
 
@@ -271,6 +275,7 @@ enum Drag : int {
     DragArrowV,
     DragArrowH,
     DragText,
+    DragSize, // app-owned gel resize (Wine ignores WM_GETMINMAXINFO on WS_POPUP)
     DragFindClose,
     DragFindMin,
     DragFindBtn,
@@ -278,6 +283,14 @@ enum Drag : int {
     DragAboutClose,
     DragAboutMin,
     DragAboutOk,
+};
+
+// Bitflags for DragSize — which edges track the cursor.
+enum SizeEdge : int {
+    SizeLeft = 1,
+    SizeRight = 2,
+    SizeTop = 4,
+    SizeBottom = 8,
 };
 
 enum FindFocus : int { FindFocusFind = 0, FindFocusRepl = 1 };
@@ -333,6 +346,9 @@ struct App {
     int thumb_grab = 0;
     ScrollArrowHot arrow_hot = ScrollArrowHot::None;
     int arrow_dir = 0;
+    int size_edge = 0;
+    int size_anchor_x = 0, size_anchor_y = 0;
+    int size_orig_x = 0, size_orig_y = 0, size_orig_w = 0, size_orig_h = 0;
 
     int menu_hot = -1;     // hilited menu-bar title
     int menu_open = -1;    // open popup menu id, or -1
@@ -1051,8 +1067,76 @@ int menu_bar_hit(int x, int y) {
     return -1;
 }
 
+int size_edge_at(int x, int y) {
+    int W = g.canvas.width(), H = g.canvas.height();
+    if (g.gel.grip.contains(x, y)) return SizeRight | SizeBottom;
+    const int edge = 4;
+    int e = 0;
+    if (x < edge) e |= SizeLeft;
+    if (x >= W - edge) e |= SizeRight;
+    if (y < edge) e |= SizeTop;
+    if (y >= H - edge) e |= SizeBottom;
+    return e;
+}
+
+void begin_size_drag(int edge) {
+    RECT wr{};
+    GetWindowRect(g.hwnd, &wr);
+    POINT pt{};
+    GetCursorPos(&pt);
+    g.drag = DragSize;
+    g.size_edge = edge;
+    g.size_anchor_x = pt.x;
+    g.size_anchor_y = pt.y;
+    g.size_orig_x = wr.left;
+    g.size_orig_y = wr.top;
+    g.size_orig_w = wr.right - wr.left;
+    g.size_orig_h = wr.bottom - wr.top;
+}
+
+void apply_size_drag() {
+    POINT pt{};
+    GetCursorPos(&pt);
+    int dx = pt.x - g.size_anchor_x;
+    int dy = pt.y - g.size_anchor_y;
+    int x = g.size_orig_x, y = g.size_orig_y;
+    int w = g.size_orig_w, h = g.size_orig_h;
+    if (g.size_edge & SizeRight) w = g.size_orig_w + dx;
+    if (g.size_edge & SizeBottom) h = g.size_orig_h + dy;
+    if (g.size_edge & SizeLeft) {
+        w = g.size_orig_w - dx;
+        x = g.size_orig_x + dx;
+    }
+    if (g.size_edge & SizeTop) {
+        h = g.size_orig_h - dy;
+        y = g.size_orig_y + dy;
+    }
+    if (w < kMinWinW) {
+        if (g.size_edge & SizeLeft) x -= (kMinWinW - w);
+        w = kMinWinW;
+    }
+    if (h < kMinWinH) {
+        if (g.size_edge & SizeTop) y -= (kMinWinH - h);
+        h = kMinWinH;
+    }
+    SetWindowPos(g.hwnd, nullptr, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 void mouse_down(int x, int y) {
     layout_main();
+
+    // App-owned gel resize — Wine's WS_POPUP path ignores WM_GETMINMAXINFO.
+    // Pure top edge stays HTCAPTION (move); grip, sides, bottom, corners size.
+    if (g.gel.grip.contains(x, y)) {
+        begin_size_drag(SizeRight | SizeBottom);
+        return;
+    }
+    if (int edge = size_edge_at(x, y)) {
+        if (edge != SizeTop) {
+            begin_size_drag(edge);
+            return;
+        }
+    }
 
     // Menu popup click
     if (g.menu_open >= 0) {
@@ -1223,6 +1307,10 @@ void mouse_move(int x, int y) {
         return;
     }
 
+    if (g.drag == DragSize) {
+        apply_size_drag();
+        return;
+    }
     if (g.drag == DragClose) {
         int p = g.gel.close_box.contains(x, y) ? 1 : 0;
         if (p != g.pressed_box) {
@@ -1293,6 +1381,15 @@ void mouse_move(int x, int y) {
 }
 
 void mouse_up(int x, int y) {
+    if (g.drag == DragSize) {
+        (void)x;
+        (void)y;
+        apply_size_drag();
+        g.drag = DragNone;
+        g.size_edge = 0;
+        redraw();
+        return;
+    }
     if (g.drag == DragClose) {
         if (g.gel.close_box.contains(x, y)) PostQuitMessage(0);
         g.pressed_box = 0;
@@ -1666,9 +1763,43 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         create_about_window(g.hinst);
         return 0;
     }
+    case WM_GETMINMAXINFO: {
+        auto *mmi = reinterpret_cast<MINMAXINFO *>(lp);
+        mmi->ptMinTrackSize.x = kMinWinW;
+        mmi->ptMinTrackSize.y = kMinWinH;
+        return 0;
+    }
+    case WM_SIZING: {
+        // Wine + WS_POPUP often ignores ptMinTrackSize; clamp the drag rect
+        // the same way Haxial TextEdit stops the gel grip at ~212×128.
+        auto *r = reinterpret_cast<RECT *>(lp);
+        int w = r->right - r->left;
+        int h = r->bottom - r->top;
+        if (w < kMinWinW) {
+            if (wp == WMSZ_LEFT || wp == WMSZ_TOPLEFT || wp == WMSZ_BOTTOMLEFT)
+                r->left = r->right - kMinWinW;
+            else
+                r->right = r->left + kMinWinW;
+        }
+        if (h < kMinWinH) {
+            if (wp == WMSZ_TOP || wp == WMSZ_TOPLEFT || wp == WMSZ_TOPRIGHT)
+                r->top = r->bottom - kMinWinH;
+            else
+                r->bottom = r->top + kMinWinH;
+        }
+        return TRUE;
+    }
     case WM_SIZE: {
         int w = LOWORD(lp), h = HIWORD(lp);
         if (w > 0 && h > 0) {
+            if (w < kMinWinW || h < kMinWinH) {
+                RECT wr{};
+                GetWindowRect(hwnd, &wr);
+                SetWindowPos(hwnd, nullptr, wr.left, wr.top,
+                             std::max(w, kMinWinW), std::max(h, kMinWinH),
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+                return 0;
+            }
             g.canvas.resize(w, h);
             redraw();
         }
@@ -1707,7 +1838,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         mouse_up(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEMOVE:
-        if (wp & MK_LBUTTON || g.menu_open >= 0)
+        if (g.drag == DragSize || wp & MK_LBUTTON || g.menu_open >= 0)
             mouse_move(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
         return 0;
     case WM_MOUSEWHEEL: {
@@ -1891,19 +2022,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.gel.hatch_box.contains(pt.x, pt.y))
             return HTCLIENT;
         if (g.menu_open >= 0) return HTCLIENT;
-        if (pt.y < kTitleH) return HTCAPTION;
-        if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
+        // Grip / side / bottom / corner edges → HTCLIENT so mouse_down owns
+        // sizing and can clamp to kMinWinW×kMinWinH (Haxial TextEdit floor).
+        if (g.gel.grip.contains(pt.x, pt.y)) return HTCLIENT;
         const int edge = 4;
         bool left = pt.x < edge, right = pt.x >= W - edge;
         bool top = pt.y < edge, bottom = pt.y >= H - edge;
-        if (top && left) return HTTOPLEFT;
-        if (top && right) return HTTOPRIGHT;
-        if (bottom && left) return HTBOTTOMLEFT;
-        if (bottom && right) return HTBOTTOMRIGHT;
-        if (left) return HTLEFT;
-        if (right) return HTRIGHT;
-        if (top) return HTTOP;
-        if (bottom) return HTBOTTOM;
+        if (left || right || bottom || (top && (left || right))) return HTCLIENT;
+        if (pt.y < kTitleH) return HTCAPTION;
         return HTCLIENT;
     }
     case WM_NCCALCSIZE:
