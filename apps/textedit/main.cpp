@@ -1447,8 +1447,10 @@ LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return hit;
     }
     case WM_NCCALCSIZE:
-        if (wp) return 0;
-        break;
+        // Entire window is client (gel paints the frame). Always — including
+        // wParam==FALSE — so Wine does not keep a host non-client strip until
+        // the first resize.
+        return 0;
     }
     return DefWindowProcA(hwnd, msg, wp, lp);
 }
@@ -1576,8 +1578,7 @@ LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return hit;
     }
     case WM_NCCALCSIZE:
-        if (wp) return 0;
-        break;
+        return 0;
     case WM_DESTROY:
         KillTimer(hwnd, 1);
         return 0;
@@ -1850,8 +1851,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return hit;
     }
     case WM_NCCALCSIZE:
-        if (wp) return 0;
-        break;
+        return 0;
     case WM_DESTROY:
         KillTimer(hwnd, 1);
         if (g.find.hwnd) DestroyWindow(g.find.hwnd);
@@ -1892,6 +1892,10 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);
     ShowWindow(g.hwnd, show);
+    // Wine often maps host decorations on first show; a frame-change (same as
+    // the user resizing) reapplies WM_NCCALCSIZE so only the gel chrome remains.
+    SetWindowPos(g.hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     UpdateWindow(g.hwnd);
 
     // Open file from command line if given

@@ -2071,9 +2071,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return hit;
     }
     case WM_NCCALCSIZE:
-        // Borderless — entire window is the client; we draw gel ourselves.
-        if (wp) return 0;
-        break;
+        // Borderless — entire window is the client; gel paints the frame.
+        // Always return 0 (including wParam==FALSE) so Wine does not keep a
+        // host non-client strip until the first resize.
+        return 0;
     case WM_DESTROY:
         KillTimer(hwnd, 1);
         KillTimer(hwnd, 2);
@@ -2116,6 +2117,8 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);
     ShowWindow(g_hwnd, show);
+    SetWindowPos(g_hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
     UpdateWindow(g_hwnd);
 
     MSG msg;

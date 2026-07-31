@@ -57,8 +57,10 @@ make run-textedit  # Sagrado TextEdit under Wine
 ```
 
 Gel apps use a borderless `WS_POPUP` (no OS caption / sysmenu styles) so Wine
-does not stack a host title bar on top of the kit gel. Resize still works via
-`WS_THICKFRAME` + gel grip / edge hit-testing.
+does not stack a host title bar on top of the kit gel. `WM_NCCALCSIZE` always
+claims the full window as client, and startup sends `SWP_FRAMECHANGED` (same
+effect as the first resize) so host decorations do not linger. Resize still
+works via `WS_THICKFRAME` + gel grip / edge hit-testing.
 
 
 ### Windows
