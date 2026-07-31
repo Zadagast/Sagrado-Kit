@@ -16,6 +16,7 @@
 #include "../../engine/clipboard.h"
 #include "../../engine/hfnt.h"
 #include "../../engine/text_doc.h"
+#include "../../engine/window_zoom.h"
 
 namespace {
 
@@ -206,6 +207,7 @@ struct App {
     bool show_hscroll = false;
 
     std::string status = "Sagrado TextEdit — first SagradoKit app";
+    sagrado::WindowZoomState zoom{};
 };
 
 App g;
@@ -803,13 +805,9 @@ void run_menu_command(int menu, int item) {
         if (item == 0) about_box();
     } else if (menu == MenuWindow) {
         if (item == 0) ShowWindow(g.hwnd, SW_MINIMIZE);
-        else if (item == 1) {
-            WINDOWPLACEMENT wp{};
-            wp.length = sizeof(wp);
-            GetWindowPlacement(g.hwnd, &wp);
-            ShowWindow(g.hwnd,
-                       wp.showCmd == SW_MAXIMIZE ? SW_RESTORE : SW_MAXIMIZE);
-        } else if (item == 3) PostQuitMessage(0);
+        else if (item == 1)
+            sagrado::window_zoom_toggle(g.hwnd, g.zoom);
+        else if (item == 3) PostQuitMessage(0);
     }
     ensure_caret_visible();
     redraw();
@@ -836,6 +834,7 @@ int size_edge_at(int x, int y) {
 }
 
 void begin_size_drag(int edge) {
+    sagrado::window_zoom_clear(g.zoom);
     RECT wr{};
     GetWindowRect(g.hwnd, &wr);
     POINT pt{};
@@ -1154,12 +1153,8 @@ void mouse_up(int x, int y) {
         return;
     }
     if (g.drag == DragMax) {
-        if (g.gel.max_box.contains(x, y)) {
-            WINDOWPLACEMENT wp{};
-            wp.length = sizeof(wp);
-            GetWindowPlacement(g.hwnd, &wp);
-            ShowWindow(g.hwnd, wp.showCmd == SW_MAXIMIZE ? SW_RESTORE : SW_MAXIMIZE);
-        }
+        if (g.gel.max_box.contains(x, y))
+            sagrado::window_zoom_toggle(g.hwnd, g.zoom);
         g.pressed_box = 0;
         g.drag = DragNone;
         redraw();

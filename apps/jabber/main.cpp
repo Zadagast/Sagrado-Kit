@@ -22,6 +22,7 @@
 #include "../../engine/gel_host.h"
 #include "../../engine/hfnt.h"
 #include "../../engine/text_field.h"
+#include "../../engine/window_zoom.h"
 #include "xmpp/client.h"
 
 namespace {
@@ -264,6 +265,7 @@ struct App {
 
     bool tray_added = false;
     bool in_tray = false; // window hidden; live in the notification area
+    sagrado::WindowZoomState zoom{};
 };
 
 App g;
@@ -2356,12 +2358,9 @@ void run_menu(int menu, int row) {
     }
     if (menu == MenuWindow) {
         if (row == 0) ShowWindow(g.hwnd, SW_MINIMIZE);
-        else if (row == 1) {
-            WINDOWPLACEMENT wp{};
-            wp.length = sizeof(wp);
-            GetWindowPlacement(g.hwnd, &wp);
-            ShowWindow(g.hwnd, wp.showCmd == SW_MAXIMIZE ? SW_RESTORE : SW_MAXIMIZE);
-        } else if (row == 3) hide_to_tray();
+        else if (row == 1)
+            sagrado::window_zoom_toggle(g.hwnd, g.zoom);
+        else if (row == 3) hide_to_tray();
         return;
     }
     if (menu == MenuFile) {
@@ -2633,6 +2632,7 @@ int menu_bar_hit(int x, int y) {
 }
 
 void begin_size_drag(int edge) {
+    sagrado::window_zoom_clear(g.zoom);
     RECT wr{};
     GetWindowRect(g.hwnd, &wr);
     POINT pt{};
@@ -3078,12 +3078,8 @@ void mouse_up(int x, int y) {
         return;
     }
     if (g.drag == DragMax) {
-        if (g.gel.max_box.contains(x, y)) {
-            WINDOWPLACEMENT wp{};
-            wp.length = sizeof(wp);
-            GetWindowPlacement(g.hwnd, &wp);
-            ShowWindow(g.hwnd, wp.showCmd == SW_MAXIMIZE ? SW_RESTORE : SW_MAXIMIZE);
-        }
+        if (g.gel.max_box.contains(x, y))
+            sagrado::window_zoom_toggle(g.hwnd, g.zoom);
         g.pressed_box = 0;
         g.drag = DragNone;
         redraw();

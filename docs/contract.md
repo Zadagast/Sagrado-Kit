@@ -193,6 +193,7 @@ layout (`paint_text_view` / `layout_lines`), not `text_elided`.
 | Context menus are kit paint | `context_menu.h` on `paint_menu` / `menu_place` — not OS popups for in-window chrome. |
 | One shared `Appearance` | All gels in the process load the same skin; switch live when the user picks one. |
 | Ooze Gel owns the frame | Title / hatch / Window Menu / close·zoom·min / grow box are kit chrome. Host decorations stay off (especially under Wine). |
+| Zoom is app-owned | Borderless `WS_POPUP` gels must not use `ShowWindow(SW_MAXIMIZE)` — Wine often flashes full-screen then snaps back. Use `engine/window_zoom.h` (`SetWindowPos` to the monitor work area + restore rect). |
 | Clip, don’t hide | Narrow windows clip menu titles and title text. No hamburger / overflow chrome. |
 | App min size | Outer window clamps so gel stays usable (TextEdit matches Haxial TextEdit **212×128**). |
 | Popups stay on-screen | Use `menu_place` (right-anchored Window Menus flip/clamp inside the window). |
