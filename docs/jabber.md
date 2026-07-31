@@ -46,8 +46,7 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    buddy icon + presence mark + name + status text
 3. **Center** — IM tabs (close with **x**), soft-wrapped transcript (kit `layout_lines`),
    compose + Send; peer typing line when composing. Click a line to select it; reactions
-   show as short ASCII marks under the line (`+1`, `<3`, `haha`… — kit font has no emoji glyphs;
-   the wire still sends real emoji for Gajim/Conversations)
+   show as real emoji icons under the line (Noto PNGs — kit font is Latin-1)
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
 5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 6. **Status strip** — durable line: signed on as / presence / buddies online / active
@@ -87,9 +86,9 @@ AIM-shaped chat rooms in gel — not a Discord server rail. Wire is XEP-0045.
   server supports it, with Private XML `storage:bookmarks` as fallback. Autojoin
   rooms rejoin on Sign On.
 
-**React…** — select a line (or the last reactable one), then Chat → React… for `+1` /
-`<3` / `haha` / `wow` / `sad` / `yay`. Toggle again to clear yours. Rooms use the
-MUC `stanza-id` when the server provides one.
+**React…** — select a line (or the last reactable one), then Chat → React… for 👍 ❤️ 😂
+😮 😢 🎉. Toggle again to clear yours. Rooms use the MUC `stanza-id` when the server
+provides one. Interoperable with Gajim/Conversations on the wire (XEP-0444).
 
 Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, or MAM history
 browser in this pass.

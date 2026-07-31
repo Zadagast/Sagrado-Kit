@@ -45,8 +45,8 @@ $(MBEDTLS_LIB): $(MBEDTLS_SRCS) apps/jabber/xmpp/jabber_mbedtls_config.h | $(BUI
 	done
 	i686-w64-mingw32-ar rcs $@ $(BUILD)/mbedtls/*.o
 
-$(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h apps/jabber/third_party/stb_image.h \
-           $(MBEDTLS_LIB) engine/*.h | $(BUILD)
+$(JABBER): apps/jabber/main.cpp apps/jabber/reaction_icons.h apps/jabber/xmpp/*.h \
+           apps/jabber/third_party/stb_image.h $(MBEDTLS_LIB) engine/*.h | $(BUILD)
 	$(CXX) $(JABBER_CXXFLAGS) apps/jabber/main.cpp $(MBEDTLS_LIB) -o $@ $(JABBER_LDFLAGS)
 	cp -f apps/jabber/providers.txt $(BUILD)/providers.txt
 

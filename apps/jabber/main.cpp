@@ -17,6 +17,7 @@
 
 #include "../../engine/appearance.h"
 #include "../../engine/hfnt.h"
+#include "reaction_icons.h"
 #include "xmpp/client.h"
 
 namespace {
@@ -75,9 +76,9 @@ static const char *kChatItems[] = {
     "Bookmark Room",
     "Autojoin Room",
 };
-// XEP-0444 quick set — ASCII labels (kit font); wire emoji via reaction_wire().
-static const char *kReactLabels[] = {"+1", "<3", "haha", "wow", "sad", "yay"};
-static constexpr int kReactCount = 6;
+// XEP-0444 quick set — real emoji on the wire; PNGs for kit paint (Latin-1 font).
+static constexpr int kReactCount = jabber_react_icons::kCount;
+static_assert(kReactCount == 6, "reaction icon table size");
 static const char *kAppearanceItems[] = {
     "Load Appearance...", "Stock Appearance",
 };
@@ -203,6 +204,9 @@ struct App {
     std::string field_invite_reason;
     std::string react_target_id; // XEP-0444 id for DlgReact
     Rect react_btn_r[kReactCount]{};
+    SkinImage react_icon_28[kReactCount]{};
+    SkinImage react_icon_20[kReactCount]{};
+    bool react_icons_ok = false;
     int focus_field = 0; // which dialog field
     bool captcha_visible = false;
     bool about_open = false;
@@ -287,6 +291,72 @@ std::string find_default_skin() {
 void tray_update_tip();
 void tray_balloon(const std::string &title, const std::string &body);
 void open_sign_on();
+
+void load_react_icons() {
+    g.react_icons_ok = true;
+    for (int i = 0; i < kReactCount; ++i) {
+        const auto &ic = jabber_react_icons::kIcons[i];
+        if (!jabber::decode_image_bytes(ic.png28, int(ic.png28_len),
+                                        g.react_icon_28[i]) ||
+            !jabber::decode_image_bytes(ic.png20, int(ic.png20_len),
+                                        g.react_icon_20[i])) {
+            g.react_icons_ok = false;
+        }
+    }
+}
+
+int react_icon_index(const std::string &emoji) {
+    std::string w = jabber::reaction_wire(emoji);
+    for (int i = 0; i < kReactCount; ++i) {
+        if (w == jabber_react_icons::kIcons[i].emoji) return i;
+        if (emoji == jabber_react_icons::kIcons[i].emoji) return i;
+    }
+    // Heart without variation selector.
+    if (w == u8"❤" || emoji == u8"❤") {
+        for (int i = 0; i < kReactCount; ++i)
+            if (std::strcmp(jabber_react_icons::kIcons[i].id, "heart") == 0)
+                return i;
+    }
+    return -1;
+}
+
+// Height of the reaction marks row under a chat line.
+int reaction_row_height(const jabber::ChatLine &ln, int lh) {
+    if (ln.reactions.empty()) return 0;
+    if (g.react_icons_ok) return std::max(lh, 22);
+    return lh;
+}
+
+// Paint reaction marks; returns pixels advanced in y.
+int paint_reaction_row(Canvas &cv, int x, int y, int /*wrap_w*/,
+                       const jabber::ChatLine &ln, Color count_ink) {
+    if (ln.reactions.empty()) return 0;
+    const int lh = cv.line_height();
+    const int row_h = reaction_row_height(ln, lh);
+    int px = x + 10;
+    for (const auto &rx : ln.reactions) {
+        int idx = react_icon_index(rx.emoji);
+        if (g.react_icons_ok && idx >= 0 && !g.react_icon_20[idx].empty()) {
+            int iy = y + (row_h - g.react_icon_20[idx].h) / 2;
+            cv.blit_image(g.react_icon_20[idx], px, iy);
+            px += g.react_icon_20[idx].w + 2;
+        } else {
+            const char *lab = jabber::reaction_label(rx.emoji);
+            cv.text(px, y + (row_h - lh) / 2, lab, count_ink);
+            px += cv.text_width(lab) + 2;
+        }
+        if (rx.count > 1 || rx.mine) {
+            std::string tail;
+            if (rx.count > 1) tail += std::to_string(rx.count);
+            if (rx.mine) tail += "*";
+            cv.text(px, y + (row_h - lh) / 2, tail.c_str(), count_ink);
+            px += cv.text_width(tail.c_str()) + 8;
+        } else {
+            px += 8;
+        }
+    }
+    return row_h;
+}
 void redraw();
 void stop_typing_indicator();
 void open_subscribe_ask(const std::string &jid);
@@ -1265,7 +1335,7 @@ void paint_dialog(Canvas &cv) {
         dh = 180;
     } else if (g.dialog == DlgReact) {
         dw = 360;
-        dh = 200;
+        dh = 230;
     }
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
@@ -1451,13 +1521,24 @@ void paint_dialog(Canvas &cv) {
         cv.text(cl.x + 12, y, "Pick a reaction (again clears yours)",
                 g.ap.c("primary.label"));
         y += lh + 10;
-        int bw = 96, bh = 28, gap = 8;
+        int bw = 72, bh = 40, gap = 10;
         int row_w = 3 * bw + 2 * gap;
         int x0 = cl.x + (cl.w - row_w) / 2;
         for (int i = 0; i < kReactCount; ++i) {
             int col = i % 3, row = i / 3;
             g.react_btn_r[i] = {x0 + col * (bw + gap), y + row * (bh + gap), bw, bh};
-            paint_button(cv, g.ap, g.react_btn_r[i], kReactLabels[i], false, false);
+            paint_button(cv, g.ap, g.react_btn_r[i], "", false, false);
+            if (g.react_icons_ok && !g.react_icon_28[i].empty()) {
+                int ix = g.react_btn_r[i].x +
+                         (g.react_btn_r[i].w - g.react_icon_28[i].w) / 2;
+                int iy = g.react_btn_r[i].y +
+                         (g.react_btn_r[i].h - g.react_icon_28[i].h) / 2;
+                cv.blit_image(g.react_icon_28[i], ix, iy);
+            } else {
+                const char *lab =
+                    jabber::reaction_label(jabber_react_icons::kIcons[i].emoji);
+                paint_button(cv, g.ap, g.react_btn_r[i], lab, false, false);
+            }
         }
         Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
         paint_button(cv, g.ap, cancel, "Cancel", false, false);
@@ -1652,24 +1733,10 @@ void paint() {
             }
             return text;
         };
-        auto format_reactions = [&](const jabber::ChatLine &ln) {
-            if (ln.reactions.empty()) return std::string{};
-            std::string s = "  ";
-            for (size_t i = 0; i < ln.reactions.size(); ++i) {
-                if (i) s += "  ";
-                s += jabber::reaction_label(ln.reactions[i].emoji);
-                if (ln.reactions[i].count > 1)
-                    s += "x" + std::to_string(ln.reactions[i].count);
-                if (ln.reactions[i].mine) s += "*";
-            }
-            return s;
-        };
         auto line_block_h = [&](const jabber::ChatLine &ln, int wrap_w) {
             int h = text_content_height(layout_lines(cv, format_line(ln), wrap_w, true),
                                         lh);
-            std::string rx = format_reactions(ln);
-            if (!rx.empty())
-                h += text_content_height(layout_lines(cv, rx, wrap_w, true), lh);
+            h += reaction_row_height(ln, lh);
             return h + 2;
         };
         auto measure_chat = [&](int wrap_w) {
@@ -1762,18 +1829,15 @@ void paint() {
                                 text.substr(vl.start, vl.len).c_str(), ink);
                     ty += lh;
                 }
-                std::string rx = format_reactions(ln);
-                if (!rx.empty()) {
+                if (!ln.reactions.empty()) {
                     Color rink = (li == g.chat_sel && !ln.system)
                                      ? g.ap.c("list.hilite_foreground")
                                      : g.ap.c("menu.disable_label");
-                    auto rlines = layout_lines(cv, rx, wrap_w, true);
-                    for (const auto &vl : rlines) {
-                        if (ty + lh > body.y && ty < body.bottom())
-                            cv.text(body.x + pad, ty,
-                                    rx.substr(vl.start, vl.len).c_str(), rink);
-                        ty += lh;
-                    }
+                    if (ty + reaction_row_height(ln, lh) > body.y && ty < body.bottom())
+                        ty += paint_reaction_row(cv, body.x + pad, ty, wrap_w, ln,
+                                                 rink);
+                    else
+                        ty += reaction_row_height(ln, lh);
                 }
                 ty += 2;
             }
@@ -2355,7 +2419,7 @@ void mouse_down(int x, int y) {
             dh = 180;
         } else if (g.dialog == DlgReact) {
             dw = 360;
-            dh = 200;
+            dh = 230;
         }
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
         GelLayout gl =
@@ -2377,10 +2441,12 @@ void mouse_down(int x, int y) {
                 if (g.react_btn_r[i].contains(x, y)) {
                     if (g.active_tab >= 0 && !g.react_target_id.empty()) {
                         bool muc = g.tabs[g.active_tab].muc;
-                        g.client.send_reaction(g.tabs[g.active_tab].jid,
-                                               g.react_target_id, kReactLabels[i],
-                                               muc);
-                        set_status(std::string("Reacted ") + kReactLabels[i]);
+                        g.client.send_reaction(
+                            g.tabs[g.active_tab].jid, g.react_target_id,
+                            jabber_react_icons::kIcons[i].emoji, muc);
+                        set_status(std::string("Reacted ") +
+                                   jabber::reaction_label(
+                                       jabber_react_icons::kIcons[i].emoji));
                     }
                     g.dialog = DlgNone;
                     g.react_target_id.clear();
@@ -2672,18 +2738,6 @@ void mouse_down(int x, int y) {
             if (ln.mine && ln.delivered) text += "  ok";
             return text;
         };
-        auto format_reactions = [&](const jabber::ChatLine &ln) {
-            if (ln.reactions.empty()) return std::string{};
-            std::string s = "  ";
-            for (size_t i = 0; i < ln.reactions.size(); ++i) {
-                if (i) s += "  ";
-                s += jabber::reaction_label(ln.reactions[i].emoji);
-                if (ln.reactions[i].count > 1)
-                    s += "x" + std::to_string(ln.reactions[i].count);
-                if (ln.reactions[i].mine) s += "*";
-            }
-            return s;
-        };
         int top = g.transcript_r.y + 4;
         if (muc && !subject.empty()) {
             std::string sub = "Topic: " + subject;
@@ -2699,10 +2753,7 @@ void mouse_down(int x, int y) {
                 int h = text_content_height(
                             layout_lines(g.canvas, format_line(lines[i]), wrap_w, true),
                             lh);
-                std::string rx = format_reactions(lines[i]);
-                if (!rx.empty())
-                    h += text_content_height(layout_lines(g.canvas, rx, wrap_w, true),
-                                             lh);
+                h += reaction_row_height(lines[i], lh);
                 h += 2;
                 if (y >= ty && y < ty + h) {
                     hit = lines[i].system ? -1 : i;
@@ -2933,6 +2984,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         else
             g.ap.set_skin(stock_skin());
         g.client.on_event = [](const jabber::ClientEvent &e) { post_client_event(e); };
+        load_react_icons();
         load_providers();
         load_accounts();
         if (!g.recent_jids.empty()) g.field_jid = g.recent_jids[0];
