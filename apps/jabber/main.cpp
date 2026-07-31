@@ -1227,7 +1227,7 @@ void run_menu(int menu, int row) {
         return;
     }
     if (menu == MenuWindow) {
-        if (row == 0) hide_to_tray();
+        if (row == 0) ShowWindow(g.hwnd, SW_MINIMIZE);
         else if (row == 1) {
             WINDOWPLACEMENT wp{};
             wp.length = sizeof(wp);
@@ -1735,7 +1735,7 @@ void mouse_up(int x, int y) {
         return;
     }
     if (g.drag == DragMin) {
-        if (g.gel.min_box.contains(x, y)) hide_to_tray();
+        if (g.gel.min_box.contains(x, y)) ShowWindow(g.hwnd, SW_MINIMIZE);
         g.pressed_box = 0;
         g.drag = DragNone;
         redraw();

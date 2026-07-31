@@ -39,8 +39,9 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 5. **Status strip** — “Signed on as …”, presence alerts, upload progress
 6. **MUC** — occupants column on room tabs; sticky topic under the transcript top;
    Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
-7. **System tray** — close / minimize hides to the notification area; tray menu has
-   Open / Sign On / Sign Off / Quit; inbound IM can balloon while hidden
+7. **System tray** — gel close (X) hides to the notification area; minimize stays a
+   normal taskbar minimize. Tray menu: Open / Sign On / Sign Off / Quit; inbound IM
+   can balloon while hidden
 
 Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_menu` — no OS widgets for identity.
 
