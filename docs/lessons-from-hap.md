@@ -81,8 +81,11 @@ usually bake thumb chrome into the indicator (e.g. Aluminum Alloy). Soft-complet
 also never invents open-menu chrome (`menu.background`, `menu.background_pattern`,
 `menu.item.*`, `menu.separator`): many light themes (Milk Redux) leave those
 slots empty on purpose and paint menus from colours. Injecting dark Boilerplate
-plates there reads as two skins mixed together. Pure Hap without the pack is
-still a valid colour path.
+plates there reads as two skins mixed together. Tiny Hap `popup_frame` stubs
+(3×3, zero Positions) are ignored the same way — nine-slicing them draws a soft
+grey ghost ring when `menu.background` matches the editor. Colour-path menus use
+the Focus Box outer ring (and a light/dark bevel only when those roles differ).
+Pure Hap without the pack is still a valid colour path.
 
 Hap image records also carry AppearanceEdit **Text Color** (+8..+11). When
 set, paint prefers that ink for button / header / menu / title labels on

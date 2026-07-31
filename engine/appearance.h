@@ -1680,6 +1680,19 @@ struct MenuLayout {
     int count = 0;
 };
 
+// Hap Popup Window Frame is usable when it publishes thickness (Positions)
+// or is large enough to be real chrome. Tiny 3×3 stubs with zero Positions
+// (Milk, Aluminum) are placeholders — nine-slicing them draws a soft grey
+// ring that reads as an empty "ghost border", especially when menu.background
+// matches the editor fill.
+inline bool popup_frame_usable(const SkinImage *frame) {
+    if (!frame || frame->empty()) return false;
+    int thick = int(frame->positions[0]) + int(frame->positions[1]) +
+                int(frame->positions[2]) + int(frame->positions[3]);
+    if (thick > 0) return true;
+    return frame->w >= 7 && frame->h >= 7;
+}
+
 // Popup / drop-down menu panel. `hot` is the hilited row (-1 none).
 // Optional `disabled_mask` bit i disables item i.
 // Art path: menu.background(_pattern) + menu.item.* + menu.separator + popup_frame.*.
@@ -1693,9 +1706,10 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
     int pad_l = 2, pad_t = 2, pad_r = 2, pad_b = 2;
     const SkinImage *frame = ap.art("popup_frame.focus");
     if (!frame) frame = ap.art("popup_frame.normal");
+    if (!popup_frame_usable(frame)) frame = nullptr;
     if (frame) {
-        // Positions = frame thickness (even). If all zero, derive from caps
-        // (even, ≥2) so Milk's 3×3 stub still pads sanely.
+        // Positions = frame thickness (even). If all zero on a real plate,
+        // derive from caps (even, ≥2).
         auto even_thick = [](int v) {
             if (v <= 0) return 0;
             if (v < 2) return 2;
@@ -1736,10 +1750,18 @@ inline MenuLayout paint_menu(Canvas &cv, const Appearance &ap, int x, int y,
     if (frame) {
         cv.nine_slice(*frame, lay.frame);
     } else {
+        // Colour path: Haxial outer ring is Focus Box. Add a light/dark bevel
+        // only when those roles differ — Milk sets both to the same grey, and
+        // stacking focus + dark + light there looks like a thick odd border.
         cv.frame(lay.frame, ap.c("focus.box"));
-        cv.frame({x + 1, y + 1, width - 2, h - 2}, ap.c("menu.dark"));
-        cv.hline(x + 2, x + width - 2, y + 2, ap.c("menu.light"));
-        cv.vline(x + 2, y + 2, y + h - 2, ap.c("menu.light"));
+        Color light = ap.c("menu.light");
+        Color dark = ap.c("menu.dark");
+        if (light.r != dark.r || light.g != dark.g || light.b != dark.b) {
+            cv.hline(x + 1, x + width - 1, y + 1, light);
+            cv.vline(x + 1, y + 1, y + h - 1, light);
+            cv.hline(x + 1, x + width - 1, y + h - 2, dark);
+            cv.vline(x + width - 2, y + 1, y + h - 1, dark);
+        }
     }
 
     for (int i = 0; i < count; ++i) {

@@ -45,11 +45,14 @@ int main(int argc, char **argv) {
                     false);
 
     // Open Edit menu — Milk must stay on the colour path (no dark Boilerplate
-    // plates from soft-complete).
+    // plates from soft-complete; ignore tiny popup_frame stubs).
     static const char *edit_items[] = {
         "Undo", "-", "Cut", "Copy", "Paste", "Clear", "-", "Select All", "Sort Lines"};
+    int mw = 72;
+    for (int i = 0; i < 9; ++i)
+        mw = std::max(mw, cv.text_width(edit_items[i]) + 28);
     MenuLayout open =
-        paint_menu(cv, ap, menu_r.x + 48, menu_r.bottom(), 140, edit_items, 9, 2);
+        paint_menu(cv, ap, menu_r.x + 48, menu_r.bottom(), mw, edit_items, 9, 2);
     if (path.find("Milk Redux") != std::string::npos ||
         path.find("milk-redux") != std::string::npos) {
         if (ap.art("menu.background") || ap.art("menu.item.normal")) {
@@ -69,7 +72,18 @@ int main(int argc, char **argv) {
                          pr, pg, pb, expect.r, expect.g, expect.b);
             return 1;
         }
-        std::printf("Milk Edit menu colour-path OK at %d,%d\n", sx, sy);
+        // Outer ring is Focus Box (not the soft grey 3×3 stub).
+        Color ring = ap.c("focus.box");
+        uint32_t edge = cv.data()[size_t(open.frame.y) * W + open.frame.x];
+        int er = int((edge >> 16) & 255), eg = int((edge >> 8) & 255),
+            eb = int(edge & 255);
+        if (er != ring.r || eg != ring.g || eb != ring.b) {
+            std::fprintf(stderr,
+                         "Milk menu outer ring #%02x%02x%02x != focus.box #%02x%02x%02x\n",
+                         er, eg, eb, ring.r, ring.g, ring.b);
+            return 1;
+        }
+        std::printf("Milk Edit menu colour-path OK (mw=%d, focus ring)\n", mw);
     }
 
     cv.fill(status, ap.c("primary.background"));

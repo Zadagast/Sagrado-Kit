@@ -590,9 +590,9 @@ void paint_main() {
     if (g.menu_open >= 0 && g.menu_open < MenuCount) {
         Rect item = g.menu_bar.item_rects[g.menu_open];
         const MenuDef &md = kMenus[g.menu_open];
-        int mw = 180;
+        int mw = 72;
         for (int i = 0; i < md.count; ++i)
-            mw = std::max(mw, cv.text_width(md.items[i]) + 40);
+            mw = std::max(mw, cv.text_width(md.items[i]) + 28);
         // Soft Wrap checkmark via prefix
         const char *items_buf[12];
         char wrap_lab[32];

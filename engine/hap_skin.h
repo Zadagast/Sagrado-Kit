@@ -617,9 +617,11 @@ inline int soft_complete(AppearanceT &ap, const std::string &pack_path) {
         if (kv.second.has_caps) std::memcpy(img.caps, kv.second.caps, 4);
         if (kv.second.has_positions)
             std::memcpy(img.positions, kv.second.positions, 4);
-        // Tiny Hap popup stubs (Milk 3×3) are real; do not replace with pack
-        // plates, and do not invent a pack frame when the theme authored one.
-        if (kv.first.rfind("popup_frame", 0) == 0 && img.w * img.h < 25) continue;
+        // Do not soft-fill popup_frame from the pack when the Hap already has
+        // any plate (including Milk's 3×3 stub). paint_menu ignores unusable
+        // stubs and uses the colour-path Focus Box ring instead — pack frames
+        // are foreign chrome and read as a mixed theme.
+        if (kv.first.rfind("popup_frame", 0) == 0) continue;
         ap.art_cache[kv.first] = std::move(img);
         ++filled;
     }
