@@ -578,10 +578,12 @@ void layout() {
     g.occ_r = {};
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
         g.tabs[g.active_tab].muc) {
-        g.occ_r = {g.transcript_r.right() - 120, g.transcript_r.y, 120,
-                   g.transcript_r.h};
-        g.transcript_r.w -= 120;
-        g.compose_r.w -= 120;
+        // Full-height nick rail beside transcript + compose (no dead pad under list).
+        int occ_w = 120;
+        g.occ_r = {cl.right() - occ_w, g.tabs_r.bottom(), occ_w,
+                   g.status_r.y - g.tabs_r.bottom()};
+        g.transcript_r.w -= occ_w;
+        g.compose_r.w -= occ_w;
         g.btn_send.x = g.compose_r.right() - 72;
     }
 }

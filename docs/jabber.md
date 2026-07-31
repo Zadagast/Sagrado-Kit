@@ -37,8 +37,8 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 3. **Center** — IM tabs, transcript, compose + Send
 4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 5. **Status strip** — “Signed on as …”, presence alerts, upload progress
-6. **MUC** — occupants column on room tabs; sticky topic under the transcript top;
-   Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
+6. **MUC** — full-height “In room” rail beside transcript **and** compose; sticky topic
+   under the transcript top; Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
 7. **System tray** — gel close (X) hides to the notification area; minimize stays a
    normal taskbar minimize. Tray menu: Open / Sign On / Sign Off / Quit; inbound IM
    can balloon while hidden
