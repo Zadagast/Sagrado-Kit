@@ -10,12 +10,15 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 
 ## AOL / AIM UX ↔ XMPP
 
-| AIM feeling | Sagrado Jabber | Wire |
+| AIM / Yahoo feeling | Sagrado Jabber | Wire |
 |---|---|---|
-| Buddy list | Left roster pane | Roster IQ + presence |
+| Identity strip (you) | Left column above Buddies | Own nick/avatar + `<presence>` |
+| Custom status line | Editable field under your name | `<presence><status>` |
+| Available / Away / Busy / Invisible | Click presence mark (or Buddy menu) | `<show>` / unavailable |
+| Buddy list | Two-line rows: name + status | Roster IQ + presence |
 | Buddy signed on / off | Status strip alert | Presence stanzas |
+| Avatar / display name | Tile + nick | [XEP-0054](https://xmpp.org/extensions/xep-0054.html) vCard |
 | IM windows / tabs | Center tab strip + transcript | `<message type='chat'>` |
-| Available / Away / Busy / Invisible | Buddy menu | `<show>` / unavailable |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
 | Chat rooms | Chat → Join Chat Room… | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
@@ -26,11 +29,14 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 
 ## Layout
 
-1. **Left** — Buddies (online first; offline dimmed)
-2. **Center** — IM tabs, transcript, compose + Send
-3. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
-4. **Status strip** — “Signed on as …”, presence alerts, upload progress
-5. **MUC** — optional occupants column when a room tab is focused
+1. **Left identity strip** — avatar, display name, presence mark, status message field
+2. **Left Buddies** — online first; presence mark + name + status text
+3. **Center** — IM tabs, transcript, compose + Send
+4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
+5. **Status strip** — “Signed on as …”, presence alerts, upload progress
+6. **MUC** — optional occupants column when a room tab is focused
+
+Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_menu` — no OS widgets for identity.
 
 ## Accounts
 

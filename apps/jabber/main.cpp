@@ -24,10 +24,13 @@ constexpr int kWinH = 560;
 constexpr int kMinWinW = 420;
 constexpr int kMinWinH = 280;
 constexpr int kStatusH = 22;
-constexpr int kRosterW = 200;
+constexpr int kRosterW = 220;
+constexpr int kIdentityH = 64;
+constexpr int kAvatarSz = 40;
 constexpr int kTabH = 22;
 constexpr int kComposeH = 56;
 constexpr int kTextPad = 4;
+constexpr int kBuddyRowH = 36;
 
 enum : UINT {
     WM_JABBER_EVENT = WM_APP + 40,
@@ -143,6 +146,11 @@ struct App {
     Rect provider_list_r{};
 
     std::string compose;
+    std::string status_msg; // own presence <status> draft (identity field)
+    bool status_field_focus = false;
+    bool presence_menu = false; // popup anchored to identity strip
+
+    Rect identity_r{}, avatar_r{}, presence_r{}, status_field_r{};
     Rect roster_r{}, tabs_r{}, transcript_r{}, compose_r{}, status_r{};
     Rect btn_send{}, occ_r{}, progress_r{};
 };
@@ -276,7 +284,23 @@ void layout() {
     g.status_r = {cl.x, cl.bottom() - kStatusH, cl.w, kStatusH};
     int top = cl.y + kMenuBarH;
     int body_h = g.status_r.y - top;
-    g.roster_r = {cl.x, top, kRosterW, body_h};
+    bool signed_on = g.client.state == jabber::ConnState::Online;
+    int id_h = signed_on ? kIdentityH : 0;
+    g.identity_r = {cl.x, top, kRosterW, id_h};
+    g.roster_r = {cl.x, top + id_h, kRosterW, body_h - id_h};
+    if (id_h > 0) {
+        g.avatar_r = {g.identity_r.x + 8,
+                      g.identity_r.y + (g.identity_r.h - kAvatarSz) / 2, kAvatarSz,
+                      kAvatarSz};
+        g.presence_r = {g.avatar_r.right() - 10, g.avatar_r.bottom() - 10, 10, 10};
+        int fx = g.avatar_r.right() + 8;
+        int fw = g.identity_r.right() - 8 - fx;
+        g.status_field_r = {fx, g.identity_r.bottom() - 26, fw, 20};
+    } else {
+        g.avatar_r = {};
+        g.presence_r = {};
+        g.status_field_r = {};
+    }
     int cx = g.roster_r.right();
     int cw = cl.right() - cx;
     g.tabs_r = {cx, top, cw, kTabH};
@@ -299,6 +323,55 @@ void layout() {
         g.compose_r.w -= 120;
         g.btn_send.x = g.compose_r.right() - 72;
     }
+}
+
+Color presence_color(const Appearance &ap, jabber::Show s) {
+    switch (s) {
+    case jabber::Show::Chat:
+        return ap.c("list.hilite_background");
+    case jabber::Show::Away:
+    case jabber::Show::Xa:
+        return ap.c("primary.dark");
+    case jabber::Show::Dnd:
+        return ap.c("focus.box");
+    default:
+        return ap.c("menu.disable_label");
+    }
+}
+
+void paint_avatar_tile(Canvas &cv, const Appearance &ap, Rect r, const SkinImage *img,
+                       const std::string &initials) {
+    cv.fill(r, ap.c("list.background"));
+    cv.frame(r, ap.c("list.separator"));
+    if (img && !img->empty()) {
+        CanvasClip clip(cv, r);
+        // Nearest-neighbour scale into tile.
+        for (int y = 0; y < r.h; ++y)
+            for (int x = 0; x < r.w; ++x) {
+                int sx = x * img->w / r.w;
+                int sy = y * img->h / r.h;
+                uint32_t p = img->at(sx, sy);
+                if (((p >> 24) & 255) < 8) continue;
+                cv.data()[size_t(r.y + y) * cv.width() + size_t(r.x + x)] = p | 0xFF000000;
+            }
+    } else {
+        std::string t = initials.empty() ? "?" : initials.substr(0, 2);
+        int tw = cv.text_width(t.c_str());
+        cv.text(r.x + (r.w - tw) / 2, r.y + (r.h - cv.line_height()) / 2, t.c_str(),
+                ap.c("primary.label"));
+    }
+}
+
+void commit_status_message() {
+    if (g.client.state != jabber::ConnState::Online) return;
+    g.client.set_status_message(g.status_msg);
+    g.status_field_focus = false;
+}
+
+void open_presence_menu() {
+    g.presence_menu = true;
+    g.menu_open = MenuBuddy;
+    g.menu_item_hot = -1;
 }
 
 std::vector<jabber::Buddy> roster_sorted() {
@@ -470,14 +543,53 @@ void paint() {
                                 {g.gel.client.x, g.gel.client.y, g.gel.client.w, kMenuBarH},
                                 kMenuTitles, MenuCount, g.menu_hot);
 
+    // Identity strip (Yahoo-shaped: you + presence + status)
+    if (g.identity_r.h > 0) {
+        cv.fill(g.identity_r, g.ap.c("primary.background"));
+        cv.hline(g.identity_r.x, g.identity_r.right(), g.identity_r.bottom() - 1,
+                 g.ap.c("list.separator"));
+        std::string nick, jid;
+        jabber::Show own = jabber::Show::Chat;
+        SkinImage *av = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(g.client.mu);
+            jid = g.client.jid;
+            nick = g.client.own_nick.empty() ? jabber::jid_node(jid) : g.client.own_nick;
+            own = g.client.own_show;
+            if (!g.client.own_avatar.empty()) av = &g.client.own_avatar;
+            if (g.status_msg.empty() && !g.status_field_focus)
+                g.status_msg = g.client.own_status;
+        }
+        std::string initials = nick.empty() ? "?" : nick.substr(0, 1);
+        paint_avatar_tile(cv, g.ap, g.avatar_r, av, initials);
+        Color pcol = presence_color(g.ap, own);
+        cv.fill(g.presence_r, pcol);
+        cv.frame(g.presence_r, g.ap.c("list.separator"));
+        int tx = g.avatar_r.right() + 8;
+        int tw = g.identity_r.right() - 8 - tx;
+        {
+            CanvasClip clip(cv, {tx, g.identity_r.y, tw, g.status_field_r.y - g.identity_r.y});
+            cv.text_elided(tx, g.identity_r.y + 6, nick.c_str(), tw, g.ap.c("primary.label"));
+            std::string sub = show_label(own);
+            if (!jid.empty() && nick != jabber::jid_node(jid))
+                sub = jabber::jid_node(jid) + " · " + sub;
+            cv.text_elided(tx, g.identity_r.y + 6 + cv.line_height(), sub.c_str(), tw,
+                           g.ap.c("menu.disable_label"));
+        }
+        paint_field(cv, g.ap, g.status_field_r,
+                    g.status_msg.empty() && !g.status_field_focus ? "Status message…"
+                                                                 : g.status_msg.c_str(),
+                    g.status_field_focus, true);
+    }
+
     // Roster
     cv.fill(g.roster_r, g.ap.c("list.background"));
-    cv.vline(g.roster_r.right() - 1, g.roster_r.y, g.roster_r.bottom(),
+    cv.vline(g.roster_r.right() - 1, g.identity_r.y, g.roster_r.bottom(),
              g.ap.c("list.separator"));
     cv.text(g.roster_r.x + 8, g.roster_r.y + 4, "Buddies", g.ap.c("primary.label"));
     auto buddies = roster_sorted();
     int y = g.roster_r.y + 22 - g.roster_scroll;
-    int lh = cv.line_height() + 6;
+    int lh = kBuddyRowH;
     for (int i = 0; i < (int)buddies.size(); ++i) {
         Rect row{g.roster_r.x + 2, y, g.roster_r.w - 4, lh};
         if (row.bottom() < g.roster_r.y + 20) {
@@ -490,15 +602,24 @@ void paint() {
             (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddies[i].jid))
             cv.fill(row, g.ap.c("list.hilite_background"));
         Color ink = online ? g.ap.c("list.label") : g.ap.c("menu.disable_label");
-        if (i == g.roster_hot) ink = g.ap.c("list.hilite_foreground");
-        std::string lab = buddies[i].name.empty() ? buddies[i].jid : buddies[i].name;
-        if (online) {
-            lab += " (";
-            lab += show_label(buddies[i].show);
-            lab += ")";
-        }
+        if (i == g.roster_hot ||
+            (g.active_tab >= 0 && g.tabs[g.active_tab].jid == buddies[i].jid))
+            ink = g.ap.c("list.hilite_foreground");
         CanvasClip clip(cv, g.roster_r);
-        cv.text_elided(row.x + 6, row.y + 3, lab.c_str(), row.w - 12, ink);
+        // Presence mark
+        Rect dot{row.x + 6, row.y + (row.h - 8) / 2, 8, 8};
+        cv.fill(dot, presence_color(g.ap, buddies[i].show));
+        std::string lab =
+            buddies[i].name.empty() ? buddies[i].jid : buddies[i].name;
+        int text_x = dot.right() + 6;
+        int text_w = row.right() - 4 - text_x;
+        cv.text_elided(text_x, row.y + 4, lab.c_str(), text_w, ink);
+        if (!buddies[i].status.empty()) {
+            Color stink = g.ap.c("menu.disable_label");
+            if (i == g.roster_hot) stink = ink;
+            cv.text_elided(text_x, row.y + 4 + cv.line_height(),
+                           buddies[i].status.c_str(), text_w, stink);
+        }
         y += lh;
     }
 
@@ -583,15 +704,25 @@ void paint() {
     paint_gel_grip(cv, g.ap, g.gel.grip, g.focused);
 
     if (g.menu_open >= 0) {
-        const MenuDef &md =
-            g.menu_open == MenuWindow ? MenuDef{kWindowItems, 4} : kMenus[g.menu_open];
+        // Presence popup from identity strip: Available / Away / Busy / Invisible only.
+        static const char *kPresenceItems[] = {
+            "Available", "Away", "Busy", "Invisible",
+        };
+        const MenuDef md =
+            g.presence_menu
+                ? MenuDef{kPresenceItems, 4}
+                : (g.menu_open == MenuWindow ? MenuDef{kWindowItems, 4}
+                                             : kMenus[g.menu_open]);
         int mw = 120;
         for (int i = 0; i < md.count; ++i)
             if (md.items[i][0] != '-')
                 mw = std::max(mw, cv.text_width(md.items[i]) + 28);
         int mx = 0, my = 0;
         Rect win{0, 0, cv.width(), cv.height()};
-        if (g.menu_open == MenuWindow) {
+        if (g.presence_menu) {
+            menu_place(win, g.presence_r.w > 0 ? g.presence_r : g.avatar_r, mw,
+                       menu_estimate_h(md.count), &mx, &my);
+        } else if (g.menu_open == MenuWindow) {
             menu_place(win, g.gel.hatch_box, mw, menu_estimate_h(md.count), &mx, &my);
         } else {
             Rect anchor = g.menu_bar.item_rects[g.menu_open];
@@ -628,10 +759,20 @@ void close_menu() {
     g.menu_open = -1;
     g.menu_item_hot = -1;
     g.menu_hot = -1;
+    g.presence_menu = false;
 }
 
 void run_menu(int menu, int row) {
+    bool from_presence = g.presence_menu;
     close_menu();
+    if (from_presence) {
+        if (row == 0) g.client.set_show(jabber::Show::Chat);
+        else if (row == 1) g.client.set_show(jabber::Show::Away);
+        else if (row == 2) g.client.set_show(jabber::Show::Dnd);
+        else if (row == 3) g.client.set_show(jabber::Show::Unavailable);
+        redraw();
+        return;
+    }
     if (menu == MenuWindow) {
         if (row == 0) ShowWindow(g.hwnd, SW_MINIMIZE);
         else if (row == 1) {
@@ -942,10 +1083,27 @@ void mouse_down(int x, int y) {
         return;
     }
 
+    if (g.identity_r.h > 0 && g.identity_r.contains(x, y)) {
+        if (g.status_field_r.contains(x, y)) {
+            g.status_field_focus = true;
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                if (g.status_msg.empty()) g.status_msg = g.client.own_status;
+            }
+            redraw();
+            return;
+        }
+        if (g.status_field_focus) commit_status_message();
+        open_presence_menu();
+        redraw();
+        return;
+    }
+    if (g.status_field_focus) commit_status_message();
+
     if (g.roster_r.contains(x, y)) {
         auto buddies = roster_sorted();
         int y0 = g.roster_r.y + 22 - g.roster_scroll;
-        int lh = g.canvas.line_height() + 6;
+        int lh = kBuddyRowH;
         int idx = (y - y0) / lh;
         if (idx >= 0 && idx < (int)buddies.size()) {
             open_tab(buddies[idx].jid, false);
@@ -1022,7 +1180,7 @@ void mouse_move(int x, int y) {
     }
     if (g.roster_r.contains(x, y)) {
         int y0 = g.roster_r.y + 22 - g.roster_scroll;
-        int lh = g.canvas.line_height() + 6;
+        int lh = kBuddyRowH;
         int idx = (y - y0) / lh;
         if (idx != g.roster_hot) {
             g.roster_hot = idx;
@@ -1032,6 +1190,23 @@ void mouse_move(int x, int y) {
 }
 
 void handle_char(WPARAM wp) {
+    if (g.status_field_focus && g.dialog == DlgNone && !g.about_open) {
+        if (wp == 8) {
+            if (!g.status_msg.empty()) g.status_msg.pop_back();
+        } else if (wp == '\r') {
+            commit_status_message();
+        } else if (wp == 27) {
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                g.status_msg = g.client.own_status;
+            }
+            g.status_field_focus = false;
+        } else if (wp >= 32 && wp < 127 && g.status_msg.size() < 120) {
+            g.status_msg.push_back(char(wp));
+        }
+        redraw();
+        return;
+    }
     if (g.dialog != DlgNone) {
         std::string *f = &g.field_jid;
         if (g.dialog == DlgSignOn) f = g.focus_field == 0 ? &g.field_jid : &g.field_pass;
@@ -1116,6 +1291,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.file_progress = e->progress;
             set_status(e->text);
             if (e->progress >= 100) g.file_progress = -1;
+        }
+        if (e->type == jabber::ClientEvent::Identity ||
+            e->type == jabber::ClientEvent::Roster ||
+            e->type == jabber::ClientEvent::Presence) {
+            if (!g.status_field_focus) {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                g.status_msg = g.client.own_status;
+            }
+        }
+        if (e->type == jabber::ClientEvent::State &&
+            g.client.state == jabber::ConnState::Disconnected) {
+            g.status_msg.clear();
+            g.status_field_focus = false;
+            g.presence_menu = false;
         }
         delete e;
         redraw();

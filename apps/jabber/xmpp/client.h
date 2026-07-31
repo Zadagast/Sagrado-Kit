@@ -11,6 +11,7 @@
 #include <map>
 #include <mutex>
 #include <queue>
+#include <set>
 #include <sstream>
 #include <thread>
 
@@ -33,6 +34,8 @@ struct Buddy {
     Show show = Show::Unavailable;
     std::string status;
     bool subscription_to = false;
+    SkinImage avatar;
+    bool vcard_fetched = false;
 };
 
 struct ChatLine {
@@ -58,7 +61,8 @@ struct ClientEvent {
         RegisterFail,
         CaptchaReady,
         FileProgress,
-        MucOccupants
+        MucOccupants,
+        Identity
     } type = State;
     std::string text;
     std::string jid;
@@ -144,6 +148,29 @@ inline std::string b64(const std::string &in) {
     return o;
 }
 
+inline bool b64_decode(const std::string &in, std::vector<uint8_t> *out) {
+    if (!out) return false;
+    out->clear();
+    static const int T[256] = {
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+        -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1};
+    int val = 0, valb = -8;
+    for (unsigned char c : in) {
+        if (c == '=' || c == '\n' || c == '\r' || c == ' ') continue;
+        int d = T[c];
+        if (d < 0) continue;
+        val = (val << 6) + d;
+        valb += 6;
+        if (valb >= 0) {
+            out->push_back(uint8_t((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return !out->empty();
+}
+
 inline bool extract_tag(const std::string &xml, const std::string &name,
                         std::string *inner) {
     std::string open = "<" + name;
@@ -209,6 +236,12 @@ public:
     std::string http_upload_host;
     bool upload_available = false;
 
+    // Own identity (Yahoo-shaped strip): presence + status + vCard.
+    Show own_show = Show::Unavailable;
+    std::string own_status;
+    std::string own_nick;
+    SkinImage own_avatar;
+
     using EventFn = std::function<void(const ClientEvent &)>;
     EventFn on_event;
 
@@ -216,10 +249,18 @@ public:
 
     void disconnect() {
         stop_ = true;
+        captcha_ready_cv_.notify_all();
         if (thread_.joinable()) thread_.join();
         sock_.close();
         stop_ = false;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            own_show = Show::Unavailable;
+            vcard_inflight_.clear();
+            while (!vcard_queue_.empty()) vcard_queue_.pop();
+        }
         set_state(ConnState::Disconnected, "Signed off");
+        emit(make_event(ClientEvent::Identity));
     }
 
     void sign_on(const std::string &full_jid, const std::string &password) {
@@ -289,24 +330,43 @@ public:
         if (!chats.count(room)) chats[room] = {};
     }
 
-    void set_show(Show s, const std::string &status = {}) {
-        show_ = s;
-        std::string stanza = "<presence";
-        if (s == Show::Unavailable) {
-            stanza += " type='unavailable'/>";
-        } else {
-            stanza += ">";
-            const char *sh = nullptr;
-            if (s == Show::Away) sh = "away";
-            else if (s == Show::Xa) sh = "xa";
-            else if (s == Show::Dnd) sh = "dnd";
-            else if (s == Show::Chat) sh = "chat";
-            if (sh) stanza += std::string("<show>") + sh + "</show>";
-            if (!status.empty())
-                stanza += "<status>" + xml_escape(status) + "</status>";
-            stanza += "</presence>";
+    void set_show(Show s) {
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            own_show = s;
+            show_ = s;
         }
-        queue_send(stanza);
+        publish_presence();
+        emit(make_event(ClientEvent::Identity));
+    }
+
+    void set_status_message(const std::string &status) {
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            own_status = status;
+        }
+        publish_presence();
+        emit(make_event(ClientEvent::Identity, status));
+    }
+
+    void request_vcard(const std::string &bare = {}) {
+        std::string to = bare_jid(bare.empty() ? jid : bare);
+        if (to.empty()) return;
+        bool self = bare.empty() || to == bare_jid(jid);
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (vcard_inflight_.count(to)) return;
+            if ((int)vcard_inflight_.size() >= 4) {
+                vcard_queue_.push(to);
+                return;
+            }
+            vcard_inflight_.insert(to);
+        }
+        std::string id = "vc" + std::to_string(iq_seq_++);
+        std::string iq = "<iq type='get' id='" + id + "'";
+        if (!self) iq += " to='" + xml_escape(to) + "'";
+        iq += "><vCard xmlns='vcard-temp'/></iq>";
+        queue_send(iq);
     }
 
     void add_buddy(const std::string &buddy) {
@@ -352,6 +412,8 @@ private:
     int iq_seq_ = 1;
     std::string pending_upload_to_, pending_upload_mime_, pending_upload_name_;
     std::vector<uint8_t> pending_upload_data_;
+    std::set<std::string> vcard_inflight_;
+    std::queue<std::string> vcard_queue_;
 
     void emit(const ClientEvent &e) {
         EventFn fn;
@@ -376,6 +438,103 @@ private:
     void queue_send(const std::string &s) {
         std::lock_guard<std::mutex> lock(send_mu_);
         send_q_.push(s);
+    }
+
+    void publish_presence() {
+        Show s;
+        std::string st;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            s = own_show;
+            st = own_status;
+            show_ = s;
+        }
+        std::string stanza = "<presence";
+        if (s == Show::Unavailable) {
+            stanza += " type='unavailable'/>";
+        } else {
+            stanza += ">";
+            const char *sh = "chat";
+            if (s == Show::Away) sh = "away";
+            else if (s == Show::Xa) sh = "xa";
+            else if (s == Show::Dnd) sh = "dnd";
+            else if (s == Show::Chat) sh = "chat";
+            stanza += std::string("<show>") + sh + "</show>";
+            if (!st.empty())
+                stanza += "<status>" + xml_escape(st) + "</status>";
+            stanza += "</presence>";
+        }
+        queue_send(stanza);
+    }
+
+    void pump_vcard_queue() {
+        std::string next;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            while (!vcard_queue_.empty() && (int)vcard_inflight_.size() < 4) {
+                next = vcard_queue_.front();
+                vcard_queue_.pop();
+                if (vcard_inflight_.count(next)) {
+                    next.clear();
+                    continue;
+                }
+                vcard_inflight_.insert(next);
+                break;
+            }
+        }
+        if (next.empty()) return;
+        std::string id = "vc" + std::to_string(iq_seq_++);
+        std::string iq = "<iq type='get' id='" + id + "' to='" + xml_escape(next) +
+                         "'><vCard xmlns='vcard-temp'/></iq>";
+        queue_send(iq);
+    }
+
+    void apply_vcard(const std::string &bare, const std::string &st) {
+        std::string nick, fn, binval;
+        extract_tag(st, "NICKNAME", &nick);
+        if (nick.empty()) extract_tag(st, "nickname", &nick);
+        extract_tag(st, "FN", &fn);
+        if (fn.empty()) extract_tag(st, "fn", &fn);
+        std::string photo;
+        if (extract_tag(st, "PHOTO", &photo) || extract_tag(st, "photo", &photo)) {
+            if (!extract_tag(photo, "BINVAL", &binval))
+                extract_tag(photo, "binval", &binval);
+            if (binval.empty()) extract_tag(st, "BINVAL", &binval);
+        }
+        nick = xml_unescape(nick);
+        fn = xml_unescape(fn);
+        SkinImage avatar;
+        if (!binval.empty()) {
+            std::vector<uint8_t> bytes;
+            // Strip whitespace from base64
+            std::string cleaned;
+            cleaned.reserve(binval.size());
+            for (char c : binval)
+                if (c != ' ' && c != '\n' && c != '\r' && c != '\t') cleaned.push_back(c);
+            if (b64_decode(cleaned, &bytes)) decode_image_vec(bytes, avatar);
+        }
+        bool self = bare.empty() || bare_jid(bare) == bare_jid(jid);
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            std::string key = self ? bare_jid(jid) : bare_jid(bare);
+            vcard_inflight_.erase(key);
+            if (self) vcard_inflight_.erase(jid);
+            if (self) {
+                if (!nick.empty()) own_nick = nick;
+                else if (!fn.empty()) own_nick = fn;
+                if (!avatar.empty()) own_avatar = std::move(avatar);
+            } else if (roster.count(key)) {
+                if (!nick.empty()) roster[key].name = nick;
+                else if (!fn.empty() &&
+                         (roster[key].name.empty() || roster[key].name == jid_node(key)))
+                    roster[key].name = fn;
+                if (!avatar.empty()) roster[key].avatar = std::move(avatar);
+                roster[key].vcard_fetched = true;
+            }
+        }
+        emit(make_event(ClientEvent::Identity, {}, self ? bare_jid(jid) : bare_jid(bare)));
+        if (!self) emit(make_event(ClientEvent::Roster));
+        pump_vcard_queue();
     }
 
     void flush_send() {
@@ -560,25 +719,45 @@ private:
             if (st.find("jabber:iq:register") != std::string::npos) {
                 // handled in register_flow synchronously via stream_buf
             }
+            if (st.find("vcard-temp") != std::string::npos ||
+                st.find("<vCard") != std::string::npos) {
+                std::string from = attr(st, "from");
+                std::string bare = from.empty() ? bare_jid(jid) : bare_jid(from);
+                apply_vcard(bare, st);
+            }
         }
     }
 
     void parse_roster(const std::string &st) {
-        std::lock_guard<std::mutex> lock(mu);
-        size_t pos = 0;
-        while ((pos = st.find("<item", pos)) != std::string::npos) {
-            size_t end = st.find('>', pos);
-            if (end == std::string::npos) break;
-            std::string tag = st.substr(pos, end - pos + 1);
-            Buddy b;
-            b.jid = attr(tag, "jid");
-            b.name = attr(tag, "name");
-            if (b.name.empty()) b.name = jid_node(b.jid);
-            std::string sub = attr(tag, "subscription");
-            b.subscription_to = (sub == "both" || sub == "to");
-            if (!b.jid.empty()) roster[b.jid] = b;
-            pos = end + 1;
+        std::vector<std::string> need_vcard;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            size_t pos = 0;
+            while ((pos = st.find("<item", pos)) != std::string::npos) {
+                size_t end = st.find('>', pos);
+                if (end == std::string::npos) break;
+                std::string tag = st.substr(pos, end - pos + 1);
+                Buddy b;
+                b.jid = attr(tag, "jid");
+                b.name = attr(tag, "name");
+                if (b.name.empty()) b.name = jid_node(b.jid);
+                std::string sub = attr(tag, "subscription");
+                b.subscription_to = (sub == "both" || sub == "to");
+                if (!b.jid.empty()) {
+                    auto it = roster.find(b.jid);
+                    if (it != roster.end()) {
+                        b.show = it->second.show;
+                        b.status = it->second.status;
+                        b.avatar = std::move(it->second.avatar);
+                        b.vcard_fetched = it->second.vcard_fetched;
+                    }
+                    if (!b.vcard_fetched) need_vcard.push_back(b.jid);
+                    roster[b.jid] = std::move(b);
+                }
+                pos = end + 1;
+            }
         }
+        for (auto &j : need_vcard) request_vcard(j);
     }
 
     void finish_upload(const std::string &put, const std::string &get) {
@@ -826,13 +1005,21 @@ private:
         }
         sock_.send_all(
             "<iq type='get' id='roster1'><query xmlns='jabber:iq:roster'/></iq>");
-        sock_.send_all("<presence><show>chat</show></presence>");
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            own_show = Show::Chat;
+            show_ = Show::Chat;
+            if (own_nick.empty()) own_nick = jid_node(jid);
+        }
+        publish_presence();
+        request_vcard(); // self
         // disco for upload
         sock_.send_all("<iq type='get' id='disco1' to='" + xml_escape(host_) +
                        "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
         sock_.send_all("<iq type='get' id='disco2' to='" + xml_escape(host_) +
                        "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>");
         set_state(ConnState::Online, "Signed on as " + jid);
+        emit(make_event(ClientEvent::Identity));
         return true;
     }
 

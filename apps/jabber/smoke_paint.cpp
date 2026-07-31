@@ -19,14 +19,17 @@ int main(int argc, char **argv) {
 
     constexpr int W = 860, H = 560;
     constexpr int kStatusH = 22;
-    constexpr int kRosterW = 200;
+    constexpr int kRosterW = 220;
+    constexpr int kIdentityH = 64;
+    constexpr int kAvatarSz = 40;
+    constexpr int kBuddyRowH = 36;
     constexpr int kTabH = 22;
     constexpr int kComposeH = 56;
     Canvas cv;
     cv.resize(W, H);
 
     GelLayout gel = gel_layout(0, 0, W, H, GelStyle::Main, &ap, true);
-    paint_gel(cv, ap, {0, 0, W, H}, "you@localhost — Sagrado Jabber", true, 0,
+    paint_gel(cv, ap, {0, 0, W, H}, "roachclip@yax.im — Sagrado Jabber", true, 0,
               GelStyle::Main);
 
     Rect cl = gel.client;
@@ -37,24 +40,49 @@ int main(int argc, char **argv) {
     Rect status{cl.x, cl.bottom() - kStatusH, cl.w, kStatusH};
     int top = menu_r.bottom();
     int body_h = status.y - top;
-    Rect roster{cl.x, top, kRosterW, body_h};
+    Rect identity{cl.x, top, kRosterW, kIdentityH};
+    Rect roster{cl.x, top + kIdentityH, kRosterW, body_h - kIdentityH};
     Rect tabs{roster.right(), top, cl.right() - roster.right(), kTabH};
     Rect compose{tabs.x, status.y - kComposeH, tabs.w, kComposeH};
     Rect transcript{tabs.x, tabs.bottom(), tabs.w, compose.y - tabs.bottom()};
 
+    // Identity strip (Yahoo-shaped)
+    cv.fill(identity, ap.c("primary.background"));
+    cv.hline(identity.x, identity.right(), identity.bottom() - 1, ap.c("list.separator"));
+    Rect av{identity.x + 8, identity.y + (identity.h - kAvatarSz) / 2, kAvatarSz, kAvatarSz};
+    cv.fill(av, ap.c("list.background"));
+    cv.frame(av, ap.c("list.separator"));
+    cv.text(av.x + 14, av.y + 12, "R", ap.c("primary.label"));
+    Rect dot{av.right() - 10, av.bottom() - 10, 10, 10};
+    cv.fill(dot, ap.c("list.hilite_background"));
+    cv.frame(dot, ap.c("list.separator"));
+    cv.text(av.right() + 8, identity.y + 6, "Roachclip", ap.c("primary.label"));
+    cv.text(av.right() + 8, identity.y + 6 + cv.line_height(), "Available",
+            ap.c("menu.disable_label"));
+    paint_field(cv, ap, {av.right() + 8, identity.bottom() - 26, identity.right() - 8 - (av.right() + 8), 20},
+                "Is it Friday yet?", false, false);
+
     cv.fill(roster, ap.c("list.background"));
+    cv.vline(roster.right() - 1, identity.y, roster.bottom(), ap.c("list.separator"));
     cv.text(roster.x + 8, roster.y + 4, "Buddies", ap.c("primary.label"));
-    const char *buddies[] = {"Alice (Available)", "Bob (Away)", "Carol"};
+    const char *names[] = {"Alice", "Bob", "Carol"};
+    const char *stats[] = {"At the desk", "brb", ""};
+    Color dots[] = {ap.c("list.hilite_background"), ap.c("primary.dark"),
+                    ap.c("menu.disable_label")};
     int y = roster.y + 22;
-    int lh = cv.line_height() + 6;
     for (int i = 0; i < 3; ++i) {
-        Rect row{roster.x + 2, y, roster.w - 4, lh};
+        Rect row{roster.x + 2, y, roster.w - 4, kBuddyRowH};
         if (i == 0) cv.fill(row, ap.c("list.hilite_background"));
         Color ink = i < 2 ? ap.c("list.label") : ap.c("menu.disable_label");
         if (i == 0) ink = ap.c("list.hilite_foreground");
         CanvasClip clip(cv, roster);
-        cv.text_elided(row.x + 6, row.y + 3, buddies[i], row.w - 12, ink);
-        y += lh;
+        Rect d{row.x + 6, row.y + (row.h - 8) / 2, 8, 8};
+        cv.fill(d, dots[i]);
+        cv.text_elided(d.right() + 6, row.y + 4, names[i], row.w - 24, ink);
+        if (stats[i][0])
+            cv.text_elided(d.right() + 6, row.y + 4 + cv.line_height(), stats[i],
+                           row.w - 24, ap.c("menu.disable_label"));
+        y += kBuddyRowH;
     }
 
     cv.fill(tabs, ap.c("primary.background"));
@@ -78,7 +106,7 @@ int main(int argc, char **argv) {
 
     cv.fill(status, ap.c("primary.background"));
     cv.text(status.x + 8, status.y + (status.h - cv.line_height()) / 2,
-            "Signed on as you@localhost — Alice signed on",
+            "Signed on as roachclip@yax.im — Alice signed on",
             ap.c("primary.label"));
     paint_progress(cv, ap, {status.right() - 140, status.y + 3, 128, status.h - 6},
                    40, 100);
