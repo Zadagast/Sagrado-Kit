@@ -1458,20 +1458,26 @@ void paint() {
         }
         const int pad = 6;
         const int lh = cv.line_height();
+        // 1:1 delivered (XEP-0184) → subtle " ok" on your lines.
+        auto format_line = [&](const jabber::ChatLine &ln) {
+            if (ln.system) return ln.body;
+            std::string text;
+            if (muc) {
+                std::string who = ln.mine ? "You" : ln.from;
+                if (who.empty()) who = "?";
+                text = who + ": " + ln.body;
+            } else {
+                std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+                text = who + ": " + ln.body;
+                if (ln.mine && ln.delivered) text += "  ok";
+            }
+            return text;
+        };
         auto measure_chat = [&](int wrap_w) {
             int h = 0;
             for (auto &ln : lines) {
-                std::string text;
-                if (ln.system) text = ln.body;
-                else if (muc) {
-                    std::string who = ln.mine ? "You" : ln.from;
-                    if (who.empty()) who = "?";
-                    text = who + ": " + ln.body;
-                } else {
-                    std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-                    text = who + ": " + ln.body;
-                }
-                h += text_content_height(layout_lines(cv, text, wrap_w, true), lh);
+                h += text_content_height(layout_lines(cv, format_line(ln), wrap_w, true),
+                                         lh);
                 h += 2;
             }
             return h;
@@ -1544,17 +1550,7 @@ void paint() {
                     ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
                 if (ln.file) ink = g.ap.c("menu.hilite_label");
                 if (ln.system) ink = g.ap.c("menu.disable_label");
-                std::string text;
-                if (ln.system) {
-                    text = ln.body;
-                } else if (muc) {
-                    std::string who = ln.mine ? "You" : ln.from;
-                    if (who.empty()) who = "?";
-                    text = who + ": " + ln.body;
-                } else {
-                    std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-                    text = who + ": " + ln.body;
-                }
+                std::string text = format_line(ln);
                 auto vlines = layout_lines(cv, text, wrap_w, true);
                 for (const auto &vl : vlines) {
                     if (ty + lh > body.y && ty < body.bottom())

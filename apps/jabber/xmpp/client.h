@@ -49,6 +49,8 @@ struct ChatLine {
     bool mine = false;
     bool file = false;
     bool system = false; // subject / join notices
+    std::string id;      // stanza id (XEP-0184)
+    bool delivered = false;
 };
 
 struct MucRoomInfo {
@@ -87,7 +89,8 @@ struct ClientEvent {
         Bookmarks,
         Identity,
         SubscribeAsk, // inbound presence type=subscribe
-        ChatState     // XEP-0085; text = composing|paused|active|inactive|gone
+        ChatState,    // XEP-0085; text = composing|paused|active|inactive|gone
+        Receipt       // XEP-0184 delivered; jid = peer bare
     } type = State;
     std::string text;
     std::string jid;
@@ -403,14 +406,17 @@ public:
     }
 
     void send_message(const std::string &to, const std::string &body) {
+        std::string mid = "m" + std::to_string(msg_seq_++);
         std::string stanza =
-            "<message to='" + xml_escape(to) + "' type='chat'><body>" +
-            xml_escape(body) +
-            "</body><active xmlns='http://jabber.org/protocol/chatstates'/>"
+            "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
+            "'><body>" + xml_escape(body) +
+            "</body><request xmlns='urn:xmpp:receipts'/>"
+            "<active xmlns='http://jabber.org/protocol/chatstates'/>"
             "</message>";
         {
             std::lock_guard<std::mutex> lock(mu);
-            chats[bare_jid(to)].push_back({jid, body, true, false});
+            chats[bare_jid(to)].push_back(
+                {jid, body, true, false, false, mid, false});
         }
         queue_send(stanza);
     }
@@ -751,6 +757,7 @@ private:
     std::condition_variable captcha_ready_cv_;
     std::string stream_buf_;
     int iq_seq_ = 1;
+    int msg_seq_ = 1;
     std::string pending_upload_to_, pending_upload_mime_, pending_upload_name_;
     std::vector<uint8_t> pending_upload_data_;
     std::set<std::string> vcard_inflight_;
@@ -980,71 +987,150 @@ private:
         }
     }
 
-    void handle_stanza(const std::string &st) {
-        if (st.find("<message") == 0) {
-            std::string from = attr(st, "from");
-            std::string type = attr(st, "type");
-            std::string body, subject;
-            extract_tag(st, "body", &body);
-            extract_tag(st, "subject", &subject);
-            body = xml_unescape(body);
-            subject = xml_unescape(subject);
-            std::string key = bare_jid(from);
-            bool is_muc = (type == "groupchat");
-            if (!is_muc) {
-                std::lock_guard<std::mutex> lock(mu);
-                is_muc = muc_joined.count(key) != 0;
+    // Inner <message> from a carbon <forwarded> wrapper.
+    static std::string extract_forwarded_message(const std::string &st) {
+        size_t f = st.find("<forwarded");
+        if (f == std::string::npos) return {};
+        size_t m = st.find("<message", f);
+        if (m == std::string::npos) return {};
+        size_t end = st.find("</message>", m);
+        if (end == std::string::npos) return {};
+        return st.substr(m, end + 10 - m);
+    }
+
+    void mark_delivered(const std::string &peer, const std::string &rid) {
+        if (rid.empty()) return;
+        std::string key = bare_jid(peer);
+        std::lock_guard<std::mutex> lock(mu);
+        auto it = chats.find(key);
+        if (it == chats.end()) return;
+        for (auto &ln : it->second) {
+            if (ln.mine && ln.id == rid) {
+                ln.delivered = true;
+                break;
             }
-            // XEP-0085 chat states (1:1 only).
-            const char *cs = nullptr;
-            if (!is_muc) {
-                if (st.find("<composing") != std::string::npos) cs = "composing";
-                else if (st.find("<paused") != std::string::npos) cs = "paused";
-                else if (st.find("<active") != std::string::npos) cs = "active";
-                else if (st.find("<inactive") != std::string::npos) cs = "inactive";
-                else if (st.find("<gone") != std::string::npos) cs = "gone";
-            }
-            if (!subject.empty()) {
-                {
-                    std::lock_guard<std::mutex> lock(mu);
-                    muc_subjects[key] = subject;
-                    chats[key].push_back(
-                        {"", "Topic: " + subject, false, false, true});
-                }
-                emit(make_event(ClientEvent::MucSubject, subject, key));
-            }
-            if (body.empty()) {
-                if (cs) {
-                    {
-                        std::lock_guard<std::mutex> lock(mu);
-                        if (std::strcmp(cs, "composing") == 0)
-                            chat_states[key] = cs;
-                        else
-                            chat_states.erase(key);
+        }
+    }
+
+    // Process a chat/groupchat message (plain or carbon-unwrapped).
+    // carbon_sent: XEP-0280 <sent> — we wrote this from another resource.
+    void ingest_message(const std::string &st, bool carbon_sent) {
+        std::string from = attr(st, "from");
+        std::string to = attr(st, "to");
+        std::string type = attr(st, "type");
+        std::string mid = attr(st, "id");
+        std::string body, subject;
+        extract_tag(st, "body", &body);
+        extract_tag(st, "subject", &subject);
+        body = xml_unescape(body);
+        subject = xml_unescape(subject);
+
+        // XEP-0184 delivery receipt (no body).
+        if (body.empty() && subject.empty() && !carbon_sent &&
+            st.find("urn:xmpp:receipts") != std::string::npos) {
+            size_t rp = st.find("<received");
+            while (rp != std::string::npos) {
+                size_t gt = st.find('>', rp);
+                if (gt == std::string::npos) break;
+                std::string tag = st.substr(rp, gt - rp + 1);
+                if (tag.find("urn:xmpp:carbons") == std::string::npos) {
+                    std::string rid = attr(tag, "id");
+                    if (!rid.empty()) {
+                        mark_delivered(from, rid);
+                        emit(make_event(ClientEvent::Receipt, rid, bare_jid(from)));
+                        return;
                     }
-                    emit(make_event(ClientEvent::ChatState, cs, key));
                 }
-                return;
+                rp = st.find("<received", gt);
             }
-            // Prefer occupant nick for MUC lines.
-            std::string who = is_muc ? jid_resource(from) : from;
-            if (who.empty()) who = from;
+        }
+
+        std::string key = carbon_sent ? bare_jid(to) : bare_jid(from);
+        if (key.empty()) key = bare_jid(from);
+        bool is_muc = (type == "groupchat");
+        if (!is_muc) {
+            std::lock_guard<std::mutex> lock(mu);
+            is_muc = muc_joined.count(key) != 0;
+        }
+
+        // XEP-0085 chat states (1:1 only).
+        const char *cs = nullptr;
+        if (!is_muc && !carbon_sent) {
+            if (st.find("<composing") != std::string::npos) cs = "composing";
+            else if (st.find("<paused") != std::string::npos) cs = "paused";
+            else if (st.find("<active") != std::string::npos) cs = "active";
+            else if (st.find("<inactive") != std::string::npos) cs = "inactive";
+            else if (st.find("<gone") != std::string::npos) cs = "gone";
+        }
+        if (!subject.empty()) {
             {
                 std::lock_guard<std::mutex> lock(mu);
-                // Skip echo of our own groupchat if we already appended locally.
-                if (is_muc && type == "groupchat") {
-                    auto nit = muc_nicks.find(key);
-                    if (nit != muc_nicks.end() && who == nit->second) {
-                        auto &lines = chats[key];
-                        if (!lines.empty() && lines.back().mine &&
-                            lines.back().body == body)
-                            return;
-                    }
-                }
-                chats[key].push_back({who, body, false, false, false});
-                chat_states.erase(key);
+                muc_subjects[key] = subject;
+                chats[key].push_back(
+                    {"", "Topic: " + subject, false, false, true, {}, false});
             }
-            emit(make_event(ClientEvent::Message, body, key));
+            emit(make_event(ClientEvent::MucSubject, subject, key));
+        }
+        if (body.empty()) {
+            if (cs) {
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    if (std::strcmp(cs, "composing") == 0)
+                        chat_states[key] = cs;
+                    else
+                        chat_states.erase(key);
+                }
+                emit(make_event(ClientEvent::ChatState, cs, key));
+            }
+            return;
+        }
+
+        bool mine = carbon_sent;
+        std::string who =
+            is_muc ? (mine ? jid_node(jid) : jid_resource(from)) : (mine ? jid : from);
+        if (who.empty()) who = from;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (!mid.empty()) {
+                auto &lines = chats[key];
+                for (const auto &ln : lines) {
+                    if (!ln.id.empty() && ln.id == mid) return; // dedupe
+                }
+            }
+            if (is_muc && type == "groupchat" && !carbon_sent) {
+                auto nit = muc_nicks.find(key);
+                if (nit != muc_nicks.end() && who == nit->second) {
+                    auto &lines = chats[key];
+                    if (!lines.empty() && lines.back().mine &&
+                        lines.back().body == body)
+                        return;
+                }
+            }
+            chats[key].push_back({who, body, mine, false, false, mid, false});
+            if (!mine) chat_states.erase(key);
+        }
+
+        // Reply to XEP-0184 receipt requests on inbound 1:1.
+        if (!mine && !is_muc && !mid.empty() &&
+            st.find("<request") != std::string::npos &&
+            st.find("urn:xmpp:receipts") != std::string::npos) {
+            queue_send("<message to='" + xml_escape(bare_jid(from)) +
+                       "' type='chat'><received xmlns='urn:xmpp:receipts' id='" +
+                       xml_escape(mid) + "'/></message>");
+        }
+        emit(make_event(ClientEvent::Message, body, key));
+    }
+
+    void handle_stanza(const std::string &st) {
+        if (st.find("<message") == 0) {
+            // XEP-0280 Message Carbons — unwrap forwarded payload.
+            if (st.find("urn:xmpp:carbons:2") != std::string::npos) {
+                bool sent = st.find("<sent") != std::string::npos;
+                std::string inner = extract_forwarded_message(st);
+                if (!inner.empty()) ingest_message(inner, sent);
+                return;
+            }
+            ingest_message(st, false);
             return;
         }
         if (st.find("<presence") == 0) {
@@ -1714,6 +1800,9 @@ private:
         sock_.send_all("<iq type='get' id='disco2' to='" + xml_escape(host_) +
                        "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>");
         request_bookmarks();
+        // XEP-0280 Message Carbons — mirror other resources into this session.
+        sock_.send_all(
+            "<iq type='set' id='carb1'><enable xmlns='urn:xmpp:carbons:2'/></iq>");
         set_state(ConnState::Online, "Signed on as " + jid);
         emit(make_event(ClientEvent::Identity));
         return true;

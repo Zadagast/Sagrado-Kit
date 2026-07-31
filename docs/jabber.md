@@ -22,6 +22,8 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Avatar / display name | Tile + nick; Buddy → Set Picture… (or click your tile) | [XEP-0054](https://xmpp.org/extensions/xep-0054.html) vCard PHOTO (+ [XEP-0153](https://xmpp.org/extensions/xep-0153.html) update) |
 | IM windows / tabs | Center tab strip + transcript; **x** closes a tab | `<message type='chat'>` |
 | Typing | “X is typing…” above compose | [XEP-0085](https://xmpp.org/extensions/xep-0085.html) chat states |
+| Delivered | “ ok” on your 1:1 lines when the peer acks | [XEP-0184](https://xmpp.org/extensions/xep-0184.html) receipts |
+| Multi-device | Other resources’ chats land in this transcript | [XEP-0280](https://xmpp.org/extensions/xep-0280.html) carbons |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
 | Chat rooms | Chat → Browse Chat Rooms… / Join… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
@@ -126,6 +128,6 @@ Recent account JIDs live in `accounts.txt` beside the exe (written on successful
 - Matrix / Spaces / Discord server rail
 - Browser or OOB web registration as a supported path
 - Saved passwords / keyring
-- OMEMO, Jingle, full MAM browser, message carbons, delivery receipts, Adium HTML message styles
+- OMEMO, Jingle, full MAM browser, Adium HTML message styles
 - Move-to-group UI (groups display from roster; adds use **Buddies**)
 - libpurple multi-protocol
