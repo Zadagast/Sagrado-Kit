@@ -24,7 +24,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Typing | “X is typing…” above compose | [XEP-0085](https://xmpp.org/extensions/xep-0085.html) chat states |
 | Delivered | “ ok” on your 1:1 lines when the peer acks | [XEP-0184](https://xmpp.org/extensions/xep-0184.html) receipts |
 | Multi-device | Other resources’ chats land in this transcript | [XEP-0280](https://xmpp.org/extensions/xep-0280.html) carbons |
-| Recent history | Opening an empty 1:1 chat loads the last ~40 lines | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
+| Recent history | Opening a 1:1 chat loads the last ~40 lines; scroll up for older | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
 | React to a line | Click a transcript line → Chat → React… (floating gel emoji window) | [XEP-0444](https://xmpp.org/extensions/xep-0444.html) Message Reactions |
@@ -100,8 +100,13 @@ exe. The Noto pack must sit at `emoji_pack/` next to `SagradoJabber.exe`. Rooms 
 the MUC `stanza-id` when the server provides one. Interoperable with
 Gajim/Conversations on the wire.
 
-Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, or MAM history
-browser in this pass.
+**Message history (MAM)** — cold-open pulls the newest ~40 lines for a 1:1 chat and
+scrolls to the bottom. Scroll up at the top of the transcript to page older archive
+lines (RSM `before`); the viewport stays put while older lines prepend. A quiet
+“Loading older messages…” line shows while a page is in flight. Rooms still use
+live MUC only (no MAM room archive in this pass).
+
+Still **not** Matrix: no spaces rail, kick/ban UI, or room config forms.
 
 ## Accounts
 
@@ -153,6 +158,7 @@ exe for React… / transcript marks.
 - Matrix / Spaces / Discord server rail
 - Browser or OOB web registration as a supported path
 - Saved passwords / keyring
-- OMEMO, Jingle, full MAM history browser (this pass only pulls recent lines into an empty chat), Adium HTML message styles
+- OMEMO, Jingle, Adium HTML message styles
+- MUC archived history (MAM paging is 1:1 only for now)
 - Move-to-group UI (groups display from roster; adds use **Buddies**)
 - libpurple multi-protocol

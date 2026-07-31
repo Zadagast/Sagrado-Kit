@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -168,6 +169,9 @@ struct App {
     int roster_scroll = 0; // pixels
     int chat_scroll = 0;   // pixels
     int chat_sel = -1;     // selected transcript line (for React…)
+    // MAM scrollbookkeeping (applied on next transcript layout).
+    bool mam_scroll_to_end = false;
+    int mam_pending_prepend = 0; // older page: N lines just prepended
     // Subscribe ask (Accept / Deny) — gel sheet, not MessageBox.
     bool sub_ask_open = false;
     std::string sub_ask_jid;
@@ -2124,7 +2128,25 @@ void paint() {
         body = {g.transcript_r.x, top, g.transcript_r.w, g.transcript_r.bottom() - top};
         g.chat_page = std::max(1, body.h);
         g.chat_max = std::max(0, content_h - g.chat_page);
+        // Preserve viewport after older MAM pages; jump to newest on cold open.
+        if (g.mam_pending_prepend > 0) {
+            int n = std::min(g.mam_pending_prepend, (int)lines.size());
+            int add_h = 0;
+            for (int i = 0; i < n; ++i) add_h += line_block_h(lines[size_t(i)], wrap_w);
+            g.chat_scroll += add_h;
+            if (g.chat_sel >= 0) g.chat_sel += n;
+            g.mam_pending_prepend = 0;
+        }
+        if (g.mam_scroll_to_end) {
+            g.chat_scroll = g.chat_max;
+            g.mam_scroll_to_end = false;
+        }
         g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
+
+        if (!muc && g.client.mam_loading(key)) {
+            cv.text(body.x + pad, body.y + 2, "Loading older messages…",
+                    g.ap.c("menu.disable_label"));
+        }
 
         {
             CanvasClip clip(cv, body);
@@ -2964,8 +2986,12 @@ void mouse_down(int x, int y) {
     if (g.status_field_focus) commit_status_message();
 
     if (sbar_mouse_down(g.chat_sbar, x, y, g.chat_scroll, g.chat_max, g.chat_page,
-                        g.canvas.line_height(), DragThumbChat, DragArrowChat))
+                        g.canvas.line_height(), DragThumbChat, DragArrowChat)) {
+        if (g.chat_scroll <= 0 && g.active_tab >= 0 &&
+            !g.tabs[g.active_tab].muc)
+            g.client.request_mam_older(g.tabs[g.active_tab].jid);
         return;
+    }
     if (sbar_mouse_down(g.roster_sbar, x, y, g.roster_scroll, g.roster_max,
                         g.roster_page, kBuddyRowH, DragThumbRoster, DragArrowRoster))
         return;
@@ -3415,7 +3441,21 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.muc_invite_room.clear();
             g.muc_invite_from.clear();
             g.muc_invite_reason.clear();
+            g.mam_scroll_to_end = false;
+            g.mam_pending_prepend = 0;
             stop_typing_indicator();
+        }
+        if (e->type == jabber::ClientEvent::History) {
+            bool active = g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
+                          jabber::jid_ieq(g.tabs[g.active_tab].jid, e->jid);
+            if (active) {
+                if (e->text == "initial") {
+                    g.mam_scroll_to_end = true;
+                } else if (e->text.rfind("older:", 0) == 0) {
+                    int n = std::atoi(e->text.c_str() + 6);
+                    if (n > 0) g.mam_pending_prepend = n;
+                }
+            }
         }
         delete e;
         redraw();
@@ -3527,8 +3567,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         } else if (g.roster_r.contains(pt.x, pt.y) ||
                    (g.roster_sbar.w > 0 && g.roster_sbar.contains(pt.x, pt.y)))
             g.roster_scroll = std::clamp(g.roster_scroll + d, 0, g.roster_max);
-        else if (g.dialog == DlgNone)
+        else if (g.dialog == DlgNone) {
+            bool near_top = g.chat_scroll <= 0;
             g.chat_scroll = std::clamp(g.chat_scroll + d, 0, g.chat_max);
+            // Scroll up at the top → page older MAM history (1:1).
+            if (d < 0 && near_top && g.active_tab >= 0 &&
+                g.active_tab < (int)g.tabs.size() && !g.tabs[g.active_tab].muc)
+                g.client.request_mam_older(g.tabs[g.active_tab].jid);
+        }
         redraw();
         return 0;
     }
