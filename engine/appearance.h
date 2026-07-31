@@ -367,8 +367,10 @@ inline GelLayout gel_layout(int x, int y, int w, int h,
                                           : ap->art("window.resize.normal");
         if (!resize) resize = ap->art("window.resize.normal");
         if (resize) {
-            int px = resize->positions[2] > 0 ? resize->positions[2] : 1;
-            int py = resize->positions[3] > 0 ? resize->positions[3] : 1;
+            // positions right/bottom = inset from window edge; 0 = flush
+            // (same as colour-path kGrip). Do not invent a 1px air gap.
+            int px = resize->positions[2];
+            int py = resize->positions[3];
             lay.grip = {x + w - px - resize->w, y + h - py - resize->h, resize->w,
                         resize->h};
         } else {
