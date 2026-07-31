@@ -56,6 +56,11 @@ make run-textedit  # Sagrado TextEdit under Wine
 # without Wine: copy the .exe to Windows, or install WineHQ and use wine64
 ```
 
+Gel apps use a borderless `WS_POPUP` (no OS caption / sysmenu styles) so Wine
+does not stack a host title bar on top of the kit gel. Resize still works via
+`WS_THICKFRAME` + gel grip / edge hit-testing.
+
+
 ### Windows
 
 With MinGW-w64 (or any C++17 toolchain that can link `gdi32`, `user32`,
