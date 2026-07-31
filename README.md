@@ -96,7 +96,7 @@ move; the close box quits.
 
 Haxial TextEdit-shaped plain-text editor — first real app on the kit.
 
-- Gel main window (close / Window Menu / max / min / grow box)
+- Gel main window (close / Window Menu → Minimize·Zoom·Close / max / min / grow box)
 - Menu bar: File, Edit, Find, Appearance, Help
 - Soft-wrapped text view + scrollbars, selection, clipboard, undo
 - Find & Replace dialog (separate gel, TextEdit-measured 442×176)

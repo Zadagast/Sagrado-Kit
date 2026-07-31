@@ -25,7 +25,16 @@ constexpr int kTextPad = 4;
 // --- Menu tables -----------------------------------------------------------
 
 static const char *kMenuTitles[] = {"File", "Edit", "Find", "Appearance", "Help"};
-enum MenuId : int { MenuFile = 0, MenuEdit, MenuFind, MenuAppearance, MenuHelp, MenuCount };
+enum MenuId : int {
+    MenuFile = 0,
+    MenuEdit,
+    MenuFind,
+    MenuAppearance,
+    MenuHelp,
+    MenuCount,
+    // Gel title-bar Window Menu (hatch / window.menu.*) — not a menu-bar title.
+    MenuWindow = 100,
+};
 
 static const char *kFileItems[] = {
     "New", "Open...", "-", "Save", "Save As...", "-", "Quit",
@@ -42,6 +51,10 @@ static const char *kAppearanceItems[] = {
 static const char *kHelpItems[] = {
     "About Sagrado TextEdit",
 };
+// Haxial Window Menu — commands for this window (AppearanceEdit docs).
+static const char *kWindowItems[] = {
+    "Minimize", "Zoom", "-", "Close",
+};
 
 struct MenuDef {
     const char *const *items;
@@ -54,6 +67,7 @@ static const MenuDef kMenus[MenuCount] = {
     {kAppearanceItems, 4},
     {kHelpItems, 1},
 };
+static const MenuDef kWindowMenu = {kWindowItems, 4};
 
 // --- Document --------------------------------------------------------------
 
@@ -559,14 +573,17 @@ void paint_main() {
     layout_main();
 
     std::string title = window_title();
+    // Hilite Window Menu plate while its popup is open (pressed_box id 2).
+    int gel_press = g.menu_open == MenuWindow ? 2 : g.pressed_box;
     paint_gel(cv, ap, {0, 0, cv.width(), cv.height()}, title.c_str(), g.focused,
-              g.pressed_box, GelStyle::Main);
+              gel_press, GelStyle::Main);
 
     // Menu bar
     unsigned wrap_check_mask = 0;
+    int bar_hot =
+        (g.menu_open >= 0 && g.menu_open < MenuCount) ? g.menu_open : g.menu_hot;
     g.menu_bar = paint_menu_bar(cv, ap, g.menu_rect, kMenuTitles, MenuCount,
-                                g.menu_open >= 0 ? g.menu_open : g.menu_hot,
-                                wrap_check_mask);
+                                bar_hot, wrap_check_mask);
 
     // Document + scrollbars
     paint_document(cv);
@@ -609,8 +626,16 @@ void paint_main() {
             g.status_rect.y + (g.status_rect.h - cv.line_height()) / 2, stats,
             ap.c("primary.label"));
 
-    // Open menu popup
-    if (g.menu_open >= 0 && g.menu_open < MenuCount) {
+    // Open menu popup (menu bar titles, or gel Window Menu under the hatch)
+    if (g.menu_open == MenuWindow) {
+        const MenuDef &md = kWindowMenu;
+        int mw = 72;
+        for (int i = 0; i < md.count; ++i)
+            mw = std::max(mw, cv.text_width(md.items[i]) + 28);
+        int mx = g.gel.hatch_box.x;
+        int my = g.gel.hatch_box.bottom();
+        g.popup = paint_menu(cv, ap, mx, my, mw, md.items, md.count, g.menu_item_hot);
+    } else if (g.menu_open >= 0 && g.menu_open < MenuCount) {
         Rect item = g.menu_bar.item_rects[g.menu_open];
         const MenuDef &md = kMenus[g.menu_open];
         int mw = 72;
@@ -946,6 +971,7 @@ void close_menu() {
     g.menu_open = -1;
     g.menu_item_hot = -1;
     g.menu_hot = -1;
+    if (g.pressed_box == 2) g.pressed_box = 0;
 }
 
 void run_menu_command(int menu, int item) {
@@ -1000,6 +1026,15 @@ void run_menu_command(int menu, int item) {
         }
     } else if (menu == MenuHelp) {
         if (item == 0) about_box();
+    } else if (menu == MenuWindow) {
+        if (item == 0) ShowWindow(g.hwnd, SW_MINIMIZE);
+        else if (item == 1) {
+            WINDOWPLACEMENT wp{};
+            wp.length = sizeof(wp);
+            GetWindowPlacement(g.hwnd, &wp);
+            ShowWindow(g.hwnd,
+                       wp.showCmd == SW_MAXIMIZE ? SW_RESTORE : SW_MAXIMIZE);
+        } else if (item == 3) PostQuitMessage(0);
     }
     ensure_caret_visible();
     redraw();
@@ -1020,13 +1055,23 @@ void mouse_down(int x, int y) {
     if (g.menu_open >= 0) {
         int row = menu_hit_row(g.popup, x, y);
         if (row >= 0) {
-            const char *lab = kMenus[g.menu_open].items[row];
+            const char *const *items =
+                g.menu_open == MenuWindow ? kWindowItems
+                                          : kMenus[g.menu_open].items;
+            const char *lab = items[row];
             if (lab && std::strcmp(lab, "-") != 0)
                 run_menu_command(g.menu_open, row);
             else {
                 close_menu();
                 redraw();
             }
+            return;
+        }
+        // Toggle Window Menu closed if hatch clicked again
+        if (g.menu_open == MenuWindow && g.gel.hatch_box.w > 0 &&
+            g.gel.hatch_box.contains(x, y)) {
+            close_menu();
+            redraw();
             return;
         }
         // Click outside closes; may open another title
@@ -1045,6 +1090,15 @@ void mouse_down(int x, int y) {
     if (g.gel.close_box.contains(x, y)) {
         g.drag = DragClose;
         g.pressed_box = 1;
+        redraw();
+        return;
+    }
+    // Gel Window Menu (hatch / window.menu.*)
+    if (g.gel.hatch_box.w > 0 && g.gel.hatch_box.contains(x, y)) {
+        g.menu_open = MenuWindow;
+        g.menu_item_hot = -1;
+        g.menu_hot = -1;
+        g.pressed_box = 2;
         redraw();
         return;
     }
@@ -1155,7 +1209,9 @@ void mouse_move(int x, int y) {
             g.menu_item_hot = row;
             need = true;
         }
-        if (title >= 0 && title != g.menu_open && (GetKeyState(VK_LBUTTON) & 0x8000)) {
+        // Drag across menu-bar titles switches menus (not from Window Menu hatch).
+        if (title >= 0 && title != g.menu_open &&
+            (GetKeyState(VK_LBUTTON) & 0x8000)) {
             g.menu_open = title;
             g.menu_item_hot = -1;
             need = true;
