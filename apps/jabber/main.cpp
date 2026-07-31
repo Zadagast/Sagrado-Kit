@@ -1001,9 +1001,13 @@ void paint() {
         title = g.client.jid + " — Sagrado Jabber";
     paint_gel(cv, g.ap, {0, 0, cv.width(), cv.height()}, title.c_str(), g.focused,
               g.pressed_box, GelStyle::Main);
+    // Open menu owns the bar hilite (TextEdit parity); presence popup is not a bar menu.
+    int bar_hot = g.menu_hot;
+    if (!g.presence_menu && g.menu_open >= 0 && g.menu_open < MenuCount)
+        bar_hot = g.menu_open;
     g.menu_bar = paint_menu_bar(cv, g.ap,
                                 {g.gel.client.x, g.gel.client.y, g.gel.client.w, kMenuBarH},
-                                kMenuTitles, MenuCount, g.menu_hot);
+                                kMenuTitles, MenuCount, bar_hot);
 
     // Identity strip (Yahoo-shaped: you + presence + status).
     // Signed off but remembered → still “you”, click opens Sign On.
@@ -1660,7 +1664,9 @@ void mouse_down(int x, int y) {
         }
         int title = menu_bar_hit(x, y);
         if (title >= 0) {
+            g.presence_menu = false;
             g.menu_open = title;
+            g.menu_hot = title;
             g.menu_item_hot = -1;
             redraw();
             return;
@@ -1812,10 +1818,21 @@ void mouse_move(int x, int y) {
     }
     if (g.menu_open >= 0) {
         int row = menu_hit_row(g.popup, x, y);
+        int title = menu_bar_hit(x, y);
+        bool need = false;
         if (row != g.menu_item_hot) {
             g.menu_item_hot = row;
-            redraw();
+            need = true;
         }
+        // Drag/click across menu-bar titles switches menus (not Window hatch).
+        if (!g.presence_menu && title >= 0 && title != g.menu_open &&
+            (GetKeyState(VK_LBUTTON) & 0x8000)) {
+            g.menu_open = title;
+            g.menu_hot = title;
+            g.menu_item_hot = -1;
+            need = true;
+        }
+        if (need) redraw();
         return;
     }
     if (g.roster_r.contains(x, y)) {
