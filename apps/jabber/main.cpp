@@ -35,7 +35,9 @@ constexpr int kTextPad = 4;
 constexpr int kBuddyRowH = 36;
 constexpr int kGroupHeaderH = 20;
 constexpr UINT_PTR kTypingTimerId = 1;
+constexpr UINT_PTR kStatusFlashTimerId = 2;
 constexpr UINT kTypingPauseMs = 2000;
+constexpr UINT kStatusFlashMs = 3500;
 constexpr int kMaxRecentAccounts = 8; // JIDs only — never passwords
 
 enum : UINT {
@@ -145,6 +147,7 @@ struct App {
     int menu_hot = -1, menu_open = -1, menu_item_hot = -1;
 
     std::string status = "Signed off — File → Sign On or Get an Account";
+    DWORD status_flash_at = 0; // GetTickCount; 0 = show durable bar only
     std::vector<Tab> tabs;
     int active_tab = -1;
     int roster_hot = -1; // index into roster_rows_
@@ -266,9 +269,90 @@ void redraw();
 void stop_typing_indicator();
 void open_subscribe_ask(const std::string &jid);
 void close_subscribe_ask(bool accepted);
+const char *show_label(jabber::Show s);
 
+std::string durable_status_text() {
+    using jabber::ConnState;
+    ConnState st = g.client.state;
+    if (st == ConnState::Connecting || st == ConnState::Registering) {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        if (!g.client.status_text.empty()) return g.client.status_text;
+        return st == ConnState::Registering ? "Creating account…" : "Signing on…";
+    }
+    if (st == ConnState::Error) {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        if (!g.client.last_error.empty()) return g.client.last_error;
+        if (!g.client.status_text.empty()) return g.client.status_text;
+        return "Connection error";
+    }
+    if (st != ConnState::Online) {
+        if (!g.recent_jids.empty())
+            return "Signed off — Enter password to join " + g.recent_jids[0];
+        return "Signed off — File → Sign On or Get an Account";
+    }
+
+    std::string jid;
+    jabber::Show show = jabber::Show::Chat;
+    int online = 0, total = 0, occ_n = 0;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        jid = g.client.jid;
+        show = g.client.own_show;
+        for (const auto &kv : g.client.roster) {
+            ++total;
+            if (kv.second.show != jabber::Show::Unavailable) ++online;
+        }
+        if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
+            g.tabs[g.active_tab].muc) {
+            auto it = g.client.muc_occupants.find(g.tabs[g.active_tab].jid);
+            if (it != g.client.muc_occupants.end())
+                occ_n = (int)it->second.size();
+        }
+    }
+
+    const char *presence = "Invisible";
+    switch (show) {
+    case jabber::Show::Chat: presence = "Available"; break;
+    case jabber::Show::Away:
+    case jabber::Show::Xa: presence = "Away"; break;
+    case jabber::Show::Dnd: presence = "Busy"; break;
+    default: break;
+    }
+    std::string s = "Signed on as " + jid;
+    s += "  ·  ";
+    s += presence;
+    s += "  ·  ";
+    s += std::to_string(online) + " of " + std::to_string(total) + " buddies online";
+    if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) {
+        const auto &tab = g.tabs[g.active_tab];
+        if (tab.muc) {
+            s += "  ·  ";
+            s += jabber::jid_node(tab.jid);
+            s += " (";
+            s += std::to_string(occ_n);
+            s += " in room)";
+        } else {
+            s += "  ·  Chat with ";
+            s += jabber::jid_node(tab.jid);
+        }
+    }
+    return s;
+}
+
+std::string status_bar_text() {
+    if (g.status_flash_at != 0) {
+        DWORD age = GetTickCount() - g.status_flash_at;
+        if (age < kStatusFlashMs && !g.status.empty()) return g.status;
+        g.status_flash_at = 0;
+    }
+    return durable_status_text();
+}
+
+// Brief alert in the status strip; durable account/roster line returns afterward.
 void set_status(const std::string &s) {
     g.status = s;
+    g.status_flash_at = GetTickCount();
+    if (g.hwnd) SetTimer(g.hwnd, kStatusFlashTimerId, kStatusFlashMs, nullptr);
     tray_update_tip();
 }
 
@@ -300,8 +384,10 @@ void tray_update_tip() {
     std::string tip = "Sagrado Jabber";
     if (g.client.state == jabber::ConnState::Online && !g.client.jid.empty())
         tip = g.client.jid + " — Sagrado Jabber";
-    else if (!g.status.empty())
-        tip = g.status.size() > 120 ? g.status.substr(0, 117) + "…" : g.status;
+    else {
+        std::string line = durable_status_text();
+        tip = line.size() > 120 ? line.substr(0, 117) + "…" : line;
+    }
     NOTIFYICONDATAA nid{};
     nid.cbSize = sizeof(nid);
     nid.hWnd = g.hwnd;
@@ -1528,14 +1614,15 @@ void paint() {
     paint_field(cv, g.ap, field, g.compose.c_str(), g.dialog == DlgNone, true);
     paint_button(cv, g.ap, g.btn_send, "Send", false, true);
 
-    // Status
+    // Status — durable account/roster/context line (not a chat firehose).
     cv.fill(g.status_r, g.ap.c("primary.background"));
     {
+        std::string line = status_bar_text();
         int sw = g.progress_r.w > 0 ? g.status_r.w - g.progress_r.w - 16 : g.status_r.w - 16;
         CanvasClip clip(cv, {g.status_r.x, g.status_r.y, sw, g.status_r.h});
-        cv.text(g.status_r.x + 8,
-                g.status_r.y + (g.status_r.h - cv.line_height()) / 2, g.status.c_str(),
-                g.ap.c("primary.label"));
+        cv.text_elided(g.status_r.x + 8,
+                       g.status_r.y + (g.status_r.h - cv.line_height()) / 2,
+                       line.c_str(), sw - 8, g.ap.c("primary.label"));
     }
     if (g.file_progress >= 0 && g.progress_r.w > 0)
         paint_progress(cv, g.ap, g.progress_r, g.file_progress, 100);
@@ -2403,9 +2490,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_JABBER_EVENT: {
         auto *e = (jabber::ClientEvent *)lp;
         if (!e) return 0;
-        if (e->type == jabber::ClientEvent::StatusText ||
-            e->type == jabber::ClientEvent::State)
-            set_status(e->text);
+        // StatusText/State no longer dump into the strip — durable_status_text()
+        // owns connection + roster + active chat. Flash only curated alerts below.
+        if (e->type == jabber::ClientEvent::StatusText) {
+            // Keep hard failures visible briefly.
+            if (g.client.state == jabber::ConnState::Error ||
+                e->text.find("fail") != std::string::npos ||
+                e->text.find("Fail") != std::string::npos ||
+                e->text.find("rejected") != std::string::npos ||
+                e->text.find("not available") != std::string::npos)
+                set_status(e->text);
+        }
         if (e->type == jabber::ClientEvent::State &&
             g.client.state == jabber::ConnState::Online) {
             std::string jid;
@@ -2442,16 +2537,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 muc = g.client.muc_joined.count(e->jid) != 0;
             }
             open_tab(e->jid, muc);
-            if (!e->text.empty()) {
-                if (!muc) {
-                    ding();
-                    set_status("You've got mail from " + jabber::jid_node(e->jid));
-                    if (g.in_tray || !IsWindowVisible(g.hwnd))
-                        tray_balloon("You've Got Mail",
-                                     jabber::jid_node(e->jid) + ": " + e->text);
-                } else {
-                    set_status(jabber::jid_node(e->jid) + ": " + e->text);
-                }
+            if (!e->text.empty() && !muc) {
+                ding();
+                set_status("You've got mail from " + jabber::jid_node(e->jid));
+                if (g.in_tray || !IsWindowVisible(g.hwnd))
+                    tray_balloon("You've Got Mail",
+                                 jabber::jid_node(e->jid) + ": " + e->text);
             }
         }
         if (e->type == jabber::ClientEvent::State ||
@@ -2464,15 +2555,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             e->type == jabber::ClientEvent::Bookmarks) {
             if (g.dialog == DlgBrowseMuc) rebuild_browse_rows();
         }
-        if (e->type == jabber::ClientEvent::Presence) {
-            std::lock_guard<std::mutex> lock(g.client.mu);
-            if (!g.client.status_text.empty()) set_status(g.client.status_text);
-        }
         if (e->type == jabber::ClientEvent::RegisterOk)
             set_status("Account created — signed on");
         if (e->type == jabber::ClientEvent::FileProgress) {
             g.file_progress = e->progress;
-            set_status(e->text);
+            if (!e->text.empty()) set_status(e->text);
             if (e->progress >= 100) g.file_progress = -1;
         }
         if (e->type == jabber::ClientEvent::Identity ||
@@ -2612,6 +2699,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 g.typing_sent = false;
             }
             KillTimer(hwnd, kTypingTimerId);
+            return 0;
+        }
+        if (wp == kStatusFlashTimerId) {
+            KillTimer(hwnd, kStatusFlashTimerId);
+            g.status_flash_at = 0;
+            redraw();
             return 0;
         }
         break;

@@ -43,7 +43,9 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    compose + Send; peer typing line when composing
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
 5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
-6. **Status strip** — “Signed on as …”, presence alerts, upload progress
+6. **Status strip** — durable line: signed on as / presence / buddies online / active
+   chat or room (occupant count). Brief flashes for mail, errors, uploads — not every
+   room chat line
 7. **MUC** — full-height “In room” rail beside transcript **and** compose; sticky topic
    under the transcript top; Chat → Browse Chat Rooms… lists bookmarks + public disco rooms
 8. **System tray** — gel close (X) hides to the notification area; minimize stays a
