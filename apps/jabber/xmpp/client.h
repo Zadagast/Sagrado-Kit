@@ -427,7 +427,8 @@ public:
             xml_escape(body) + "</body></message>";
         {
             std::lock_guard<std::mutex> lock(mu);
-            chats[bare_jid(room)].push_back({jid, body, true, false, false});
+            chats[bare_jid(room)].push_back(
+                {jid, body, true, false, false, {}, false});
         }
         queue_send(stanza);
     }
