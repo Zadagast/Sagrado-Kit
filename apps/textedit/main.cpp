@@ -1434,22 +1434,19 @@ LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == VK_ESCAPE || wp == VK_RETURN) hide_about();
         return 0;
     case WM_NCHITTEST: {
-        LRESULT hit = DefWindowProcA(hwnd, msg, wp, lp);
-        if (hit == HTCLIENT) {
-            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            ScreenToClient(hwnd, &pt);
-            paint_about();
-            if (pt.y >= 0 && pt.y < a.lay.gel.title_h &&
-                !a.lay.gel.close_box.contains(pt.x, pt.y) &&
-                !a.lay.gel.min_box.contains(pt.x, pt.y))
-                return HTCAPTION;
-        }
-        return hit;
+        POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        ScreenToClient(hwnd, &pt);
+        int W = a.canvas.width(), H = a.canvas.height();
+        if (pt.x < 0 || pt.y < 0 || pt.x >= W || pt.y >= H) return HTNOWHERE;
+        paint_about();
+        if (a.lay.gel.close_box.contains(pt.x, pt.y) ||
+            a.lay.gel.min_box.contains(pt.x, pt.y) ||
+            a.lay.btn_ok.contains(pt.x, pt.y))
+            return HTCLIENT;
+        if (pt.y < a.lay.gel.title_h) return HTCAPTION;
+        return HTCLIENT;
     }
     case WM_NCCALCSIZE:
-        // Entire window is client (gel paints the frame). Always — including
-        // wParam==FALSE — so Wine does not keep a host non-client strip until
-        // the first resize.
         return 0;
     }
     return DefWindowProcA(hwnd, msg, wp, lp);
@@ -1565,17 +1562,16 @@ LRESULT CALLBACK FindWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp == VK_RETURN) do_find_next();
         return 0;
     case WM_NCHITTEST: {
-        LRESULT hit = DefWindowProcA(hwnd, msg, wp, lp);
-        if (hit == HTCLIENT) {
-            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            ScreenToClient(hwnd, &pt);
-            layout_find();
-            if (pt.y >= 0 && pt.y < f.gel.title_h &&
-                !f.gel.close_box.contains(pt.x, pt.y) &&
-                !f.gel.min_box.contains(pt.x, pt.y))
-                return HTCAPTION;
-        }
-        return hit;
+        POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        ScreenToClient(hwnd, &pt);
+        int W = f.canvas.width(), H = f.canvas.height();
+        if (pt.x < 0 || pt.y < 0 || pt.x >= W || pt.y >= H) return HTNOWHERE;
+        layout_find();
+        if (f.gel.close_box.contains(pt.x, pt.y) ||
+            f.gel.min_box.contains(pt.x, pt.y))
+            return HTCLIENT;
+        if (pt.y < f.gel.title_h) return HTCAPTION;
+        return HTCLIENT;
     }
     case WM_NCCALCSIZE:
         return 0;
@@ -1822,35 +1818,37 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_NCHITTEST: {
-        LRESULT hit = DefWindowProcA(hwnd, msg, wp, lp);
-        if (hit == HTCLIENT) {
-            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            ScreenToClient(hwnd, &pt);
-            layout_main();
-            if (g.menu_open >= 0) return HTCLIENT;
-            if (pt.y >= 0 && pt.y < kTitleH &&
-                !g.gel.close_box.contains(pt.x, pt.y) &&
-                !g.gel.max_box.contains(pt.x, pt.y) &&
-                !g.gel.min_box.contains(pt.x, pt.y) &&
-                !g.gel.hatch_box.contains(pt.x, pt.y))
-                return HTCAPTION;
-            if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
-            const int grip = 4;
-            int W = g.canvas.width(), H = g.canvas.height();
-            bool left = pt.x < grip, right = pt.x >= W - grip;
-            bool top = pt.y < grip, bottom = pt.y >= H - grip;
-            if (top && left) return HTTOPLEFT;
-            if (top && right) return HTTOPRIGHT;
-            if (bottom && left) return HTBOTTOMLEFT;
-            if (bottom && right) return HTBOTTOMRIGHT;
-            if (left) return HTLEFT;
-            if (right) return HTRIGHT;
-            if (top) return HTTOP;
-            if (bottom) return HTBOTTOM;
-        }
-        return hit;
+        // Borderless gel: do not gate on DefWindowProc==HTCLIENT. After
+        // WM_NCCALCSIZE returns 0, Wine often reports HTBORDER/HTCAPTION for
+        // the whole window and our client hit-test never runs (app feels dead).
+        POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        ScreenToClient(hwnd, &pt);
+        int W = g.canvas.width(), H = g.canvas.height();
+        if (pt.x < 0 || pt.y < 0 || pt.x >= W || pt.y >= H) return HTNOWHERE;
+        layout_main();
+        if (g.gel.close_box.contains(pt.x, pt.y) ||
+            g.gel.max_box.contains(pt.x, pt.y) ||
+            g.gel.min_box.contains(pt.x, pt.y) ||
+            g.gel.hatch_box.contains(pt.x, pt.y))
+            return HTCLIENT;
+        if (g.menu_open >= 0) return HTCLIENT;
+        if (pt.y < kTitleH) return HTCAPTION;
+        if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
+        const int edge = 4;
+        bool left = pt.x < edge, right = pt.x >= W - edge;
+        bool top = pt.y < edge, bottom = pt.y >= H - edge;
+        if (top && left) return HTTOPLEFT;
+        if (top && right) return HTTOPRIGHT;
+        if (bottom && left) return HTBOTTOMLEFT;
+        if (bottom && right) return HTBOTTOMRIGHT;
+        if (left) return HTLEFT;
+        if (right) return HTRIGHT;
+        if (top) return HTTOP;
+        if (bottom) return HTBOTTOM;
+        return HTCLIENT;
     }
     case WM_NCCALCSIZE:
+        // Entire window is client; gel paints the frame.
         return 0;
     case WM_DESTROY:
         KillTimer(hwnd, 1);
@@ -1892,10 +1890,18 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);
     ShowWindow(g.hwnd, show);
-    // Wine often maps host decorations on first show; a frame-change (same as
-    // the user resizing) reapplies WM_NCCALCSIZE so only the gel chrome remains.
-    SetWindowPos(g.hwnd, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    // Wine may keep host decorations until a real size change (user resize).
+    // Nudge 1px then restore — same effect, without relying on SWP_FRAMECHANGED
+    // alone (which left hit-testing wedged on some WMs).
+    {
+        RECT wr{};
+        GetWindowRect(g.hwnd, &wr);
+        int w = wr.right - wr.left, h = wr.bottom - wr.top;
+        SetWindowPos(g.hwnd, nullptr, wr.left, wr.top, w + 1, h,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(g.hwnd, nullptr, wr.left, wr.top, w, h,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     UpdateWindow(g.hwnd);
 
     // Open file from command line if given

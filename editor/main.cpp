@@ -2042,38 +2042,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     case WM_NCHITTEST: {
-        LRESULT hit = DefWindowProcA(hwnd, msg, wp, lp);
-        if (hit == HTCLIENT) {
-            POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            ScreenToClient(hwnd, &pt);
-            layout();
-            if (pt.y >= 0 && pt.y < kTitleH &&
-                !g.gel.close_box.contains(pt.x, pt.y) &&
-                !g.gel.max_box.contains(pt.x, pt.y) &&
-                !g.gel.min_box.contains(pt.x, pt.y))
-                return HTCAPTION;
-            // TextEdit-style grow box in the corner
-            if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
-            // Resize grips on edges
-            const int grip = 4;
-            int W = g.canvas.width(), H = g.canvas.height();
-            bool left = pt.x < grip, right = pt.x >= W - grip;
-            bool top = pt.y < grip, bottom = pt.y >= H - grip;
-            if (top && left) return HTTOPLEFT;
-            if (top && right) return HTTOPRIGHT;
-            if (bottom && left) return HTBOTTOMLEFT;
-            if (bottom && right) return HTBOTTOMRIGHT;
-            if (left) return HTLEFT;
-            if (right) return HTRIGHT;
-            if (top) return HTTOP;
-            if (bottom) return HTBOTTOM;
-        }
-        return hit;
+        // Borderless gel: always hit-test ourselves. DefWindowProc often returns
+        // HTBORDER after NCCALCSIZE=0 and would skip this block entirely.
+        POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+        ScreenToClient(hwnd, &pt);
+        int W = g.canvas.width(), H = g.canvas.height();
+        if (pt.x < 0 || pt.y < 0 || pt.x >= W || pt.y >= H) return HTNOWHERE;
+        layout();
+        if (g.gel.close_box.contains(pt.x, pt.y) ||
+            g.gel.max_box.contains(pt.x, pt.y) ||
+            g.gel.min_box.contains(pt.x, pt.y) ||
+            g.gel.hatch_box.contains(pt.x, pt.y))
+            return HTCLIENT;
+        if (pt.y < kTitleH) return HTCAPTION;
+        if (g.gel.grip.contains(pt.x, pt.y)) return HTBOTTOMRIGHT;
+        const int edge = 4;
+        bool left = pt.x < edge, right = pt.x >= W - edge;
+        bool top = pt.y < edge, bottom = pt.y >= H - edge;
+        if (top && left) return HTTOPLEFT;
+        if (top && right) return HTTOPRIGHT;
+        if (bottom && left) return HTBOTTOMLEFT;
+        if (bottom && right) return HTBOTTOMRIGHT;
+        if (left) return HTLEFT;
+        if (right) return HTRIGHT;
+        if (top) return HTTOP;
+        if (bottom) return HTBOTTOM;
+        return HTCLIENT;
     }
     case WM_NCCALCSIZE:
-        // Borderless — entire window is the client; gel paints the frame.
-        // Always return 0 (including wParam==FALSE) so Wine does not keep a
-        // host non-client strip until the first resize.
         return 0;
     case WM_DESTROY:
         KillTimer(hwnd, 1);
@@ -2117,8 +2113,15 @@ int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR cmd, int show) {
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);
     ShowWindow(g_hwnd, show);
-    SetWindowPos(g_hwnd, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+    {
+        RECT wr{};
+        GetWindowRect(g_hwnd, &wr);
+        int w = wr.right - wr.left, h = wr.bottom - wr.top;
+        SetWindowPos(g_hwnd, nullptr, wr.left, wr.top, w + 1, h,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(g_hwnd, nullptr, wr.left, wr.top, w, h,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     UpdateWindow(g_hwnd);
 
     MSG msg;
