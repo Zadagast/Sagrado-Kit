@@ -748,9 +748,9 @@ void paint() {
                  kAlertDlgW, kAlertDlgH};
         g.about_lay = paint_alert(
             cv, g.ap, box, "About Sagrado Jabber",
-            "You've Got Mail IM on SagradoKit — buddy list, presence, "
-            "tabbed chats, HTTP Upload files.\n\n"
-            "Get an Account: XEP-0077 + CAPTCHA in gel (no browser).",
+            "Sagrado Jabber\n"
+            "1.0\n\n"
+            "By Zadagast",
             AlertKind::Note, g.focused, g.pressed_box, g.about_ok_pressed);
     }
 }
