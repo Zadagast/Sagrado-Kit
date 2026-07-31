@@ -483,14 +483,82 @@ inline void paint_primary_background(Canvas &cv, const Appearance &ap, Rect r) {
     cv.pop_clip(prev);
 }
 
+// True when resize art has too few marks that read against both the client
+// fill and the dark frame corner the grow box sits on. International is a
+// #3a3a3a plate (matches chrome) with black hash (matches the frame) and only
+// a 4×4 light staircase left — faithful blit reads as a stray speck. Ashen /
+// WinXP keep enough contrasting ink to skip the overlay.
+inline bool gel_resize_camouflaged(const SkinImage &img, const Appearance &ap) {
+    if (img.empty()) return true;
+    Color bg = ap.c("primary.background");
+    Color frame = ap.c("window.frame");
+    auto ad = [](int x, int y) { return x > y ? x - y : y - x; };
+    auto lum = [](Color c) { return (int(c.r) + int(c.g) + int(c.b)) / 3; };
+    auto close_to = [&](Color a, Color b, int tol) {
+        return ad(int(a.r), int(b.r)) <= tol && ad(int(a.g), int(b.g)) <= tol &&
+               ad(int(a.b), int(b.b)) <= tol;
+    };
+    int bg_l = lum(bg), frame_l = lum(frame);
+    int visible = 0, opaque = 0;
+    for (int i = 0; i < img.w * img.h; ++i) {
+        uint32_t p = img.px[size_t(i)];
+        if ((p >> 24) < 128) continue;
+        ++opaque;
+        Color c{uint8_t((p >> 16) & 255), uint8_t((p >> 8) & 255),
+                uint8_t(p & 255)};
+        int cl = lum(c);
+        if (ad(cl, bg_l) < 50) continue;      // blends into client fill
+        if (ad(cl, frame_l) < 30) continue;   // blends into frame edge
+        if (close_to(c, frame, 40)) continue;
+        ++visible;
+    }
+    if (opaque < 8) return true;
+    // International lands at 10 (4×4 staircase only). Authored grips with a
+    // real ink mark (Ashen, Boilerplate metal, WinXP) sit at 12+.
+    return visible < 12;
+}
+
+inline Color gel_grip_ridge_ink(const Appearance &ap, bool focused, Color against) {
+    Color bright =
+        focused ? ap.c("window_focus.light1") : ap.c("window.light1");
+    auto dist2 = [](Color a, Color b) {
+        int dr = int(a.r) - int(b.r), dg = int(a.g) - int(b.g),
+            db = int(a.b) - int(b.b);
+        return dr * dr + dg * dg + db * db;
+    };
+    if (dist2(bright, against) < 50 * 50) bright = ap.c("primary.label");
+    if (dist2(bright, against) < 50 * 50) bright = ap.c("window.label");
+    return bright;
+}
+
+inline void paint_gel_grip_ridges(Canvas &cv, Rect g, Color bright) {
+    for (int i = 0; i < 3; ++i) {
+        int o = 4 + i * 4;
+        for (int s = 0; s <= o; ++s) {
+            cv.put(g.right() - 3 - o + s, g.bottom() - 3 - s, pack(bright));
+            cv.put(g.right() - 2 - o + s, g.bottom() - 3 - s, pack(bright));
+        }
+    }
+}
+
 // Grow box — art resize slot, else Sagrado paint_grip colour path.
+// Camouflage Hap plates get Standard ridges stamped on top so the handle
+// stays legible (same idea as blankish title-button glyph overlay).
 inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focused) {
     if (g.w <= 0 || g.h <= 0) return;
     const SkinImage *img =
         focused ? ap.art("window.resize.focus") : ap.art("window.resize.normal");
     if (!img) img = ap.art("window.resize.normal");
     if (img) {
-        cv.nine_slice(*img, g);
+        // Zero-cap plates are whole tiles — never invent mid caps via nine_slice.
+        if (img->w == g.w && img->h == g.h)
+            cv.blit_image(*img, g.x, g.y);
+        else
+            cv.nine_slice(*img, g);
+        if (gel_resize_camouflaged(*img, ap)) {
+            Color against = ap.c("primary.background");
+            paint_gel_grip_ridges(cv, g, gel_grip_ridge_ink(ap, focused, against));
+        }
         return;
     }
     const char *grp = focused ? "window_focus" : "window";
@@ -507,13 +575,7 @@ inline void paint_gel_grip(Canvas &cv, const Appearance &ap, Rect g, bool focuse
     cv.vline(g.x, g.y, g.bottom(), frame);
     cv.hline(g.x + 1, g.right() - 2, g.y + 1, bright);
     cv.vline(g.x + 1, g.y + 1, g.bottom() - 2, bright);
-    for (int i = 0; i < 3; ++i) {
-        int o = 4 + i * 4;
-        for (int s = 0; s <= o; ++s) {
-            cv.put(g.right() - 3 - o + s, g.bottom() - 3 - s, pack(bright));
-            cv.put(g.right() - 2 - o + s, g.bottom() - 3 - s, pack(bright));
-        }
-    }
+    paint_gel_grip_ridges(cv, g, bright);
 }
 
 // Prefer Hap plate Text Color when set; else colour-table label with

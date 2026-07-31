@@ -110,6 +110,7 @@ int main(int argc, char **argv) {
             ap.c("primary.label"));
     paint_progress(cv, ap, {status.right() - 140, status.y + 3, 128, status.h - 6},
                    40, 100);
+    paint_gel_grip(cv, ap, gel.grip, true);
 
     // Open File menu (Sign On / Get an Account) — pattern tiles must not spill.
     static const char *file_items[] = {

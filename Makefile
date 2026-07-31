@@ -124,6 +124,7 @@ smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp a
 	$(BUILD)/jabber_smoke format/skins/milk-redux/milk-redux.sap
 	$(BUILD)/jabber_smoke "research/haps/Milk Redux.hap"
 	$(BUILD)/jabber_smoke "research/haps/Boilerplate-Rusty.hap"
+	$(BUILD)/jabber_smoke "research/haps/International2.hap"
 
 clean:
 	rm -rf $(BUILD)
