@@ -401,6 +401,9 @@ private:
         return read_until("stream:features");
     }
 
+    // Handshake helper: accumulate bytes until `needle` appears.
+    // Do NOT pump/dispatch stanzas here — register/bind IQs must stay in
+    // stream_buf_ for the synchronous flows to parse (pump would eat them).
     bool read_until(const std::string &needle) {
         char buf[4096];
         for (int i = 0; i < 200; ++i) {
@@ -408,7 +411,6 @@ private:
             int n = sock_.recv_some(buf, sizeof(buf));
             if (n <= 0) return false;
             stream_buf_.append(buf, buf + n);
-            pump_incoming();
         }
         return stream_buf_.find(needle) != std::string::npos;
     }
@@ -658,22 +660,20 @@ private:
                       "Pick another public server from the list.");
             return false;
         }
-        // CAPTCHA / data form?
-        bool need_captcha = iq.find("urn:xmpp:captcha") != std::string::npos ||
-                            iq.find("captcha") != std::string::npos ||
-                            iq.find("ocr") != std::string::npos;
+        // CAPTCHA only when we can fetch an image (or ocr field + media URI).
+        // Do not treat "captcha-fallback-text" alone as a hard challenge.
         std::string captcha_url;
-        if (iq.find("<x xmlns='jabber:x:data'") != std::string::npos ||
-            iq.find("jabber:x:data") != std::string::npos) {
-            // Find media URL in form
+        bool need_captcha = false;
+        if (iq.find("jabber:x:data") != std::string::npos) {
             size_t m = iq.find("http");
             while (m != std::string::npos) {
                 size_t e = iq.find_first_of("'\"<", m);
                 if (e == std::string::npos) break;
                 std::string url = iq.substr(m, e - m);
-                if (url.find("http") == 0 &&
+                if (url.rfind("http", 0) == 0 &&
                     (url.find(".png") != std::string::npos ||
                      url.find(".jpg") != std::string::npos ||
+                     url.find(".jpeg") != std::string::npos ||
                      url.find("captcha") != std::string::npos ||
                      url.find("challenge") != std::string::npos)) {
                     captcha_url = url;
@@ -682,11 +682,10 @@ private:
                 }
                 m = iq.find("http", m + 1);
             }
-            // Also oob / uri tags
             std::string uri;
             if (extract_tag(iq, "uri", &uri) || extract_tag(iq, "URL", &uri)) {
                 captcha_url = xml_unescape(uri);
-                need_captcha = true;
+                need_captcha = !captcha_url.empty();
             }
         }
 
@@ -730,26 +729,25 @@ private:
             }
         }
 
-        // Submit register
+        // Submit register — legacy fields + data form (what Prosody/ejabberd ship).
         std::string query = "<query xmlns='jabber:iq:register'>"
                             "<username>" +
                             xml_escape(user_) + "</username><password>" +
                             xml_escape(password_) + "</password>";
+        query += "<x xmlns='jabber:x:data' type='submit'>";
+        query += "<field var='FORM_TYPE'><value>jabber:iq:register</value></field>";
+        query += "<field var='username'><value>" + xml_escape(user_) +
+                 "</value></field>";
+        query += "<field var='password'><value>" + xml_escape(password_) +
+                 "</value></field>";
         if (!answer.empty()) {
-            // Common field names
-            query += "<x xmlns='jabber:x:data' type='submit'>";
-            query += "<field var='FORM_TYPE'><value>urn:xmpp:captcha</value></field>";
-            query += "<field var='username'><value>" + xml_escape(user_) +
-                     "</value></field>";
-            query += "<field var='password'><value>" + xml_escape(password_) +
-                     "</value></field>";
             query += "<field var='ocr'><value>" + xml_escape(answer) +
                      "</value></field>";
-            query += "</x>";
         }
-        query += "</query>";
+        query += "</x></query>";
         std::string setiq =
             "<iq type='set' id='reg2'>" + query + "</iq>";
+        // Drop the get-form IQ so read_until("reg2") sees the set result.
         stream_buf_.clear();
         if (!sock_.send_all(setiq)) return false;
         if (!read_until("reg2") && stream_buf_.find("type='result'") == std::string::npos &&
