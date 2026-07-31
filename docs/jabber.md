@@ -14,7 +14,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 |---|---|---|
 | Identity strip (you) | Left column above Buddies | Own nick/avatar + `<presence>` |
 | Custom status line | Editable field under your name | `<presence><status>` |
-| Available / Away / Busy / Invisible | Click presence mark (or Buddy menu) | `<show>` / unavailable |
+| Available / Away / Busy / Invisible | Click presence mark (or Buddy menu); marks are fixed green / amber / red / grey (not skin roles) | `<show>` / unavailable |
 | Buddy list | Two-line rows: name + status | Roster IQ + presence |
 | Buddy signed on / off | Status strip alert | Presence stanzas |
 | Avatar / display name | Tile + nick | [XEP-0054](https://xmpp.org/extensions/xep-0054.html) vCard |

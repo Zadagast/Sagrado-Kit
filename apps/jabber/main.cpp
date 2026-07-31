@@ -431,17 +431,18 @@ void layout() {
     }
 }
 
-Color presence_color(const Appearance &ap, jabber::Show s) {
+// Fixed AIM/Yahoo presence ink — readable on every Hap, not skin roles.
+Color presence_color(const Appearance &, jabber::Show s) {
     switch (s) {
     case jabber::Show::Chat:
-        return ap.c("list.hilite_background");
+        return {0x2e, 0xc2, 0x4a}; // Available — green
     case jabber::Show::Away:
     case jabber::Show::Xa:
-        return ap.c("primary.dark");
+        return {0xf0, 0xc0, 0x20}; // Away — amber
     case jabber::Show::Dnd:
-        return ap.c("focus.box");
+        return {0xe0, 0x40, 0x40}; // Busy — red
     default:
-        return ap.c("menu.disable_label");
+        return {0x88, 0x88, 0x88}; // Invisible / signed off — grey
     }
 }
 
