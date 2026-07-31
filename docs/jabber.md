@@ -24,6 +24,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Typing | “X is typing…” above compose | [XEP-0085](https://xmpp.org/extensions/xep-0085.html) chat states |
 | Delivered | “ ok” on your 1:1 lines when the peer acks | [XEP-0184](https://xmpp.org/extensions/xep-0184.html) receipts |
 | Multi-device | Other resources’ chats land in this transcript | [XEP-0280](https://xmpp.org/extensions/xep-0280.html) carbons |
+| Recent history | Opening an empty 1:1 chat loads the last ~40 lines | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
 | Chat rooms | Chat → Browse Chat Rooms… / Join… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
@@ -128,6 +129,6 @@ Recent account JIDs live in `accounts.txt` beside the exe (written on successful
 - Matrix / Spaces / Discord server rail
 - Browser or OOB web registration as a supported path
 - Saved passwords / keyring
-- OMEMO, Jingle, full MAM browser, Adium HTML message styles
+- OMEMO, Jingle, full MAM history browser (this pass only pulls recent lines into an empty chat), Adium HTML message styles
 - Move-to-group UI (groups display from roster; adds use **Buddies**)
 - libpurple multi-protocol

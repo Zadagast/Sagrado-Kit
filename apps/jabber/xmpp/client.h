@@ -90,7 +90,8 @@ struct ClientEvent {
         Identity,
         SubscribeAsk, // inbound presence type=subscribe
         ChatState,    // XEP-0085; text = composing|paused|active|inactive|gone
-        Receipt       // XEP-0184 delivered; jid = peer bare
+        Receipt,      // XEP-0184 delivered; jid = peer bare
+        History       // XEP-0313 MAM batch done; jid = peer bare
     } type = State;
     std::string text;
     std::string jid;
@@ -320,6 +321,7 @@ public:
     std::string last_error;
     std::string http_upload_host;
     bool upload_available = false;
+    bool mam_available = false; // urn:xmpp:mam:2 advertised
 
     // Own identity (Yahoo-shaped strip): presence + status + vCard.
     Show own_show = Show::Unavailable;
@@ -350,6 +352,9 @@ public:
             conference_host.clear();
             pending_subscribe.clear();
             chat_states.clear();
+            mam_available = false;
+            mam_fetched_.clear();
+            mam_pending_.clear();
             own_vcard_xml_.clear();
             own_photo_hash_.clear();
             pending_photo_bytes_.clear();
@@ -403,6 +408,39 @@ public:
             queue_send("<message to='" + xml_escape(to) +
                        "' type='chat'><" + std::string(state) +
                        " xmlns='http://jabber.org/protocol/chatstates'/></message>");
+    }
+
+    // XEP-0313 — last `max` messages with this bare JID (1:1). No-op if already
+    // fetched this session or local transcript already has lines.
+    void request_mam_history(const std::string &with_bare, int max = 40) {
+        std::string with = bare_jid(with_bare);
+        if (with.empty() || state != ConnState::Online) return;
+        if (max < 1) max = 1;
+        if (max > 100) max = 100;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (!mam_available) return;
+            if (mam_fetched_.count(with)) return;
+            if (!chats[with].empty()) {
+                mam_fetched_.insert(with);
+                return;
+            }
+            mam_fetched_.insert(with);
+        }
+        std::string id = "mam" + std::to_string(iq_seq_++);
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            mam_pending_[id] = with;
+        }
+        // Empty <before/> = last page (most recent N).
+        queue_send(
+            "<iq type='set' id='" + id + "'><query xmlns='urn:xmpp:mam:2' queryid='" +
+            id + "'><x xmlns='jabber:x:data' type='submit'>"
+            "<field var='FORM_TYPE' type='hidden'><value>urn:xmpp:mam:2</value></field>"
+            "<field var='with'><value>" + xml_escape(with) +
+            "</value></field></x>"
+            "<set xmlns='http://jabber.org/protocol/rsm'><max>" +
+            std::to_string(max) + "</max><before/></set></query></iq>");
     }
 
     void send_message(const std::string &to, const std::string &body) {
@@ -759,6 +797,8 @@ private:
     std::string stream_buf_;
     int iq_seq_ = 1;
     int msg_seq_ = 1;
+    std::set<std::string> mam_fetched_;              // bare JIDs queried this session
+    std::map<std::string, std::string> mam_pending_; // iq id → with bare
     std::string pending_upload_to_, pending_upload_mime_, pending_upload_name_;
     std::vector<uint8_t> pending_upload_data_;
     std::set<std::string> vcard_inflight_;
@@ -947,8 +987,39 @@ private:
         return stream_buf_.find(needle) != std::string::npos;
     }
 
+    // Match the outer close when <message> nests (MAM/carbons forwarded).
+    static size_t stanza_end_nested(const std::string &buf, const char *kind) {
+        const size_t klen = std::strlen(kind);
+        const std::string open = std::string("<") + kind;
+        const std::string close = std::string("</") + kind + ">";
+        size_t i = 0;
+        int depth = 0;
+        while (i < buf.size()) {
+            if (buf.compare(i, open.size(), open) == 0) {
+                char c = (i + open.size() < buf.size()) ? buf[i + open.size()] : 0;
+                if (c == ' ' || c == '>' || c == '/' || c == '\t' || c == '\n' ||
+                    c == '\r') {
+                    size_t gt = buf.find('>', i);
+                    if (gt == std::string::npos) return std::string::npos;
+                    bool self = gt > i && buf[gt - 1] == '/';
+                    if (!self) ++depth;
+                    i = gt + 1;
+                    continue;
+                }
+            }
+            if (buf.compare(i, close.size(), close) == 0) {
+                --depth;
+                i += close.size();
+                if (depth == 0) return i;
+                continue;
+            }
+            ++i;
+        }
+        return std::string::npos;
+    }
+
     void pump_incoming() {
-        // Pull complete top-level stanzas from stream_buf_ (naive).
+        // Pull complete top-level stanzas from stream_buf_.
         for (;;) {
             size_t msg = stream_buf_.find("<message");
             size_t pres = stream_buf_.find("<presence");
@@ -976,6 +1047,9 @@ private:
             size_t end = std::string::npos;
             if (self_close) {
                 end = gt + 1;
+            } else if (std::strcmp(kind, "message") == 0) {
+                end = stanza_end_nested(stream_buf_, kind);
+                if (end == std::string::npos) break;
             } else {
                 std::string close = std::string("</") + kind + ">";
                 end = stream_buf_.find(close);
@@ -1013,9 +1087,11 @@ private:
         }
     }
 
-    // Process a chat/groupchat message (plain or carbon-unwrapped).
+    // Process a chat/groupchat message (plain, carbon, or MAM archive).
     // carbon_sent: XEP-0280 <sent> — we wrote this from another resource.
-    void ingest_message(const std::string &st, bool carbon_sent) {
+    // from_archive: XEP-0313 — no receipts / chat-state / per-line ding.
+    void ingest_message(const std::string &st, bool carbon_sent,
+                        bool from_archive = false) {
         std::string from = attr(st, "from");
         std::string to = attr(st, "to");
         std::string type = attr(st, "type");
@@ -1054,9 +1130,9 @@ private:
             is_muc = muc_joined.count(key) != 0;
         }
 
-        // XEP-0085 chat states (1:1 only).
+        // XEP-0085 chat states (1:1 only; never from archive).
         const char *cs = nullptr;
-        if (!is_muc && !carbon_sent) {
+        if (!is_muc && !carbon_sent && !from_archive) {
             if (st.find("<composing") != std::string::npos) cs = "composing";
             else if (st.find("<paused") != std::string::npos) cs = "paused";
             else if (st.find("<active") != std::string::npos) cs = "active";
@@ -1087,6 +1163,13 @@ private:
         }
 
         bool mine = carbon_sent;
+        if (from_archive && !carbon_sent) {
+            // Archive: ours if from matches our bare JID.
+            mine = jid_ieq(bare_jid(from), bare_jid(jid));
+            if (mine) key = bare_jid(to);
+            else key = bare_jid(from);
+            if (key.empty()) key = bare_jid(from);
+        }
         std::string who =
             is_muc ? (mine ? jid_node(jid) : jid_resource(from)) : (mine ? jid : from);
         if (who.empty()) who = from;
@@ -1098,7 +1181,7 @@ private:
                     if (!ln.id.empty() && ln.id == mid) return; // dedupe
                 }
             }
-            if (is_muc && type == "groupchat" && !carbon_sent) {
+            if (is_muc && type == "groupchat" && !carbon_sent && !from_archive) {
                 auto nit = muc_nicks.find(key);
                 if (nit != muc_nicks.end() && who == nit->second) {
                     auto &lines = chats[key];
@@ -1108,22 +1191,33 @@ private:
                 }
             }
             chats[key].push_back({who, body, mine, false, false, mid, false});
-            if (!mine) chat_states.erase(key);
+            if (!mine && !from_archive) chat_states.erase(key);
         }
 
-        // Reply to XEP-0184 receipt requests on inbound 1:1.
-        if (!mine && !is_muc && !mid.empty() &&
+        // Reply to XEP-0184 receipt requests on inbound 1:1 (live only).
+        if (!from_archive && !mine && !is_muc && !mid.empty() &&
             st.find("<request") != std::string::npos &&
             st.find("urn:xmpp:receipts") != std::string::npos) {
             queue_send("<message to='" + xml_escape(bare_jid(from)) +
                        "' type='chat'><received xmlns='urn:xmpp:receipts' id='" +
                        xml_escape(mid) + "'/></message>");
         }
-        emit(make_event(ClientEvent::Message, body, key));
+        if (!from_archive)
+            emit(make_event(ClientEvent::Message, body, key));
     }
 
     void handle_stanza(const std::string &st) {
         if (st.find("<message") == 0) {
+            // XEP-0313 MAM result — unwrap, quiet ingest.
+            if (st.find("urn:xmpp:mam:2") != std::string::npos &&
+                st.find("<result") != std::string::npos) {
+                std::string inner = extract_forwarded_message(st);
+                if (!inner.empty()) {
+                    bool sent = jid_ieq(bare_jid(attr(inner, "from")), bare_jid(jid));
+                    ingest_message(inner, sent, true);
+                }
+                return;
+            }
             // XEP-0280 Message Carbons — unwrap forwarded payload.
             if (st.find("urn:xmpp:carbons:2") != std::string::npos) {
                 bool sent = st.find("<sent") != std::string::npos;
@@ -1264,6 +1358,26 @@ private:
             if (st.find("urn:xmpp:bookmarks:1") != std::string::npos ||
                 st.find("storage:bookmarks") != std::string::npos)
                 handle_bookmarks_iq(st);
+            if (iq_id.rfind("mam", 0) == 0) {
+                std::string with;
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    auto it = mam_pending_.find(iq_id);
+                    if (it != mam_pending_.end()) {
+                        with = it->second;
+                        mam_pending_.erase(it);
+                    }
+                }
+                if (iq_type == "error") {
+                    {
+                        std::lock_guard<std::mutex> lock(mu);
+                        mam_available = false;
+                        if (!with.empty()) mam_fetched_.erase(with);
+                    }
+                } else if (!with.empty()) {
+                    emit(make_event(ClientEvent::History, {}, with));
+                }
+            }
             if (st.find("jabber:iq:register") != std::string::npos) {
                 // handled in register_flow synchronously via stream_buf
             }
@@ -1329,6 +1443,10 @@ private:
             std::lock_guard<std::mutex> lock(mu);
             upload_available = true;
             if (!from.empty()) http_upload_host = from;
+        }
+        if (st.find("urn:xmpp:mam:2") != std::string::npos) {
+            std::lock_guard<std::mutex> lock(mu);
+            mam_available = true;
         }
         bool is_conf =
             st.find("category='conference'") != std::string::npos ||
@@ -1799,6 +1917,9 @@ private:
         sock_.send_all("<iq type='get' id='disco1' to='" + xml_escape(host_) +
                        "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
         sock_.send_all("<iq type='get' id='disco2' to='" + xml_escape(host_) +
+                       "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>");
+        // Account disco — MAM usually advertises on the bare JID.
+        sock_.send_all("<iq type='get' id='disco_mam' to='" + xml_escape(bare_jid(jid)) +
                        "'><query xmlns='http://jabber.org/protocol/disco#info'/></iq>");
         request_bookmarks();
         // XEP-0280 Message Carbons — mirror other resources into this session.

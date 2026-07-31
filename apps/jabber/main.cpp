@@ -1009,6 +1009,8 @@ void open_tab(const std::string &jid, bool muc) {
             if (g.active_tab != i) stop_typing_indicator();
             g.active_tab = i;
             g.chat_scroll = 0;
+            // Cold open: pull recent archive if this chat is still empty.
+            if (!muc) g.client.request_mam_history(bare);
             redraw();
             return;
         }
@@ -1017,6 +1019,7 @@ void open_tab(const std::string &jid, bool muc) {
     g.tabs.push_back({bare, muc});
     g.active_tab = (int)g.tabs.size() - 1;
     g.chat_scroll = 0;
+    if (!muc) g.client.request_mam_history(bare);
     redraw();
 }
 
@@ -1446,6 +1449,8 @@ void paint() {
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) {
         std::string key = g.tabs[g.active_tab].jid;
         bool muc = g.tabs[g.active_tab].muc;
+        // When MAM disco arrives after the tab opened, still pull history once.
+        if (!muc) g.client.request_mam_history(key);
         std::vector<jabber::ChatLine> lines;
         std::string subject;
         {
