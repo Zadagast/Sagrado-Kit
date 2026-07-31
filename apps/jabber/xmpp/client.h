@@ -666,8 +666,10 @@ public:
         {
             std::lock_guard<std::mutex> lock(mu);
             muc_subjects[room] = subject;
-            chats[room].push_back(
-                {"", "Topic: " + subject, false, false, true, {}, false});
+            ChatLine ln;
+            ln.body = "Topic: " + subject;
+            ln.system = true;
+            chats[room].push_back(std::move(ln));
         }
         emit(make_event(ClientEvent::MucSubject, subject, room));
     }
@@ -1454,8 +1456,10 @@ private:
             {
                 std::lock_guard<std::mutex> lock(mu);
                 muc_subjects[key] = subject;
-                chats[key].push_back(
-                    {"", "Topic: " + subject, false, false, true, {}, false});
+                ChatLine ln;
+                ln.body = "Topic: " + subject;
+                ln.system = true;
+                chats[key].push_back(std::move(ln));
             }
             emit(make_event(ClientEvent::MucSubject, subject, key));
         }
