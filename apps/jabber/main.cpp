@@ -291,8 +291,17 @@ void tray_balloon(const std::string &title, const std::string &body) {
 void hide_to_tray() {
     if (!g.hwnd) return;
     if (!g.tray_added) tray_add();
+    // Close any modal UI so a later restore is not stuck on Sign On / etc.
+    if (g.captcha_visible) g.client.cancel_register_captcha();
+    g.dialog = DlgNone;
+    g.captcha_visible = false;
+    g.about_open = false;
+    g.menu_open = -1;
+    g.presence_menu = false;
     ShowWindow(g.hwnd, SW_HIDE);
     g.in_tray = true;
+    g.pressed_box = 0;
+    g.drag = DragNone;
     tray_update_tip();
 }
 
@@ -1470,6 +1479,13 @@ void apply_size_drag() {
 
 void mouse_down(int x, int y) {
     layout();
+    // Main gel X always hides to tray — even with Sign On / dialogs up.
+    if (g.gel.close_box.contains(x, y)) {
+        g.drag = DragClose;
+        g.pressed_box = 1;
+        redraw();
+        return;
+    }
     if (g.about_open) {
         if (g.about_lay.btn_ok.contains(x, y) ||
             g.about_lay.gel.close_box.contains(x, y)) {
@@ -1488,6 +1504,14 @@ void mouse_down(int x, int y) {
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
         Rect cl = gl.client;
+        // Dialog gel X = Cancel (dismiss sheet), not quit.
+        if (gl.close_box.w > 0 && gl.close_box.contains(x, y)) {
+            if (g.captcha_visible) g.client.cancel_register_captcha();
+            g.dialog = DlgNone;
+            g.captcha_visible = false;
+            redraw();
+            return;
+        }
         Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
         Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
         if (ok.contains(x, y)) {
@@ -1590,12 +1614,6 @@ void mouse_down(int x, int y) {
         redraw();
     }
 
-    if (g.gel.close_box.contains(x, y)) {
-        g.drag = DragClose;
-        g.pressed_box = 1;
-        redraw();
-        return;
-    }
     if (g.gel.hatch_box.w > 0 && g.gel.hatch_box.contains(x, y)) {
         g.menu_open = MenuWindow;
         g.menu_item_hot = -1;
@@ -1694,7 +1712,11 @@ void mouse_up(int x, int y) {
         return;
     }
     if (g.drag == DragClose) {
-        if (g.gel.close_box.contains(x, y)) hide_to_tray();
+        // Pressed on main X: release completes hide-to-tray (modern tray apps).
+        if (g.gel.close_box.contains(x, y)) {
+            hide_to_tray();
+            return;
+        }
         g.pressed_box = 0;
         g.drag = DragNone;
         redraw();
@@ -2045,6 +2067,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return HTCLIENT;
     }
     case WM_NCCALCSIZE:
+        return 0;
+    case WM_CLOSE:
+        // Alt+F4 / system close → tray, same as the gel X (Quit is explicit).
+        hide_to_tray();
         return 0;
     case WM_TRAYICON:
         if (lp == WM_LBUTTONDBLCLK || lp == WM_LBUTTONUP) {
