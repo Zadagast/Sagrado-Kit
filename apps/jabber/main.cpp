@@ -602,12 +602,8 @@ void layout() {
         g.presence_r = {};
         g.status_field_r = {};
     }
-    // Roster list + kit V scrollbar (header "Buddies" stays full width).
-    g.roster_sbar = {};
-    if (g.roster_r.h > 22) {
-        g.roster_sbar = {g.roster_r.right() - kScrollbarW, g.roster_r.y + 22,
-                         kScrollbarW, g.roster_r.h - 22};
-    }
+    // Roster/chat scrollbars are claimed in paint when content overflows —
+    // leave prior rects intact so hit-testing between paints still works.
 
     int cx = g.roster_r.right();
     int cw = cl.right() - cx;
@@ -623,7 +619,6 @@ void layout() {
                         g.status_r.h - 6};
     }
     g.occ_r = {};
-    g.chat_sbar = {};
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
         g.tabs[g.active_tab].muc) {
         // Full-height nick rail beside transcript + compose (no dead pad under list).
@@ -634,18 +629,12 @@ void layout() {
         g.compose_r.w -= occ_w;
         g.btn_send.x = g.compose_r.right() - 72;
     }
-    // Transcript kit V scrollbar (compose stays full width under bar).
-    if (g.transcript_r.w > kScrollbarW + 40 && g.transcript_r.h > 0) {
-        g.chat_sbar = {g.transcript_r.right() - kScrollbarW, g.transcript_r.y,
-                       kScrollbarW, g.transcript_r.h};
-        g.transcript_r.w -= kScrollbarW;
-    }
 }
 
 // Shared V-scrollbar hit: arrows / thumb / page. Returns true if consumed.
 bool sbar_mouse_down(Rect sbar, int x, int y, int &scroll, int max_v, int page,
                      int step, Drag thumb_drag, Drag arrow_drag) {
-    if (sbar.w <= 0 || !sbar.contains(x, y)) return false;
+    if (sbar.w <= 0 || max_v <= 0 || !sbar.contains(x, y)) return false;
     if (max_v < 0) max_v = 0;
     if (page < 1) page = 1;
     if (step < 1) step = 1;
@@ -685,11 +674,19 @@ bool sbar_thumb_drag(Rect sbar, int y, int &scroll, int max_v, int page) {
 
 void paint_v_sbar(Canvas &cv, Rect sbar, int value, int max_v, int page,
                   Drag thumb_drag, Drag arrow_drag) {
-    if (sbar.w <= 0) return;
+    if (sbar.w <= 0 || max_v <= 0) return;
     bool thumb = (g.drag == thumb_drag);
     ScrollArrowHot ah =
         (g.drag == arrow_drag) ? g.arrow_hot : ScrollArrowHot::None;
     paint_scrollbar(cv, g.ap, sbar, value, max_v, page, thumb, false, false, ah);
+}
+
+// Place a V-bar on the right of `list` only when there is overflow.
+void claim_v_sbar(Rect &list, Rect &sbar, int max_v) {
+    sbar = {};
+    if (max_v <= 0 || list.w <= kScrollbarW + 40 || list.h <= 0) return;
+    sbar = {list.right() - kScrollbarW, list.y, kScrollbarW, list.h};
+    list.w -= kScrollbarW;
 }
 
 // Fixed AIM/Yahoo presence ink — readable on every Hap, not skin roles.
@@ -1066,12 +1063,12 @@ void paint_dialog(Canvas &cv) {
             int rows = std::min(4, (int)g.recent_jids.size());
             int row_h = lh + 4;
             int box_w = cl.w - 24;
-            g.recent_list_r = {cl.x + 12, y, box_w - kScrollbarW, rows * row_h + 4};
-            g.recent_sbar = {g.recent_list_r.right(), y, kScrollbarW, g.recent_list_r.h};
+            g.recent_list_r = {cl.x + 12, y, box_w, rows * row_h + 4};
             int content_h = (int)g.recent_jids.size() * row_h;
             g.recent_page = std::max(1, g.recent_list_r.h - 4);
             g.recent_max = std::max(0, content_h - g.recent_page);
             g.recent_scroll = std::clamp(g.recent_scroll, 0, g.recent_max);
+            claim_v_sbar(g.recent_list_r, g.recent_sbar, g.recent_max);
             cv.fill(g.recent_list_r, g.ap.c("list.background"));
             {
                 CanvasClip clip(cv, g.recent_list_r);
@@ -1089,7 +1086,7 @@ void paint_dialog(Canvas &cv) {
             }
             paint_v_sbar(cv, g.recent_sbar, g.recent_scroll, g.recent_max, g.recent_page,
                          DragThumbRecent, DragArrowRecent);
-            y = g.recent_list_r.bottom() + 8;
+            y = std::max(g.recent_list_r.bottom(), g.recent_sbar.bottom()) + 8;
         }
         field("Password", g.field_pass, 1, true);
     } else if (g.dialog == DlgRegister) {
@@ -1110,13 +1107,13 @@ void paint_dialog(Canvas &cv) {
         y += lh + 2;
         int list_h = g.captcha_visible ? 72 : 96;
         int box_w = cl.w - 24;
-        g.provider_list_r = {cl.x + 12, y, box_w - kScrollbarW, list_h};
-        g.provider_sbar = {g.provider_list_r.right(), y, kScrollbarW, list_h};
+        g.provider_list_r = {cl.x + 12, y, box_w, list_h};
         int row_h = lh + 4;
         int content_h = (int)g.providers.size() * row_h;
         g.provider_page = std::max(1, list_h - 4);
         g.provider_max = std::max(0, content_h - g.provider_page);
         g.provider_scroll = std::clamp(g.provider_scroll, 0, g.provider_max);
+        claim_v_sbar(g.provider_list_r, g.provider_sbar, g.provider_max);
         cv.fill(g.provider_list_r, g.ap.c("list.background"));
         {
             CanvasClip clip(cv, g.provider_list_r);
@@ -1140,7 +1137,7 @@ void paint_dialog(Canvas &cv) {
         }
         paint_v_sbar(cv, g.provider_sbar, g.provider_scroll, g.provider_max,
                      g.provider_page, DragThumbProvider, DragArrowProvider);
-        y = g.provider_list_r.bottom() + 10;
+        y = std::max(g.provider_list_r.bottom(), g.provider_sbar.bottom()) + 10;
 
         cv.text(cl.x + 12, y, "Password", g.ap.c("primary.label"));
         y += lh + 2;
@@ -1170,13 +1167,13 @@ void paint_dialog(Canvas &cv) {
         int list_h = cl.h - 8 - 30 - 40 - lh - 8;
         if (list_h < 80) list_h = 80;
         int box_w = cl.w - 24;
-        g.browse_list_r = {cl.x + 12, y, box_w - kScrollbarW, list_h};
-        g.browse_sbar = {g.browse_list_r.right(), y, kScrollbarW, list_h};
+        g.browse_list_r = {cl.x + 12, y, box_w, list_h};
         int row_h = lh + 4;
         int content_h = (int)g.browse_rows.size() * row_h;
         g.browse_page = std::max(1, list_h - 4);
         g.browse_max = std::max(0, content_h - g.browse_page);
         g.browse_scroll = std::clamp(g.browse_scroll, 0, g.browse_max);
+        claim_v_sbar(g.browse_list_r, g.browse_sbar, g.browse_max);
         cv.fill(g.browse_list_r, g.ap.c("list.background"));
         {
             CanvasClip clip(cv, g.browse_list_r);
@@ -1200,7 +1197,7 @@ void paint_dialog(Canvas &cv) {
         }
         paint_v_sbar(cv, g.browse_sbar, g.browse_scroll, g.browse_max, g.browse_page,
                      DragThumbBrowse, DragArrowBrowse);
-        y = g.browse_list_r.bottom() + 8;
+        y = std::max(g.browse_list_r.bottom(), g.browse_sbar.bottom()) + 8;
         field("Nickname", g.field_nick, 0, false);
     }
     Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
@@ -1277,21 +1274,22 @@ void paint() {
                         g.status_field_focus, true);
     }
 
-    // Roster + kit V scrollbar (group headers + buddy rows)
+    // Roster + kit V scrollbar only when the buddy list overflows
     cv.fill(g.roster_r, g.ap.c("list.background"));
     cv.vline(g.roster_r.right() - 1, g.identity_r.y, g.roster_r.bottom(),
              g.ap.c("list.separator"));
     cv.text(g.roster_r.x + 8, g.roster_r.y + 4, "Buddies", g.ap.c("primary.label"));
     auto rows = build_roster_rows();
     int list_top = g.roster_r.y + 22;
-    int list_w = g.roster_sbar.w > 0 ? g.roster_r.w - kScrollbarW : g.roster_r.w;
-    Rect roster_body{g.roster_r.x, list_top, list_w, g.roster_r.bottom() - list_top};
+    Rect roster_body{g.roster_r.x, list_top, g.roster_r.w,
+                     g.roster_r.bottom() - list_top};
     int content_h = 0;
     for (const auto &rr : rows)
         content_h += rr.section ? kGroupHeaderH : kBuddyRowH;
     g.roster_page = std::max(1, roster_body.h);
     g.roster_max = std::max(0, content_h - g.roster_page);
     g.roster_scroll = std::clamp(g.roster_scroll, 0, g.roster_max);
+    claim_v_sbar(roster_body, g.roster_sbar, g.roster_max);
     int y = list_top - g.roster_scroll;
     for (int i = 0; i < (int)rows.size(); ++i) {
         int rh = rows[i].section ? kGroupHeaderH : kBuddyRowH;
@@ -1356,8 +1354,9 @@ void paint() {
         tx += tw + 4;
     }
 
-    // Transcript (+ sticky subject for MUC) — kit soft-wrap, not elide.
+    // Transcript (+ sticky subject for MUC) — kit soft-wrap; bar only if overflow.
     cv.fill(g.transcript_r, g.ap.c("text.background"));
+    g.chat_sbar = {};
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) {
         std::string key = g.tabs[g.active_tab].jid;
         bool muc = g.tabs[g.active_tab].muc;
@@ -1373,8 +1372,65 @@ void paint() {
         }
         const int pad = 6;
         const int lh = cv.line_height();
-        const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
+        auto measure_chat = [&](int wrap_w) {
+            int h = 0;
+            for (auto &ln : lines) {
+                std::string text;
+                if (ln.system) text = ln.body;
+                else if (muc) {
+                    std::string who = ln.mine ? "You" : ln.from;
+                    if (who.empty()) who = "?";
+                    text = who + ": " + ln.body;
+                } else {
+                    std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+                    text = who + ": " + ln.body;
+                }
+                h += text_content_height(layout_lines(cv, text, wrap_w, true), lh);
+                h += 2;
+            }
+            return h;
+        };
+        // Subject height is measured with the final wrap width below.
         int top = g.transcript_r.y + 4;
+        Rect body{g.transcript_r.x, top, g.transcript_r.w,
+                  g.transcript_r.bottom() - top};
+        // Probe overflow at full width (narrower wrap only grows height).
+        int wrap_probe = std::max(8, body.w - 2 * pad);
+        int subject_h = 0;
+        if (muc && !subject.empty()) {
+            std::string sub = "Topic: " + subject;
+            subject_h = text_content_height(layout_lines(cv, sub, wrap_probe, true), lh) +
+                        4;
+        }
+        int content_h = measure_chat(wrap_probe);
+        g.chat_page = std::max(1, body.h - subject_h);
+        g.chat_max = std::max(0, content_h - g.chat_page);
+        if (g.chat_max > 0) {
+            claim_v_sbar(g.transcript_r, g.chat_sbar, g.chat_max);
+            body.w = g.transcript_r.w;
+            // Remeasure with gutter reserved — soft-wrap may grow.
+            wrap_probe = std::max(8, body.w - 2 * pad);
+            if (muc && !subject.empty()) {
+                std::string sub = "Topic: " + subject;
+                subject_h =
+                    text_content_height(layout_lines(cv, sub, wrap_probe, true), lh) +
+                    4;
+            }
+            content_h = measure_chat(wrap_probe);
+            g.chat_page = std::max(1, body.h - subject_h);
+            g.chat_max = std::max(0, content_h - g.chat_page);
+            g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
+            if (g.chat_max <= 0) {
+                // Edge: overflow vanished after layout tweak — give width back.
+                g.transcript_r.w += g.chat_sbar.w;
+                g.chat_sbar = {};
+                body.w = g.transcript_r.w;
+            }
+        } else {
+            g.chat_scroll = 0;
+        }
+        const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
+        top = g.transcript_r.y + 4;
         if (muc && !subject.empty()) {
             std::string sub = "Topic: " + subject;
             auto sub_lines = layout_lines(cv, sub, wrap_w, true);
@@ -1389,24 +1445,7 @@ void paint() {
             cv.hline(g.transcript_r.x + 4, g.transcript_r.right() - 4, top - 2,
                      g.ap.c("list.separator"));
         }
-        Rect body{g.transcript_r.x, top, g.transcript_r.w,
-                  g.transcript_r.bottom() - top};
-        // Measure content height, clamp scroll, then paint.
-        int content_h = 0;
-        for (auto &ln : lines) {
-            std::string text;
-            if (ln.system) text = ln.body;
-            else if (muc) {
-                std::string who = ln.mine ? "You" : ln.from;
-                if (who.empty()) who = "?";
-                text = who + ": " + ln.body;
-            } else {
-                std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-                text = who + ": " + ln.body;
-            }
-            content_h += text_content_height(layout_lines(cv, text, wrap_w, true), lh);
-            content_h += 2; // gap between messages
-        }
+        body = {g.transcript_r.x, top, g.transcript_r.w, g.transcript_r.bottom() - top};
         g.chat_page = std::max(1, body.h);
         g.chat_max = std::max(0, content_h - g.chat_page);
         g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
