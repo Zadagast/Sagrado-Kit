@@ -65,6 +65,7 @@ static const char *kBuddyItems[] = {
 };
 static const char *kChatItems[] = {
     "Send File...",
+    "React...",
     "Browse Chat Rooms...",
     "Join Chat Room...",
     "-",
@@ -74,6 +75,9 @@ static const char *kChatItems[] = {
     "Bookmark Room",
     "Autojoin Room",
 };
+// XEP-0444 quick set — ASCII labels (kit font); wire emoji via reaction_wire().
+static const char *kReactLabels[] = {"+1", "<3", "haha", "wow", "sad", "yay"};
+static constexpr int kReactCount = 6;
 static const char *kAppearanceItems[] = {
     "Load Appearance...", "Stock Appearance",
 };
@@ -87,7 +91,7 @@ struct MenuDef {
     int count;
 };
 static const MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 9},
+    {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 10},
     {kAppearanceItems, 2}, {kHelpItems, 1},
 };
 
@@ -125,6 +129,7 @@ enum DialogKind {
     DlgBrowseMuc,
     DlgSetTopic,
     DlgInvite,
+    DlgReact,
 };
 
 struct Tab {
@@ -157,6 +162,7 @@ struct App {
     int roster_hot = -1; // index into roster_rows_
     int roster_scroll = 0; // pixels
     int chat_scroll = 0;   // pixels
+    int chat_sel = -1;     // selected transcript line (for React…)
     // Subscribe ask (Accept / Deny) — gel sheet, not MessageBox.
     bool sub_ask_open = false;
     std::string sub_ask_jid;
@@ -195,6 +201,8 @@ struct App {
     std::string field_topic;
     std::string field_invite;
     std::string field_invite_reason;
+    std::string react_target_id; // XEP-0444 id for DlgReact
+    Rect react_btn_r[kReactCount]{};
     int focus_field = 0; // which dialog field
     bool captcha_visible = false;
     bool about_open = false;
@@ -1088,6 +1096,7 @@ void open_tab(const std::string &jid, bool muc) {
             if (g.active_tab != i) stop_typing_indicator();
             g.active_tab = i;
             g.chat_scroll = 0;
+            g.chat_sel = -1;
             // Cold open: pull recent archive if this chat is still empty.
             if (!muc) g.client.request_mam_history(bare);
             redraw();
@@ -1098,6 +1107,7 @@ void open_tab(const std::string &jid, bool muc) {
     g.tabs.push_back({bare, muc});
     g.active_tab = (int)g.tabs.size() - 1;
     g.chat_scroll = 0;
+    g.chat_sel = -1;
     if (!muc) g.client.request_mam_history(bare);
     redraw();
 }
@@ -1114,6 +1124,45 @@ void close_tab_jid(const std::string &jid) {
         g.chat_scroll = 0;
         return;
     }
+}
+
+// Prefer selected line; else last non-system line with a react_id.
+bool pick_react_target(std::string *react_id_out) {
+    if (!react_id_out) return false;
+    react_id_out->clear();
+    if (g.active_tab < 0 || g.active_tab >= (int)g.tabs.size()) return false;
+    std::string key = g.tabs[g.active_tab].jid;
+    std::vector<jabber::ChatLine> lines;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        lines = g.client.chats[key];
+    }
+    if (g.chat_sel >= 0 && g.chat_sel < (int)lines.size() &&
+        !lines[g.chat_sel].system && !lines[g.chat_sel].react_id.empty()) {
+        *react_id_out = lines[g.chat_sel].react_id;
+        return true;
+    }
+    for (int i = (int)lines.size() - 1; i >= 0; --i) {
+        if (!lines[i].system && !lines[i].react_id.empty()) {
+            *react_id_out = lines[i].react_id;
+            g.chat_sel = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+void open_react_dialog() {
+    if (g.active_tab < 0) {
+        set_status("Open a chat first");
+        return;
+    }
+    if (!pick_react_target(&g.react_target_id)) {
+        set_status("No message to react to yet");
+        return;
+    }
+    g.dialog = DlgReact;
+    g.focus_field = 0;
 }
 
 bool tab_is_muc(int idx) {
@@ -1214,6 +1263,9 @@ void paint_dialog(Canvas &cv) {
     else if (g.dialog == DlgSetTopic) {
         dw = 360;
         dh = 180;
+    } else if (g.dialog == DlgReact) {
+        dw = 360;
+        dh = 200;
     }
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
@@ -1223,6 +1275,7 @@ void paint_dialog(Canvas &cv) {
     if (g.dialog == DlgBrowseMuc) title = "Browse Chat Rooms";
     if (g.dialog == DlgSetTopic) title = "Set Topic";
     if (g.dialog == DlgInvite) title = "Invite";
+    if (g.dialog == DlgReact) title = "React";
     paint_gel(cv, g.ap, box, title, true, 0, GelStyle::Dialog);
     GelLayout gl = gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
     Rect cl = gl.client;
@@ -1394,6 +1447,21 @@ void paint_dialog(Canvas &cv) {
     } else if (g.dialog == DlgInvite) {
         field("Buddy JID", g.field_invite, 0, false);
         field("Reason (optional)", g.field_invite_reason, 1, false);
+    } else if (g.dialog == DlgReact) {
+        cv.text(cl.x + 12, y, "Pick a reaction (again clears yours)",
+                g.ap.c("primary.label"));
+        y += lh + 10;
+        int bw = 96, bh = 28, gap = 8;
+        int row_w = 3 * bw + 2 * gap;
+        int x0 = cl.x + (cl.w - row_w) / 2;
+        for (int i = 0; i < kReactCount; ++i) {
+            int col = i % 3, row = i / 3;
+            g.react_btn_r[i] = {x0 + col * (bw + gap), y + row * (bh + gap), bw, bh};
+            paint_button(cv, g.ap, g.react_btn_r[i], kReactLabels[i], false, false);
+        }
+        Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
+        paint_button(cv, g.ap, cancel, "Cancel", false, false);
+        return;
     }
     Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
     Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
@@ -1584,13 +1652,29 @@ void paint() {
             }
             return text;
         };
+        auto format_reactions = [&](const jabber::ChatLine &ln) {
+            if (ln.reactions.empty()) return std::string{};
+            std::string s = "  ";
+            for (size_t i = 0; i < ln.reactions.size(); ++i) {
+                if (i) s += "  ";
+                s += jabber::reaction_label(ln.reactions[i].emoji);
+                if (ln.reactions[i].count > 1)
+                    s += "x" + std::to_string(ln.reactions[i].count);
+                if (ln.reactions[i].mine) s += "*";
+            }
+            return s;
+        };
+        auto line_block_h = [&](const jabber::ChatLine &ln, int wrap_w) {
+            int h = text_content_height(layout_lines(cv, format_line(ln), wrap_w, true),
+                                        lh);
+            std::string rx = format_reactions(ln);
+            if (!rx.empty())
+                h += text_content_height(layout_lines(cv, rx, wrap_w, true), lh);
+            return h + 2;
+        };
         auto measure_chat = [&](int wrap_w) {
             int h = 0;
-            for (auto &ln : lines) {
-                h += text_content_height(layout_lines(cv, format_line(ln), wrap_w, true),
-                                         lh);
-                h += 2;
-            }
+            for (auto &ln : lines) h += line_block_h(ln, wrap_w);
             return h;
         };
         // Subject height is measured with the final wrap width below.
@@ -1656,11 +1740,20 @@ void paint() {
         {
             CanvasClip clip(cv, body);
             int ty = body.y - g.chat_scroll;
-            for (auto &ln : lines) {
+            for (int li = 0; li < (int)lines.size(); ++li) {
+                auto &ln = lines[li];
+                int block_h = line_block_h(ln, wrap_w) - 2;
+                if (li == g.chat_sel && !ln.system &&
+                    ty + block_h > body.y && ty < body.bottom()) {
+                    Rect hilite{body.x + 2, ty, body.w - 4, block_h};
+                    cv.fill(hilite, g.ap.c("list.hilite_background"));
+                }
                 Color ink =
                     ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
                 if (ln.file) ink = g.ap.c("menu.hilite_label");
                 if (ln.system) ink = g.ap.c("menu.disable_label");
+                if (li == g.chat_sel && !ln.system)
+                    ink = g.ap.c("list.hilite_foreground");
                 std::string text = format_line(ln);
                 auto vlines = layout_lines(cv, text, wrap_w, true);
                 for (const auto &vl : vlines) {
@@ -1668,6 +1761,19 @@ void paint() {
                         cv.text(body.x + pad, ty,
                                 text.substr(vl.start, vl.len).c_str(), ink);
                     ty += lh;
+                }
+                std::string rx = format_reactions(ln);
+                if (!rx.empty()) {
+                    Color rink = (li == g.chat_sel && !ln.system)
+                                     ? g.ap.c("list.hilite_foreground")
+                                     : g.ap.c("menu.disable_label");
+                    auto rlines = layout_lines(cv, rx, wrap_w, true);
+                    for (const auto &vl : rlines) {
+                        if (ty + lh > body.y && ty < body.bottom())
+                            cv.text(body.x + pad, ty,
+                                    rx.substr(vl.start, vl.len).c_str(), rink);
+                        ty += lh;
+                    }
                 }
                 ty += 2;
             }
@@ -1940,18 +2046,20 @@ void run_menu(int menu, int row) {
                 }
             }
         } else if (row == 1) {
+            open_react_dialog();
+        } else if (row == 2) {
             if (g.client.state != jabber::ConnState::Online) {
                 set_status("Sign on first");
             } else {
                 open_browse_muc();
             }
-        } else if (row == 2) {
+        } else if (row == 3) {
             g.dialog = DlgJoinMuc;
             g.focus_field = 0;
             g.field_room_pass.clear();
             if (g.field_nick.empty() && !g.client.jid.empty())
                 g.field_nick = jabber::jid_node(g.client.jid);
-        } else if (row == 4) {
+        } else if (row == 5) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Open a chat room first");
             } else {
@@ -1964,7 +2072,7 @@ void run_menu(int menu, int row) {
                     if (it != g.client.muc_subjects.end()) g.field_topic = it->second;
                 }
             }
-        } else if (row == 5) {
+        } else if (row == 6) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Open a chat room first");
             } else {
@@ -1973,7 +2081,7 @@ void run_menu(int menu, int row) {
                 g.field_invite = selected_buddy_jid();
                 g.field_invite_reason.clear();
             }
-        } else if (row == 6) {
+        } else if (row == 7) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Leave Room is for chat rooms");
             } else {
@@ -1982,7 +2090,7 @@ void run_menu(int menu, int row) {
                 close_tab_jid(room);
                 set_status("Left " + jabber::jid_node(room));
             }
-        } else if (row == 7) {
+        } else if (row == 8) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Bookmark a chat room tab");
             } else {
@@ -1997,7 +2105,7 @@ void run_menu(int menu, int row) {
                 g.client.bookmark_muc(room, jabber::jid_node(room), nick, aj);
                 set_status("Bookmarked " + jabber::jid_node(room));
             }
-        } else if (row == 8) {
+        } else if (row == 9) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Autojoin is for chat rooms");
             } else {
@@ -2245,6 +2353,9 @@ void mouse_down(int x, int y) {
         else if (g.dialog == DlgSetTopic) {
             dw = 360;
             dh = 180;
+        } else if (g.dialog == DlgReact) {
+            dw = 360;
+            dh = 200;
         }
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
         GelLayout gl =
@@ -2256,8 +2367,33 @@ void mouse_down(int x, int y) {
             g.dialog = DlgNone;
             g.captcha_visible = false;
             g.field_room_pass.clear();
+            g.react_target_id.clear();
             maybe_show_next_muc_invite();
             redraw();
+            return;
+        }
+        if (g.dialog == DlgReact) {
+            for (int i = 0; i < kReactCount; ++i) {
+                if (g.react_btn_r[i].contains(x, y)) {
+                    if (g.active_tab >= 0 && !g.react_target_id.empty()) {
+                        bool muc = g.tabs[g.active_tab].muc;
+                        g.client.send_reaction(g.tabs[g.active_tab].jid,
+                                               g.react_target_id, kReactLabels[i],
+                                               muc);
+                        set_status(std::string("Reacted ") + kReactLabels[i]);
+                    }
+                    g.dialog = DlgNone;
+                    g.react_target_id.clear();
+                    redraw();
+                    return;
+                }
+            }
+            Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
+            if (cancel.contains(x, y)) {
+                g.dialog = DlgNone;
+                g.react_target_id.clear();
+                redraw();
+            }
             return;
         }
         Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
@@ -2498,11 +2634,88 @@ void mouse_down(int x, int y) {
                 if (g.active_tab != i) stop_typing_indicator();
                 g.active_tab = i;
                 g.chat_scroll = 0;
+                g.chat_sel = -1;
                 redraw();
                 return;
             }
             tx += tw + 4;
         }
+    }
+
+    // Click a transcript line to select it (Chat → React…).
+    if (g.active_tab >= 0 && g.transcript_r.contains(x, y) &&
+        !(g.chat_sbar.w > 0 && g.chat_sbar.contains(x, y))) {
+        std::string key = g.tabs[g.active_tab].jid;
+        bool muc = g.tabs[g.active_tab].muc;
+        std::vector<jabber::ChatLine> lines;
+        std::string subject;
+        {
+            std::lock_guard<std::mutex> lock(g.client.mu);
+            lines = g.client.chats[key];
+            if (muc) {
+                auto it = g.client.muc_subjects.find(key);
+                if (it != g.client.muc_subjects.end()) subject = it->second;
+            }
+        }
+        const int pad = 6;
+        const int lh = g.canvas.line_height();
+        const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
+        auto format_line = [&](const jabber::ChatLine &ln) {
+            if (ln.system) return ln.body;
+            if (muc) {
+                std::string who = ln.mine ? "You" : ln.from;
+                if (who.empty()) who = "?";
+                return who + ": " + ln.body;
+            }
+            std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
+            std::string text = who + ": " + ln.body;
+            if (ln.mine && ln.delivered) text += "  ok";
+            return text;
+        };
+        auto format_reactions = [&](const jabber::ChatLine &ln) {
+            if (ln.reactions.empty()) return std::string{};
+            std::string s = "  ";
+            for (size_t i = 0; i < ln.reactions.size(); ++i) {
+                if (i) s += "  ";
+                s += jabber::reaction_label(ln.reactions[i].emoji);
+                if (ln.reactions[i].count > 1)
+                    s += "x" + std::to_string(ln.reactions[i].count);
+                if (ln.reactions[i].mine) s += "*";
+            }
+            return s;
+        };
+        int top = g.transcript_r.y + 4;
+        if (muc && !subject.empty()) {
+            std::string sub = "Topic: " + subject;
+            top += text_content_height(layout_lines(g.canvas, sub, wrap_w, true), lh) +
+                   4;
+        }
+        Rect body{g.transcript_r.x, top, g.transcript_r.w,
+                  g.transcript_r.bottom() - top};
+        if (body.contains(x, y)) {
+            int ty = body.y - g.chat_scroll;
+            int hit = -1;
+            for (int i = 0; i < (int)lines.size(); ++i) {
+                int h = text_content_height(
+                            layout_lines(g.canvas, format_line(lines[i]), wrap_w, true),
+                            lh);
+                std::string rx = format_reactions(lines[i]);
+                if (!rx.empty())
+                    h += text_content_height(layout_lines(g.canvas, rx, wrap_w, true),
+                                             lh);
+                h += 2;
+                if (y >= ty && y < ty + h) {
+                    hit = lines[i].system ? -1 : i;
+                    break;
+                }
+                ty += h;
+            }
+            if (hit != g.chat_sel) {
+                g.chat_sel = hit;
+                redraw();
+            }
+        }
+        return;
     }
 }
 
@@ -2656,6 +2869,14 @@ void handle_char(WPARAM wp) {
         else if (g.dialog == DlgSetTopic) f = &g.field_topic;
         else if (g.dialog == DlgInvite)
             f = g.focus_field == 0 ? &g.field_invite : &g.field_invite_reason;
+        else if (g.dialog == DlgReact) {
+            if (wp == '\r' || wp == 27) {
+                g.dialog = DlgNone;
+                g.react_target_id.clear();
+                redraw();
+            }
+            return;
+        }
         if (wp == 8) {
             if (!f->empty()) f->pop_back();
         } else if (wp == '\r') {
@@ -2977,6 +3198,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 g.dialog = DlgNone;
                 g.captcha_visible = false;
                 g.field_room_pass.clear();
+                g.react_target_id.clear();
                 maybe_show_next_muc_invite();
                 redraw();
             } else if (g.menu_open >= 0) {

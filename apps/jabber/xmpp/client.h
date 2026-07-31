@@ -43,14 +43,23 @@ struct Buddy {
     bool vcard_fetched = false;
 };
 
+// Aggregated reaction mark for paint (ASCII alias in UI; emoji on the wire).
+struct ReactionMark {
+    std::string emoji;
+    int count = 0;
+    bool mine = false;
+};
+
 struct ChatLine {
     std::string from;
     std::string body;
     bool mine = false;
     bool file = false;
     bool system = false; // subject / join notices
-    std::string id;      // stanza id (XEP-0184)
+    std::string id;      // message @id (XEP-0184)
     bool delivered = false;
+    std::string react_id; // XEP-0444 target: 1:1 @id, MUC stanza-id
+    std::vector<ReactionMark> reactions;
 };
 
 struct MucRoomInfo {
@@ -98,7 +107,8 @@ struct ClientEvent {
         ChatState,    // XEP-0085; text = composing|paused|active|inactive|gone
         Receipt,      // XEP-0184 delivered; jid = peer bare
         History,      // XEP-0313 MAM batch done; jid = peer bare
-        MucInviteAsk  // inbound muc#user; jid = room, text = inviter
+        MucInviteAsk, // inbound muc#user; jid = room, text = inviter
+        Reaction      // XEP-0444; jid = chat bare, text = react_id
     } type = State;
     std::string text;
     std::string jid;
@@ -290,6 +300,82 @@ inline std::string attr(const std::string &tag, const std::string &key) {
     return tag.substr(a, b - a);
 }
 
+// XEP-0359 stanza-id assigned by `by` (bare JID).
+inline std::string stanza_id_by(const std::string &st, const std::string &by) {
+    if (by.empty()) return {};
+    size_t p = 0;
+    while ((p = st.find("<stanza-id", p)) != std::string::npos) {
+        size_t gt = st.find('>', p);
+        if (gt == std::string::npos) break;
+        std::string tag = st.substr(p, gt - p + 1);
+        if (tag.find("urn:xmpp:sid:0") != std::string::npos ||
+            st.find("urn:xmpp:sid:0") != std::string::npos) {
+            if (jid_ieq(bare_jid(attr(tag, "by")), bare_jid(by))) {
+                std::string id = attr(tag, "id");
+                if (!id.empty()) return id;
+            }
+        }
+        p = gt + 1;
+    }
+    return {};
+}
+
+// Parse <reaction>…</reaction> children inside a reactions payload.
+inline std::vector<std::string> parse_reaction_emojis(const std::string &st) {
+    std::vector<std::string> out;
+    size_t p = 0;
+    while ((p = st.find("<reaction", p)) != std::string::npos) {
+        size_t gt = st.find('>', p);
+        if (gt == std::string::npos) break;
+        if (gt > 0 && st[gt - 1] == '/') {
+            p = gt + 1;
+            continue;
+        }
+        size_t end = st.find("</reaction>", gt);
+        if (end == std::string::npos) break;
+        std::string emoji = xml_unescape(st.substr(gt + 1, end - gt - 1));
+        while (!emoji.empty() &&
+               (emoji.front() == ' ' || emoji.front() == '\n' || emoji.front() == '\r'))
+            emoji.erase(emoji.begin());
+        while (!emoji.empty() &&
+               (emoji.back() == ' ' || emoji.back() == '\n' || emoji.back() == '\r'))
+            emoji.pop_back();
+        if (!emoji.empty()) {
+            bool dup = false;
+            for (const auto &e : out)
+                if (e == emoji) {
+                    dup = true;
+                    break;
+                }
+            if (!dup) out.push_back(emoji);
+        }
+        p = end + 11;
+    }
+    return out;
+}
+
+// Kit faces are Latin-1 — map wire emoji to short AIM-shaped labels for paint.
+inline const char *reaction_label(const std::string &emoji) {
+    if (emoji == u8"👍" || emoji == "+1") return "+1";
+    if (emoji == u8"❤️" || emoji == u8"❤" || emoji == "<3") return "<3";
+    if (emoji == u8"😂" || emoji == "haha") return "haha";
+    if (emoji == u8"😮" || emoji == "wow") return "wow";
+    if (emoji == u8"😢" || emoji == "sad") return "sad";
+    if (emoji == u8"🎉" || emoji == "yay") return "yay";
+    return "*";
+}
+
+inline std::string reaction_wire(const std::string &label_or_emoji) {
+    if (label_or_emoji == "+1" || label_or_emoji == u8"👍") return u8"👍";
+    if (label_or_emoji == "<3" || label_or_emoji == u8"❤️" || label_or_emoji == u8"❤")
+        return u8"❤️";
+    if (label_or_emoji == "haha" || label_or_emoji == u8"😂") return u8"😂";
+    if (label_or_emoji == "wow" || label_or_emoji == u8"😮") return u8"😮";
+    if (label_or_emoji == "sad" || label_or_emoji == u8"😢") return u8"😢";
+    if (label_or_emoji == "yay" || label_or_emoji == u8"🎉") return u8"🎉";
+    return label_or_emoji;
+}
+
 inline std::string first_element(const std::string &xml, const std::string &name) {
     std::string open = "<" + name;
     size_t a = xml.find(open);
@@ -314,6 +400,10 @@ public:
     std::vector<std::string> pending_subscribe; // bare JIDs waiting for Accept/Deny
     std::map<std::string, std::string> chat_states; // bare → composing|paused|…
     std::map<std::string, std::vector<ChatLine>> chats;
+    // XEP-0444: chat bare → react_id → from_key → emoji list (full replace per sender).
+    std::map<std::string,
+             std::map<std::string, std::map<std::string, std::vector<std::string>>>>
+        reaction_sets;
     std::map<std::string, std::vector<std::string>> muc_occupants;
     std::map<std::string, std::string> muc_nicks;     // room → our nick
     std::map<std::string, std::string> muc_subjects;  // room → subject
@@ -361,6 +451,7 @@ public:
             pending_subscribe.clear();
             pending_muc_invites.clear();
             chat_states.clear();
+            reaction_sets.clear();
             mam_available = false;
             mam_fetched_.clear();
             mam_pending_.clear();
@@ -462,22 +553,79 @@ public:
             "</message>";
         {
             std::lock_guard<std::mutex> lock(mu);
-            chats[bare_jid(to)].push_back(
-                {jid, body, true, false, false, mid, false});
+            ChatLine ln;
+            ln.from = jid;
+            ln.body = body;
+            ln.mine = true;
+            ln.id = mid;
+            ln.react_id = mid;
+            chats[bare_jid(to)].push_back(std::move(ln));
         }
         queue_send(stanza);
     }
 
     void send_muc_message(const std::string &room, const std::string &body) {
+        std::string mid = "m" + std::to_string(msg_seq_++);
         std::string stanza =
-            "<message to='" + xml_escape(room) + "' type='groupchat'><body>" +
-            xml_escape(body) + "</body></message>";
+            "<message to='" + xml_escape(room) + "' type='groupchat' id='" + mid +
+            "'><body>" + xml_escape(body) + "</body></message>";
         {
             std::lock_guard<std::mutex> lock(mu);
-            chats[bare_jid(room)].push_back(
-                {jid, body, true, false, false, {}, false});
+            ChatLine ln;
+            ln.from = jid;
+            ln.body = body;
+            ln.mine = true;
+            ln.id = mid;
+            // react_id filled from room stanza-id when our echo arrives.
+            chats[bare_jid(room)].push_back(std::move(ln));
         }
         queue_send(stanza);
+    }
+
+    // XEP-0444 — toggle one emoji on a message (single reaction per us).
+    // Empty emoji clears our reactions. muc=true → type=groupchat.
+    void send_reaction(const std::string &to_in, const std::string &react_id,
+                       const std::string &emoji_in, bool muc) {
+        std::string to = bare_jid(to_in);
+        if (to.empty() || react_id.empty()) return;
+        std::string emoji = reaction_wire(emoji_in);
+        std::string from_key = muc ? [&] {
+            std::lock_guard<std::mutex> lock(mu);
+            auto it = muc_nicks.find(to);
+            return it != muc_nicks.end() ? it->second : jid_node(jid);
+        }()
+                                         : bare_jid(jid);
+        std::vector<std::string> mine;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            auto &cur = reaction_sets[to][react_id][from_key];
+            if (emoji.empty()) {
+                mine.clear();
+            } else {
+                bool had = false;
+                for (const auto &e : cur)
+                    if (e == emoji) {
+                        had = true;
+                        break;
+                    }
+                if (had)
+                    mine.clear(); // toggle off
+                else
+                    mine = {emoji}; // one at a time
+            }
+            apply_reaction_locked(to, react_id, from_key, mine);
+        }
+        std::string mid = "r" + std::to_string(msg_seq_++);
+        std::string type = muc ? "groupchat" : "chat";
+        std::string stanza = "<message to='" + xml_escape(to) + "' type='" + type +
+                             "' id='" + mid +
+                             "'><reactions xmlns='urn:xmpp:reactions:0' id='" +
+                             xml_escape(react_id) + "'>";
+        for (const auto &e : mine)
+            stanza += "<reaction>" + xml_escape(e) + "</reaction>";
+        stanza += "</reactions><store xmlns='urn:xmpp:hints'/></message>";
+        queue_send(stanza);
+        emit(make_event(ClientEvent::Reaction, react_id, to));
     }
 
     void join_muc(const std::string &room_in, const std::string &nick_in,
@@ -1149,6 +1297,104 @@ private:
         }
     }
 
+    // Rebuild ChatLine.reactions from reaction_sets (caller holds mu).
+    void refresh_line_reactions_locked(const std::string &chat,
+                                       const std::string &react_id) {
+        auto cit = chats.find(chat);
+        if (cit == chats.end()) return;
+        ChatLine *target = nullptr;
+        for (auto &ln : cit->second) {
+            if (!ln.react_id.empty() && ln.react_id == react_id) {
+                target = &ln;
+                break;
+            }
+        }
+        if (!target) return;
+        std::map<std::string, ReactionMark> agg;
+        auto rit = reaction_sets.find(chat);
+        if (rit != reaction_sets.end()) {
+            auto mid = rit->second.find(react_id);
+            if (mid != rit->second.end()) {
+                std::string my_key;
+                if (muc_joined.count(chat)) {
+                    auto nit = muc_nicks.find(chat);
+                    my_key = nit != muc_nicks.end() ? nit->second : jid_node(jid);
+                } else {
+                    my_key = bare_jid(jid);
+                }
+                for (const auto &kv : mid->second) {
+                    bool mine = jid_ieq(kv.first, my_key) || kv.first == my_key;
+                    for (const auto &emoji : kv.second) {
+                        auto &m = agg[emoji];
+                        m.emoji = emoji;
+                        m.count += 1;
+                        if (mine) m.mine = true;
+                    }
+                }
+            }
+        }
+        target->reactions.clear();
+        for (auto &kv : agg) target->reactions.push_back(kv.second);
+    }
+
+    void apply_reaction_locked(const std::string &chat, const std::string &react_id,
+                               const std::string &from_key,
+                               const std::vector<std::string> &emojis) {
+        if (chat.empty() || react_id.empty() || from_key.empty()) return;
+        if (emojis.empty())
+            reaction_sets[chat][react_id].erase(from_key);
+        else
+            reaction_sets[chat][react_id][from_key] = emojis;
+        if (reaction_sets[chat][react_id].empty()) reaction_sets[chat].erase(react_id);
+        if (reaction_sets[chat].empty()) reaction_sets.erase(chat);
+        refresh_line_reactions_locked(chat, react_id);
+    }
+
+    // XEP-0444 inbound / carbon / archive. Returns true if stanza was reactions-only.
+    bool try_apply_reactions(const std::string &st, bool carbon_sent) {
+        if (st.find("urn:xmpp:reactions:0") == std::string::npos) return false;
+        size_t rp = st.find("<reactions");
+        if (rp == std::string::npos) return false;
+        size_t gt = st.find('>', rp);
+        if (gt == std::string::npos) return false;
+        std::string tag = st.substr(rp, gt - rp + 1);
+        if (tag.find("urn:xmpp:reactions:0") == std::string::npos &&
+            st.find("xmlns='urn:xmpp:reactions:0'") == std::string::npos &&
+            st.find("xmlns=\"urn:xmpp:reactions:0\"") == std::string::npos)
+            return false;
+        std::string react_id = attr(tag, "id");
+        if (react_id.empty()) return false;
+        std::string from = attr(st, "from");
+        std::string to = attr(st, "to");
+        std::string type = attr(st, "type");
+        bool is_muc = (type == "groupchat");
+        std::string key = carbon_sent ? bare_jid(to) : bare_jid(from);
+        if (key.empty()) key = bare_jid(from);
+        if (!is_muc) {
+            std::lock_guard<std::mutex> lock(mu);
+            is_muc = muc_joined.count(key) != 0;
+        }
+        std::string from_key =
+            is_muc ? jid_resource(from) : bare_jid(carbon_sent ? jid : from);
+        if (from_key.empty()) from_key = bare_jid(from);
+        if (carbon_sent && !is_muc) from_key = bare_jid(jid);
+        if (carbon_sent && is_muc) {
+            std::lock_guard<std::mutex> lock(mu);
+            auto nit = muc_nicks.find(key);
+            from_key = nit != muc_nicks.end() ? nit->second : jid_node(jid);
+        }
+        std::vector<std::string> emojis = parse_reaction_emojis(st);
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            apply_reaction_locked(key, react_id, from_key, emojis);
+        }
+        emit(make_event(ClientEvent::Reaction, react_id, key));
+        // Reactions-only (no body) — consume stanza.
+        std::string body;
+        extract_tag(st, "body", &body);
+        return body.empty();
+    }
+
     // Process a chat/groupchat message (plain, carbon, or MAM archive).
     // carbon_sent: XEP-0280 <sent> — we wrote this from another resource.
     // from_archive: XEP-0313 — no receipts / chat-state / per-line ding.
@@ -1163,6 +1409,9 @@ private:
         extract_tag(st, "subject", &subject);
         body = xml_unescape(body);
         subject = xml_unescape(subject);
+
+        // XEP-0444 reactions (often body-less).
+        if (try_apply_reactions(st, carbon_sent)) return;
 
         // XEP-0184 delivery receipt (no body).
         if (body.empty() && subject.empty() && !carbon_sent &&
@@ -1235,6 +1484,9 @@ private:
         std::string who =
             is_muc ? (mine ? jid_node(jid) : jid_resource(from)) : (mine ? jid : from);
         if (who.empty()) who = from;
+        // XEP-0444: MUC reactions target stanza-id; 1:1 uses message @id.
+        std::string react_id = is_muc ? stanza_id_by(st, key) : mid;
+        if (react_id.empty() && !is_muc) react_id = mid;
         {
             std::lock_guard<std::mutex> lock(mu);
             if (!mid.empty()) {
@@ -1248,12 +1500,25 @@ private:
                 if (nit != muc_nicks.end() && who == nit->second) {
                     auto &lines = chats[key];
                     if (!lines.empty() && lines.back().mine &&
-                        lines.back().body == body)
+                        lines.back().body == body) {
+                        // Our echo — stamp room stanza-id so others can react.
+                        if (!react_id.empty()) lines.back().react_id = react_id;
+                        if (lines.back().id.empty() && !mid.empty())
+                            lines.back().id = mid;
                         return;
+                    }
                 }
             }
-            chats[key].push_back({who, body, mine, false, false, mid, false});
+            ChatLine ln;
+            ln.from = who;
+            ln.body = body;
+            ln.mine = mine;
+            ln.id = mid;
+            ln.react_id = react_id;
+            chats[key].push_back(std::move(ln));
             if (!mine && !from_archive) chat_states.erase(key);
+            // Attach any reactions that arrived before the message (rare).
+            if (!react_id.empty()) refresh_line_reactions_locked(key, react_id);
         }
 
         // Reply to XEP-0184 receipt requests on inbound 1:1 (live only).

@@ -27,6 +27,7 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Recent history | Opening an empty 1:1 chat loads the last ~40 lines | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
+| React to a line | Click a transcript line → Chat → React… (gel quick set) | [XEP-0444](https://xmpp.org/extensions/xep-0444.html) Message Reactions |
 | Chat rooms | Chat → Browse… / Join… / Set Topic… / Invite… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
 | Room invite | Gel Accept/Decline sheet (Join prefills room + nick); tray balloon if hidden | Mediated `muc#user` `<invite>` |
 | Room bookmarks + autojoin | Chat → Bookmark Room / Autojoin Room | [XEP-0402](https://xmpp.org/extensions/xep-0402.html) PEP + [XEP-0048](https://xmpp.org/extensions/xep-0048.html) fallback |
@@ -44,7 +45,9 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 2. **Left Buddies** — roster groups (default **Buddies**); online-first within each group;
    buddy icon + presence mark + name + status text
 3. **Center** — IM tabs (close with **x**), soft-wrapped transcript (kit `layout_lines`),
-   compose + Send; peer typing line when composing
+   compose + Send; peer typing line when composing. Click a line to select it; reactions
+   show as short ASCII marks under the line (`+1`, `<3`, `haha`… — kit font has no emoji glyphs;
+   the wire still sends real emoji for Gajim/Conversations)
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
 5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 6. **Status strip** — durable line: signed on as / presence / buddies online / active
@@ -83,6 +86,10 @@ AIM-shaped chat rooms in gel — not a Discord server rail. Wire is XEP-0045.
 - **Bookmark Room / Autojoin Room** — saved via PEP `urn:xmpp:bookmarks:1` when the
   server supports it, with Private XML `storage:bookmarks` as fallback. Autojoin
   rooms rejoin on Sign On.
+
+**React…** — select a line (or the last reactable one), then Chat → React… for `+1` /
+`<3` / `haha` / `wow` / `sad` / `yay`. Toggle again to clear yours. Rooms use the
+MUC `stanza-id` when the server provides one.
 
 Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, or MAM history
 browser in this pass.
