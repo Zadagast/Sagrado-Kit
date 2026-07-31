@@ -67,6 +67,12 @@ struct MucBookmark {
     bool autojoin = false;
 };
 
+struct MucInvite {
+    std::string room;
+    std::string from; // inviter bare JID
+    std::string reason;
+};
+
 struct UploadSlot {
     std::string put_url;
     std::string get_url;
@@ -91,7 +97,8 @@ struct ClientEvent {
         SubscribeAsk, // inbound presence type=subscribe
         ChatState,    // XEP-0085; text = composing|paused|active|inactive|gone
         Receipt,      // XEP-0184 delivered; jid = peer bare
-        History       // XEP-0313 MAM batch done; jid = peer bare
+        History,      // XEP-0313 MAM batch done; jid = peer bare
+        MucInviteAsk  // inbound muc#user; jid = room, text = inviter
     } type = State;
     std::string text;
     std::string jid;
@@ -314,6 +321,7 @@ public:
     std::string conference_host;                      // e.g. conference.yax.im
     std::vector<MucRoomInfo> muc_rooms;               // public disco list
     std::vector<MucBookmark> muc_bookmarks;
+    std::vector<MucInvite> pending_muc_invites;
     SkinImage captcha_image;
     std::string captcha_sid;
     std::string captcha_form_type;
@@ -351,6 +359,7 @@ public:
             muc_rooms.clear();
             conference_host.clear();
             pending_subscribe.clear();
+            pending_muc_invites.clear();
             chat_states.clear();
             mam_available = false;
             mam_fetched_.clear();
@@ -471,7 +480,8 @@ public:
         queue_send(stanza);
     }
 
-    void join_muc(const std::string &room_in, const std::string &nick_in) {
+    void join_muc(const std::string &room_in, const std::string &nick_in,
+                  const std::string &password = {}) {
         std::string room = bare_jid(room_in);
         std::string nick = nick_in.empty() ? jid_node(jid) : nick_in;
         if (room.empty() || nick.empty()) return;
@@ -482,9 +492,62 @@ public:
             muc_joined.insert(room);
             if (!chats.count(room)) chats[room] = {};
             muc_occupants[room]; // ensure key
+            // Drop matching pending invites once we join.
+            pending_muc_invites.erase(
+                std::remove_if(pending_muc_invites.begin(),
+                               pending_muc_invites.end(),
+                               [&](const MucInvite &iv) {
+                                   return jid_ieq(iv.room, room);
+                               }),
+                pending_muc_invites.end());
         }
-        queue_send("<presence to='" + xml_escape(to) +
-                   "'><x xmlns='http://jabber.org/protocol/muc'/></presence>");
+        std::string x = "<x xmlns='http://jabber.org/protocol/muc'/>";
+        if (!password.empty()) {
+            x = "<x xmlns='http://jabber.org/protocol/muc'><password>" +
+                xml_escape(password) + "</password></x>";
+        }
+        queue_send("<presence to='" + xml_escape(to) + "'>" + x + "</presence>");
+    }
+
+    void set_muc_subject(const std::string &room_in, const std::string &subject) {
+        std::string room = bare_jid(room_in);
+        if (room.empty()) return;
+        queue_send("<message to='" + xml_escape(room) +
+                   "' type='groupchat'><subject>" + xml_escape(subject) +
+                   "</subject></message>");
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            muc_subjects[room] = subject;
+            chats[room].push_back(
+                {"", "Topic: " + subject, false, false, true, {}, false});
+        }
+        emit(make_event(ClientEvent::MucSubject, subject, room));
+    }
+
+    void invite_muc(const std::string &room_in, const std::string &buddy_in,
+                    const std::string &reason = {}) {
+        std::string room = bare_jid(room_in);
+        std::string buddy = bare_jid(buddy_in);
+        if (room.empty() || buddy.empty()) return;
+        std::string inv =
+            "<message to='" + xml_escape(room) + "'>"
+            "<x xmlns='http://jabber.org/protocol/muc#user'>"
+            "<invite to='" + xml_escape(buddy) + "'>";
+        if (!reason.empty())
+            inv += "<reason>" + xml_escape(reason) + "</reason>";
+        inv += "</invite></x></message>";
+        queue_send(inv);
+        emit(make_event(ClientEvent::StatusText,
+                        "Invited " + jid_node(buddy) + " to " + jid_node(room)));
+    }
+
+    void decline_muc_invite(const std::string &room_in) {
+        std::string room = bare_jid(room_in);
+        std::lock_guard<std::mutex> lock(mu);
+        pending_muc_invites.erase(
+            std::remove_if(pending_muc_invites.begin(), pending_muc_invites.end(),
+                           [&](const MucInvite &iv) { return jid_ieq(iv.room, room); }),
+            pending_muc_invites.end());
     }
 
     void leave_muc(const std::string &room_in) {
@@ -1205,6 +1268,40 @@ private:
             emit(make_event(ClientEvent::Message, body, key));
     }
 
+    // Mediated MUC invite (XEP-0045 muc#user) — queue for Accept/Decline UI.
+    bool try_queue_muc_invite(const std::string &st) {
+        if (st.find("muc#user") == std::string::npos ||
+            st.find("<invite") == std::string::npos)
+            return false;
+        if (st.find("<decline") != std::string::npos) return false;
+        size_t ip = st.find("<invite");
+        if (ip == std::string::npos) return false;
+        size_t gt = st.find('>', ip);
+        if (gt == std::string::npos) return false;
+        std::string tag = st.substr(ip, gt - ip + 1);
+        // Mediated: message from=room, invite from=inviter.
+        std::string room = bare_jid(attr(st, "from"));
+        std::string inviter = bare_jid(attr(tag, "from"));
+        if (room.empty() || inviter.empty()) return false;
+        if (jid_ieq(room, bare_jid(jid))) return false;
+        std::string reason;
+        size_t rp = st.find("<reason", ip);
+        if (rp != std::string::npos) {
+            extract_tag(st.substr(rp), "reason", &reason);
+            reason = xml_unescape(reason);
+        }
+        MucInvite iv{room, inviter, reason};
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            for (const auto &e : pending_muc_invites)
+                if (jid_ieq(e.room, iv.room) && jid_ieq(e.from, iv.from))
+                    return true;
+            pending_muc_invites.push_back(iv);
+        }
+        emit(make_event(ClientEvent::MucInviteAsk, iv.from, iv.room));
+        return true;
+    }
+
     void handle_stanza(const std::string &st) {
         if (st.find("<message") == 0) {
             // XEP-0313 MAM result — unwrap, quiet ingest.
@@ -1224,6 +1321,7 @@ private:
                 if (!inner.empty()) ingest_message(inner, sent);
                 return;
             }
+            if (try_queue_muc_invite(st)) return;
             ingest_message(st, false);
             return;
         }

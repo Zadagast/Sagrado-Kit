@@ -68,6 +68,8 @@ static const char *kChatItems[] = {
     "Browse Chat Rooms...",
     "Join Chat Room...",
     "-",
+    "Set Topic...",
+    "Invite...",
     "Leave Room",
     "Bookmark Room",
     "Autojoin Room",
@@ -85,7 +87,7 @@ struct MenuDef {
     int count;
 };
 static const MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 7},
+    {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 9},
     {kAppearanceItems, 2}, {kHelpItems, 1},
 };
 
@@ -121,6 +123,8 @@ enum DialogKind {
     DlgAddBuddy,
     DlgJoinMuc,
     DlgBrowseMuc,
+    DlgSetTopic,
+    DlgInvite,
 };
 
 struct Tab {
@@ -157,6 +161,12 @@ struct App {
     bool sub_ask_open = false;
     std::string sub_ask_jid;
     Rect sub_accept_r{}, sub_deny_r{};
+    // MUC invite ask (Accept / Decline) — same gel pattern as buddy request.
+    bool muc_invite_open = false;
+    std::string muc_invite_room;
+    std::string muc_invite_from;
+    std::string muc_invite_reason;
+    Rect muc_invite_accept_r{}, muc_invite_decline_r{};
     // XEP-0085 outbound composing for the active 1:1 tab.
     bool typing_sent = false;
     std::string typing_peer; // bare JID we last sent composing to
@@ -181,6 +191,10 @@ struct App {
     std::string field_buddy;
     std::string field_room;
     std::string field_nick;
+    std::string field_room_pass;
+    std::string field_topic;
+    std::string field_invite;
+    std::string field_invite_reason;
     int focus_field = 0; // which dialog field
     bool captcha_visible = false;
     bool about_open = false;
@@ -269,6 +283,10 @@ void redraw();
 void stop_typing_indicator();
 void open_subscribe_ask(const std::string &jid);
 void close_subscribe_ask(bool accepted);
+void maybe_show_next_muc_invite();
+void open_muc_invite_ask(const std::string &room, const std::string &from,
+                         const std::string &reason);
+void close_muc_invite_ask(bool accepted);
 const char *show_label(jabber::Show s);
 
 std::string durable_status_text() {
@@ -968,6 +986,67 @@ void close_subscribe_ask(bool accepted) {
             next = g.client.pending_subscribe.front();
     }
     if (!next.empty()) open_subscribe_ask(next);
+    else maybe_show_next_muc_invite();
+}
+
+void open_muc_invite_ask(const std::string &room, const std::string &from,
+                         const std::string &reason) {
+    if (room.empty()) return;
+    if (g.sub_ask_open || g.about_open || g.dialog != DlgNone) {
+        // Stay queued in client until the current sheet closes.
+        return;
+    }
+    if (g.muc_invite_open && !g.muc_invite_room.empty() &&
+        !jabber::jid_ieq(g.muc_invite_room, room)) {
+        // Keep queue in client; show next when this sheet closes.
+        return;
+    }
+    g.muc_invite_open = true;
+    g.muc_invite_room = room;
+    g.muc_invite_from = from;
+    g.muc_invite_reason = reason;
+}
+
+void maybe_show_next_muc_invite() {
+    if (g.muc_invite_open || g.sub_ask_open || g.dialog != DlgNone || g.about_open)
+        return;
+    jabber::MucInvite next{};
+    bool have = false;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        if (!g.client.pending_muc_invites.empty()) {
+            next = g.client.pending_muc_invites.front();
+            have = true;
+        }
+    }
+    if (have) open_muc_invite_ask(next.room, next.from, next.reason);
+}
+
+void close_muc_invite_ask(bool accepted) {
+    std::string room = g.muc_invite_room;
+    std::string from = g.muc_invite_from;
+    g.muc_invite_open = false;
+    g.muc_invite_room.clear();
+    g.muc_invite_from.clear();
+    g.muc_invite_reason.clear();
+    g.muc_invite_accept_r = {};
+    g.muc_invite_decline_r = {};
+    if (!room.empty()) {
+        // Decline = ignore (no protocol). Accept also drops the queue entry
+        // before opening Join so the sheet does not reappear.
+        g.client.decline_muc_invite(room);
+        if (accepted) {
+            g.dialog = DlgJoinMuc;
+            g.focus_field = 1;
+            g.field_room = room;
+            g.field_room_pass.clear();
+            if (g.field_nick.empty() && !g.client.jid.empty())
+                g.field_nick = jabber::jid_node(g.client.jid);
+            set_status(jabber::jid_node(from) + " invited you — join when ready");
+            return;
+        }
+    }
+    maybe_show_next_muc_invite();
 }
 
 void stop_typing_indicator() {
@@ -1084,6 +1163,7 @@ void open_browse_muc() {
     g.focus_field = 0;
     g.browse_sel = -1;
     g.browse_scroll = 0;
+    g.field_room_pass.clear();
     if (g.field_nick.empty() && !g.client.jid.empty())
         g.field_nick = jabber::jid_node(g.client.jid);
     rebuild_browse_rows();
@@ -1094,7 +1174,17 @@ void ding() { MessageBeep(MB_OK); }
 
 void browse_dialog_size(int *dw, int *dh) {
     *dw = 440;
-    *dh = 380;
+    *dh = 420;
+}
+
+void join_dialog_size(int *dw, int *dh) {
+    *dw = 360;
+    *dh = 260;
+}
+
+void invite_dialog_size(int *dw, int *dh) {
+    *dw = 360;
+    *dh = 240;
 }
 
 void register_dialog_size(int *dw, int *dh) {
@@ -1119,12 +1209,20 @@ void paint_dialog(Canvas &cv) {
     if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
     else if (g.dialog == DlgSignOn) sign_on_dialog_size(&dw, &dh);
     else if (g.dialog == DlgBrowseMuc) browse_dialog_size(&dw, &dh);
+    else if (g.dialog == DlgJoinMuc) join_dialog_size(&dw, &dh);
+    else if (g.dialog == DlgInvite) invite_dialog_size(&dw, &dh);
+    else if (g.dialog == DlgSetTopic) {
+        dw = 360;
+        dh = 180;
+    }
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
     if (g.dialog == DlgRegister) title = "Get an Account";
     if (g.dialog == DlgAddBuddy) title = "Add Buddy";
     if (g.dialog == DlgJoinMuc) title = "Join Chat Room";
     if (g.dialog == DlgBrowseMuc) title = "Browse Chat Rooms";
+    if (g.dialog == DlgSetTopic) title = "Set Topic";
+    if (g.dialog == DlgInvite) title = "Invite";
     paint_gel(cv, g.ap, box, title, true, 0, GelStyle::Dialog);
     GelLayout gl = gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
     Rect cl = gl.client;
@@ -1252,8 +1350,10 @@ void paint_dialog(Canvas &cv) {
     } else if (g.dialog == DlgJoinMuc) {
         field("Room (room@conference.server)", g.field_room, 0, false);
         field("Nickname", g.field_nick, 1, false);
+        field("Password (optional)", g.field_room_pass, 2, true);
     } else if (g.dialog == DlgBrowseMuc) {
-        int list_h = cl.h - 8 - 30 - 40 - lh - 8;
+        // List + nick + optional password above OK/Cancel.
+        int list_h = cl.h - 8 - 30 - 40 - lh - 8 - 30 - lh - 8;
         if (list_h < 80) list_h = 80;
         int box_w = cl.w - 24;
         g.browse_list_r = {cl.x + 12, y, box_w, list_h};
@@ -1288,6 +1388,12 @@ void paint_dialog(Canvas &cv) {
                      DragThumbBrowse, DragArrowBrowse);
         y = std::max(g.browse_list_r.bottom(), g.browse_sbar.bottom()) + 8;
         field("Nickname", g.field_nick, 0, false);
+        field("Password (optional)", g.field_room_pass, 1, true);
+    } else if (g.dialog == DlgSetTopic) {
+        field("Topic", g.field_topic, 0, false);
+    } else if (g.dialog == DlgInvite) {
+        field("Buddy JID", g.field_invite, 0, false);
+        field("Reason (optional)", g.field_invite_reason, 1, false);
     }
     Rect ok{cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
     Rect cancel{cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
@@ -1704,6 +1810,36 @@ void paint() {
         paint_button(cv, g.ap, g.sub_deny_r, "Deny", false, false);
         paint_button(cv, g.ap, g.sub_accept_r, "Accept", false, true);
     }
+
+    if (g.muc_invite_open && !g.muc_invite_room.empty()) {
+        for (int y = 0; y < cv.height(); ++y)
+            for (int x = 0; x < cv.width(); ++x) {
+                uint32_t p = cv.data()[size_t(y) * cv.width() + x];
+                int r = int((p >> 16) & 255) / 2;
+                int gc = int((p >> 8) & 255) / 2;
+                int b = int(p & 255) / 2;
+                cv.data()[size_t(y) * cv.width() + x] =
+                    (uint32_t(r) << 16) | (uint32_t(gc) << 8) | uint32_t(b);
+            }
+        const int dw = 340, dh = 170;
+        Rect box{(cv.width() - dw) / 2, (cv.height() - dh) / 2, dw, dh};
+        paint_gel(cv, g.ap, box, "Chat room invite", true, 0, GelStyle::Dialog);
+        GelLayout gl =
+            gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
+        Rect cl = gl.client;
+        std::string who = jabber::jid_node(g.muc_invite_from);
+        std::string body = who + " invited you to " +
+                           jabber::jid_node(g.muc_invite_room) + ".\n\n" +
+                           g.muc_invite_room;
+        if (!g.muc_invite_reason.empty())
+            body += "\n\n\"" + g.muc_invite_reason + "\"";
+        paint_wrapped_text(cv, {cl.x + 12, cl.y + 10, cl.w - 24, cl.h - 56},
+                           body.c_str(), g.ap.c("primary.label"));
+        g.muc_invite_decline_r = {cl.x + cl.w - 160, cl.bottom() - 36, 70, 26};
+        g.muc_invite_accept_r = {cl.x + cl.w - 80, cl.bottom() - 36, 70, 26};
+        paint_button(cv, g.ap, g.muc_invite_decline_r, "Decline", false, false);
+        paint_button(cv, g.ap, g.muc_invite_accept_r, "Accept", false, true);
+    }
 }
 
 void close_menu() {
@@ -1812,9 +1948,32 @@ void run_menu(int menu, int row) {
         } else if (row == 2) {
             g.dialog = DlgJoinMuc;
             g.focus_field = 0;
+            g.field_room_pass.clear();
             if (g.field_nick.empty() && !g.client.jid.empty())
                 g.field_nick = jabber::jid_node(g.client.jid);
         } else if (row == 4) {
+            if (!tab_is_muc(g.active_tab)) {
+                set_status("Open a chat room first");
+            } else {
+                g.dialog = DlgSetTopic;
+                g.focus_field = 0;
+                g.field_topic.clear();
+                {
+                    std::lock_guard<std::mutex> lock(g.client.mu);
+                    auto it = g.client.muc_subjects.find(g.tabs[g.active_tab].jid);
+                    if (it != g.client.muc_subjects.end()) g.field_topic = it->second;
+                }
+            }
+        } else if (row == 5) {
+            if (!tab_is_muc(g.active_tab)) {
+                set_status("Open a chat room first");
+            } else {
+                g.dialog = DlgInvite;
+                g.focus_field = 0;
+                g.field_invite = selected_buddy_jid();
+                g.field_invite_reason.clear();
+            }
+        } else if (row == 6) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Leave Room is for chat rooms");
             } else {
@@ -1823,7 +1982,7 @@ void run_menu(int menu, int row) {
                 close_tab_jid(room);
                 set_status("Left " + jabber::jid_node(room));
             }
-        } else if (row == 5) {
+        } else if (row == 7) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Bookmark a chat room tab");
             } else {
@@ -1838,7 +1997,7 @@ void run_menu(int menu, int row) {
                 g.client.bookmark_muc(room, jabber::jid_node(room), nick, aj);
                 set_status("Bookmarked " + jabber::jid_node(room));
             }
-        } else if (row == 6) {
+        } else if (row == 8) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Autojoin is for chat rooms");
             } else {
@@ -1898,10 +2057,13 @@ void dialog_ok() {
         g.dialog = DlgNone;
     } else if (g.dialog == DlgJoinMuc) {
         if (!g.field_room.empty() && !g.field_nick.empty()) {
-            g.client.join_muc(g.field_room, g.field_nick);
+            g.client.join_muc(g.field_room, g.field_nick, g.field_room_pass);
             open_tab(g.field_room, true);
+            set_status("Joined " + jabber::jid_node(g.field_room));
         }
+        g.field_room_pass.clear();
         g.dialog = DlgNone;
+        maybe_show_next_muc_invite();
     } else if (g.dialog == DlgBrowseMuc) {
         std::string room;
         std::string nick = g.field_nick;
@@ -1929,10 +2091,36 @@ void dialog_ok() {
             }
         }
         g.field_nick = nick;
-        g.client.join_muc(room, nick);
+        g.client.join_muc(room, nick, g.field_room_pass);
         open_tab(room, true);
+        g.field_room_pass.clear();
         g.dialog = DlgNone;
         set_status("Joined " + jabber::jid_node(room));
+    } else if (g.dialog == DlgSetTopic) {
+        if (!tab_is_muc(g.active_tab)) {
+            set_status("Open a chat room first");
+            g.dialog = DlgNone;
+        } else {
+            std::string room = g.tabs[g.active_tab].jid;
+            g.client.set_muc_subject(room, g.field_topic);
+            set_status(g.field_topic.empty() ? "Cleared topic"
+                                             : ("Topic: " + g.field_topic));
+            g.dialog = DlgNone;
+        }
+    } else if (g.dialog == DlgInvite) {
+        if (!tab_is_muc(g.active_tab)) {
+            set_status("Open a chat room first");
+            g.dialog = DlgNone;
+        } else if (g.field_invite.empty()) {
+            set_status("Enter a buddy JID");
+            return;
+        } else {
+            std::string room = g.tabs[g.active_tab].jid;
+            g.client.invite_muc(room, g.field_invite, g.field_invite_reason);
+            set_status("Invited " + jabber::jid_node(g.field_invite) + " to " +
+                       jabber::jid_node(room));
+            g.dialog = DlgNone;
+        }
     }
     redraw();
 }
@@ -2017,6 +2205,27 @@ void mouse_down(int x, int y) {
         }
         return;
     }
+    if (g.muc_invite_open) {
+        if (g.muc_invite_accept_r.contains(x, y)) {
+            close_muc_invite_ask(true);
+            redraw();
+            return;
+        }
+        if (g.muc_invite_decline_r.contains(x, y)) {
+            close_muc_invite_ask(false);
+            redraw();
+            return;
+        }
+        const int dw = 340, dh = 170;
+        Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
+        GelLayout gl =
+            gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
+        if (gl.close_box.w > 0 && gl.close_box.contains(x, y)) {
+            close_muc_invite_ask(false);
+            redraw();
+        }
+        return;
+    }
     if (g.about_open) {
         if (g.about_lay.btn_ok.contains(x, y) ||
             g.about_lay.gel.close_box.contains(x, y)) {
@@ -2031,6 +2240,12 @@ void mouse_down(int x, int y) {
         if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
         else if (g.dialog == DlgSignOn) sign_on_dialog_size(&dw, &dh);
         else if (g.dialog == DlgBrowseMuc) browse_dialog_size(&dw, &dh);
+        else if (g.dialog == DlgJoinMuc) join_dialog_size(&dw, &dh);
+        else if (g.dialog == DlgInvite) invite_dialog_size(&dw, &dh);
+        else if (g.dialog == DlgSetTopic) {
+            dw = 360;
+            dh = 180;
+        }
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
@@ -2040,6 +2255,8 @@ void mouse_down(int x, int y) {
             if (g.captcha_visible) g.client.cancel_register_captcha();
             g.dialog = DlgNone;
             g.captcha_visible = false;
+            g.field_room_pass.clear();
+            maybe_show_next_muc_invite();
             redraw();
             return;
         }
@@ -2053,6 +2270,8 @@ void mouse_down(int x, int y) {
             if (g.captcha_visible) g.client.cancel_register_captcha();
             g.dialog = DlgNone;
             g.captcha_visible = false;
+            g.field_room_pass.clear();
+            maybe_show_next_muc_invite();
             redraw();
             return;
         }
@@ -2111,10 +2330,12 @@ void mouse_down(int x, int y) {
         if (cl.contains(x, y)) {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
-            else if (g.dialog == DlgJoinMuc) n = 2;
-            else if (g.dialog == DlgBrowseMuc) n = 1;
+            else if (g.dialog == DlgJoinMuc) n = 3;
+            else if (g.dialog == DlgBrowseMuc) n = 2;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
+            else if (g.dialog == DlgSetTopic) n = 1;
+            else if (g.dialog == DlgInvite) n = 2;
             g.focus_field = (g.focus_field + 1) % n;
             redraw();
         }
@@ -2425,10 +2646,16 @@ void handle_char(WPARAM wp) {
             if (g.focus_field == 0) f = &g.field_user;
             else if (g.focus_field == 1) f = &g.field_pass;
             else f = &g.field_captcha;
-        }         else if (g.dialog == DlgAddBuddy) f = &g.field_buddy;
-        else if (g.dialog == DlgJoinMuc)
-            f = g.focus_field == 0 ? &g.field_room : &g.field_nick;
-        else if (g.dialog == DlgBrowseMuc) f = &g.field_nick;
+        } else if (g.dialog == DlgAddBuddy) f = &g.field_buddy;
+        else if (g.dialog == DlgJoinMuc) {
+            if (g.focus_field == 0) f = &g.field_room;
+            else if (g.focus_field == 1) f = &g.field_nick;
+            else f = &g.field_room_pass;
+        } else if (g.dialog == DlgBrowseMuc)
+            f = g.focus_field == 0 ? &g.field_nick : &g.field_room_pass;
+        else if (g.dialog == DlgSetTopic) f = &g.field_topic;
+        else if (g.dialog == DlgInvite)
+            f = g.focus_field == 0 ? &g.field_invite : &g.field_invite_reason;
         if (wp == 8) {
             if (!f->empty()) f->pop_back();
         } else if (wp == '\r') {
@@ -2437,10 +2664,12 @@ void handle_char(WPARAM wp) {
         } else if (wp == '\t') {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
-            else if (g.dialog == DlgJoinMuc) n = 2;
-            else if (g.dialog == DlgBrowseMuc) n = 1;
+            else if (g.dialog == DlgJoinMuc) n = 3;
+            else if (g.dialog == DlgBrowseMuc) n = 2;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
+            else if (g.dialog == DlgSetTopic) n = 1;
+            else if (g.dialog == DlgInvite) n = 2;
             g.focus_field = (g.focus_field + 1) % n;
         } else if (wp >= 32 && wp < 127) {
             f->push_back(char(wp));
@@ -2449,7 +2678,7 @@ void handle_char(WPARAM wp) {
         return;
     }
     if (g.menu_open >= 0) return;
-    if (g.sub_ask_open || g.about_open) return;
+    if (g.sub_ask_open || g.muc_invite_open || g.about_open) return;
     if (wp == 8) {
         if (!g.compose.empty()) g.compose.pop_back();
         if (g.compose.empty()) stop_typing_indicator();
@@ -2527,6 +2756,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                            ? jabber::jid_node(e->jid) + " wants to add you"
                            : e->text);
         }
+        if (e->type == jabber::ClientEvent::MucInviteAsk) {
+            std::string reason;
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                for (const auto &iv : g.client.pending_muc_invites) {
+                    if (jabber::jid_ieq(iv.room, e->jid)) {
+                        reason = iv.reason;
+                        break;
+                    }
+                }
+            }
+            if (g.in_tray || !IsWindowVisible(g.hwnd))
+                tray_balloon("Chat room invite",
+                             jabber::jid_node(e->text) + " invited you to " +
+                                 jabber::jid_node(e->jid));
+            open_muc_invite_ask(e->jid, e->text, reason);
+            set_status(jabber::jid_node(e->text) + " invited you to " +
+                       jabber::jid_node(e->jid));
+        }
         if (e->type == jabber::ClientEvent::ChatState) {
             // Peer composing/paused — paint reads client.chat_states.
             (void)e;
@@ -2578,6 +2826,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.presence_menu = false;
             g.sub_ask_open = false;
             g.sub_ask_jid.clear();
+            g.muc_invite_open = false;
+            g.muc_invite_room.clear();
+            g.muc_invite_from.clear();
+            g.muc_invite_reason.clear();
             stop_typing_indicator();
         }
         delete e;
@@ -2714,6 +2966,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (g.sub_ask_open) {
                 close_subscribe_ask(false);
                 redraw();
+            } else if (g.muc_invite_open) {
+                close_muc_invite_ask(false);
+                redraw();
             } else if (g.about_open) {
                 g.about_open = false;
                 redraw();
@@ -2721,6 +2976,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 if (g.captcha_visible) g.client.cancel_register_captcha();
                 g.dialog = DlgNone;
                 g.captcha_visible = false;
+                g.field_room_pass.clear();
+                maybe_show_next_muc_invite();
                 redraw();
             } else if (g.menu_open >= 0) {
                 close_menu();

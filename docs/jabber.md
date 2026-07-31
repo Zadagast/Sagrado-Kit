@@ -27,7 +27,8 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 | Recent history | Opening an empty 1:1 chat loads the last ~40 lines | [XEP-0313](https://xmpp.org/extensions/xep-0313.html) MAM |
 | You’ve got mail ding | `MessageBeep` hook on inbound IM | Client event |
 | Send a file to a buddy | Chat → Send File… | [XEP-0363](https://xmpp.org/extensions/xep-0363.html) HTTP Upload |
-| Chat rooms | Chat → Browse Chat Rooms… / Join… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
+| Chat rooms | Chat → Browse… / Join… / Set Topic… / Invite… / Leave | [XEP-0045](https://xmpp.org/extensions/xep-0045.html) MUC |
+| Room invite | Gel Accept/Decline sheet (Join prefills room + nick); tray balloon if hidden | Mediated `muc#user` `<invite>` |
 | Room bookmarks + autojoin | Chat → Bookmark Room / Autojoin Room | [XEP-0402](https://xmpp.org/extensions/xep-0402.html) PEP + [XEP-0048](https://xmpp.org/extensions/xep-0048.html) fallback |
 | Get a screen name | File → Get an Account… | [XEP-0077](https://xmpp.org/extensions/xep-0077.html) + [XEP-0158](https://xmpp.org/extensions/xep-0158.html) CAPTCHA **in gel** |
 
@@ -66,21 +67,25 @@ password to join the server (and any bookmarked autojoin rooms). Quit from
 
 ## Chat rooms (everyday MUC)
 
-Day-to-day room parity (Psi/Gajim/Conversations shape) — not operator tools.
+AIM-shaped chat rooms in gel — not a Discord server rail. Wire is XEP-0045.
 
 - **Browse Chat Rooms…** — disco finds the conference service, then lists public rooms;
   Bookmarks section sits above the public list. Select + nick → Join (or double-click).
-- **Join Chat Room…** — type `room@conference.host` + nick by hand.
+  Optional **Password** for locked rooms.
+- **Join Chat Room…** — type `room@conference.host` + nick (+ optional password).
+- **Set Topic…** — groupchat `<subject>`; sticky line under the transcript updates.
+- **Invite…** — mediated `muc#user` invite to a buddy (or any JID) for the open room.
+- **Someone invited you** — gel Accept / Decline (same pattern as buddy Authorize/Deny).
+  Accept opens Join with room + nick prefilled; Decline ignores (no protocol).
 - **Leave Room** — unavailable presence; closes the room tab.
-- **Topic** — `<subject>` shown as a sticky line + system transcript line.
 - **Nicks** — groupchat lines and the occupants column use the resource (`room/nick`),
   not the room localpart.
 - **Bookmark Room / Autojoin Room** — saved via PEP `urn:xmpp:bookmarks:1` when the
   server supports it, with Private XML `storage:bookmarks` as fallback. Autojoin
   rooms rejoin on Sign On.
 
-Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, invites, or MAM
-history browser in this pass.
+Still **not** Matrix: no spaces rail, kick/ban UI, room config forms, or MAM history
+browser in this pass.
 
 ## Accounts
 
