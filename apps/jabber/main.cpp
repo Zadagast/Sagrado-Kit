@@ -31,6 +31,7 @@ constexpr int kTabH = 22;
 constexpr int kComposeH = 56;
 constexpr int kTextPad = 4;
 constexpr int kBuddyRowH = 36;
+constexpr int kMaxRecentAccounts = 8; // JIDs only — never passwords
 
 enum : UINT {
     WM_JABBER_EVENT = WM_APP + 40,
@@ -145,6 +146,12 @@ struct App {
     int provider_scroll = 0;
     Rect provider_list_r{};
 
+    // Recent account names (JIDs). Passwords are never stored.
+    std::vector<std::string> recent_jids;
+    int recent_sel = -1;
+    int recent_scroll = 0;
+    Rect recent_list_r{};
+
     std::string compose;
     std::string status_msg; // own presence <status> draft (identity field)
     bool status_field_focus = false;
@@ -252,6 +259,100 @@ void select_provider(int idx) {
     g.field_server = g.providers[idx].host;
 }
 
+std::string accounts_path() { return exe_dir() + "\\accounts.txt"; }
+
+void load_accounts() {
+    g.recent_jids.clear();
+    g.recent_sel = -1;
+    g.recent_scroll = 0;
+    std::ifstream in(accounts_path());
+    if (!in) return;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        trim_inplace(line);
+        if (line.empty() || line.find('@') == std::string::npos) continue;
+        bool dup = false;
+        for (const auto &j : g.recent_jids)
+            if (_stricmp(j.c_str(), line.c_str()) == 0) {
+                dup = true;
+                break;
+            }
+        if (dup) continue;
+        g.recent_jids.push_back(line);
+        if ((int)g.recent_jids.size() >= kMaxRecentAccounts) break;
+    }
+}
+
+void save_accounts() {
+    std::ofstream out(accounts_path(), std::ios::trunc);
+    if (!out) return;
+    out << "# Sagrado Jabber recent accounts (JIDs only — never passwords)\n";
+    for (const auto &j : g.recent_jids) out << j << "\n";
+}
+
+void remember_jid(const std::string &jid_in) {
+    std::string jid = jid_in;
+    trim_inplace(jid);
+    if (jid.empty() || jid.find('@') == std::string::npos) return;
+    g.recent_jids.erase(
+        std::remove_if(g.recent_jids.begin(), g.recent_jids.end(),
+                       [&](const std::string &j) {
+                           return _stricmp(j.c_str(), jid.c_str()) == 0;
+                       }),
+        g.recent_jids.end());
+    g.recent_jids.insert(g.recent_jids.begin(), jid);
+    if ((int)g.recent_jids.size() > kMaxRecentAccounts)
+        g.recent_jids.resize(kMaxRecentAccounts);
+    g.recent_sel = 0;
+    save_accounts();
+}
+
+void select_recent_jid(int idx) {
+    if (idx < 0 || idx >= (int)g.recent_jids.size()) return;
+    g.recent_sel = idx;
+    g.field_jid = g.recent_jids[idx];
+    g.focus_field = 1; // password next
+}
+
+void sign_on_dialog_size(int *dw, int *dh) {
+    *dw = 360;
+    *dh = 200;
+    // Account picker only when 2+ remembered JIDs (between name and password).
+    if ((int)g.recent_jids.size() < 2) return;
+    int rows = std::min(4, (int)g.recent_jids.size());
+    *dh += rows * 20 + 8;
+}
+
+void open_sign_on() {
+    g.dialog = DlgSignOn;
+    g.captcha_visible = false;
+    g.recent_scroll = 0;
+    if (!g.recent_jids.empty()) {
+        if (g.field_jid.empty()) g.field_jid = g.recent_jids[0];
+        g.recent_sel = 0;
+        for (int i = 0; i < (int)g.recent_jids.size(); ++i)
+            if (_stricmp(g.recent_jids[i].c_str(), g.field_jid.c_str()) == 0) {
+                g.recent_sel = i;
+                break;
+            }
+        if (g.recent_sel >= 0) g.field_jid = g.recent_jids[g.recent_sel];
+        g.focus_field = 1; // password
+    } else {
+        g.recent_sel = -1;
+        g.focus_field = g.field_jid.empty() ? 0 : 1;
+    }
+}
+
+bool identity_visible() {
+    return g.client.state == jabber::ConnState::Online || !g.recent_jids.empty();
+}
+
+std::string remembered_jid() {
+    if (!g.recent_jids.empty()) return g.recent_jids[0];
+    return g.field_jid;
+}
+
 void blit(HWND hwnd, Canvas &cv) {
     HDC hdc = GetDC(hwnd);
     BITMAPINFO bi{};
@@ -285,7 +386,8 @@ void layout() {
     int top = cl.y + kMenuBarH;
     int body_h = g.status_r.y - top;
     bool signed_on = g.client.state == jabber::ConnState::Online;
-    int id_h = signed_on ? kIdentityH : 0;
+    // Strip when online, or when a remembered account gives us a “you”.
+    int id_h = identity_visible() ? kIdentityH : 0;
     g.identity_r = {cl.x, top, kRosterW, id_h};
     g.roster_r = {cl.x, top + id_h, kRosterW, body_h - id_h};
     if (id_h > 0) {
@@ -293,9 +395,13 @@ void layout() {
                       g.identity_r.y + (g.identity_r.h - kAvatarSz) / 2, kAvatarSz,
                       kAvatarSz};
         g.presence_r = {g.avatar_r.right() - 10, g.avatar_r.bottom() - 10, 10, 10};
-        int fx = g.avatar_r.right() + 8;
-        int fw = g.identity_r.right() - 8 - fx;
-        g.status_field_r = {fx, g.identity_r.bottom() - 26, fw, 20};
+        if (signed_on) {
+            int fx = g.avatar_r.right() + 8;
+            int fw = g.identity_r.right() - 8 - fx;
+            g.status_field_r = {fx, g.identity_r.bottom() - 26, fw, 20};
+        } else {
+            g.status_field_r = {};
+        }
     } else {
         g.avatar_r = {};
         g.presence_r = {};
@@ -435,6 +541,7 @@ void paint_dialog(Canvas &cv) {
         }
     int dw = 360, dh = 220;
     if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
+    else if (g.dialog == DlgSignOn) sign_on_dialog_size(&dw, &dh);
     Rect box{(win.w - dw) / 2, (win.h - dh) / 2, dw, dh};
     const char *title = "Sign On";
     if (g.dialog == DlgRegister) title = "Get an Account";
@@ -445,6 +552,7 @@ void paint_dialog(Canvas &cv) {
     Rect cl = gl.client;
     int y = cl.y + 8;
     int lh = cv.line_height();
+    g.recent_list_r = {};
     auto field = [&](const char *lab, const std::string &val, int idx, bool secret) {
         cv.text(cl.x + 12, y, lab, g.ap.c("primary.label"));
         y += lh + 2;
@@ -455,7 +563,29 @@ void paint_dialog(Canvas &cv) {
         y += 30;
     };
     if (g.dialog == DlgSignOn) {
-        field("JID (you@server)", g.field_jid, 0, false);
+        field("Screen name", g.field_jid, 0, false);
+        // 2+ accounts → compact picker between name and password.
+        if ((int)g.recent_jids.size() >= 2) {
+            int rows = std::min(4, (int)g.recent_jids.size());
+            int row_h = lh + 4;
+            g.recent_list_r = {cl.x + 12, y, cl.w - 24, rows * row_h + 4};
+            cv.fill(g.recent_list_r, g.ap.c("list.background"));
+            {
+                CanvasClip clip(cv, g.recent_list_r);
+                int yy = g.recent_list_r.y + 2 - g.recent_scroll;
+                for (int i = 0; i < (int)g.recent_jids.size(); ++i) {
+                    Rect row{g.recent_list_r.x + 2, yy, g.recent_list_r.w - 4, row_h};
+                    if (i == g.recent_sel)
+                        cv.fill(row, g.ap.c("list.hilite_background"));
+                    Color ink = i == g.recent_sel ? g.ap.c("list.hilite_foreground")
+                                                  : g.ap.c("list.label");
+                    cv.text_elided(row.x + 6, row.y + 2, g.recent_jids[i].c_str(),
+                                   row.w - 12, ink);
+                    yy += row_h;
+                }
+            }
+            y = g.recent_list_r.bottom() + 8;
+        }
         field("Password", g.field_pass, 1, true);
     } else if (g.dialog == DlgRegister) {
         // Screen name first (AIM-shaped), then home server, then password.
@@ -543,15 +673,17 @@ void paint() {
                                 {g.gel.client.x, g.gel.client.y, g.gel.client.w, kMenuBarH},
                                 kMenuTitles, MenuCount, g.menu_hot);
 
-    // Identity strip (Yahoo-shaped: you + presence + status)
+    // Identity strip (Yahoo-shaped: you + presence + status).
+    // Signed off but remembered → still “you”, click opens Sign On.
     if (g.identity_r.h > 0) {
         cv.fill(g.identity_r, g.ap.c("primary.background"));
         cv.hline(g.identity_r.x, g.identity_r.right(), g.identity_r.bottom() - 1,
                  g.ap.c("list.separator"));
+        bool online = g.client.state == jabber::ConnState::Online;
         std::string nick, jid;
-        jabber::Show own = jabber::Show::Chat;
+        jabber::Show own = jabber::Show::Unavailable;
         SkinImage *av = nullptr;
-        {
+        if (online) {
             std::lock_guard<std::mutex> lock(g.client.mu);
             jid = g.client.jid;
             nick = g.client.own_nick.empty() ? jabber::jid_node(jid) : g.client.own_nick;
@@ -559,6 +691,10 @@ void paint() {
             if (!g.client.own_avatar.empty()) av = &g.client.own_avatar;
             if (g.status_msg.empty() && !g.status_field_focus)
                 g.status_msg = g.client.own_status;
+        } else {
+            jid = remembered_jid();
+            nick = jabber::jid_node(jid);
+            if (nick.empty()) nick = jid;
         }
         std::string initials = nick.empty() ? "?" : nick.substr(0, 1);
         paint_avatar_tile(cv, g.ap, g.avatar_r, av, initials);
@@ -567,19 +703,23 @@ void paint() {
         cv.frame(g.presence_r, g.ap.c("list.separator"));
         int tx = g.avatar_r.right() + 8;
         int tw = g.identity_r.right() - 8 - tx;
+        int text_bottom =
+            online && g.status_field_r.h > 0 ? g.status_field_r.y : g.identity_r.bottom();
         {
-            CanvasClip clip(cv, {tx, g.identity_r.y, tw, g.status_field_r.y - g.identity_r.y});
+            CanvasClip clip(cv, {tx, g.identity_r.y, tw, text_bottom - g.identity_r.y});
             cv.text_elided(tx, g.identity_r.y + 6, nick.c_str(), tw, g.ap.c("primary.label"));
-            std::string sub = show_label(own);
-            if (!jid.empty() && nick != jabber::jid_node(jid))
+            std::string sub = online ? show_label(own) : "Signed off";
+            if (online && !jid.empty() && nick != jabber::jid_node(jid))
                 sub = jabber::jid_node(jid) + " · " + sub;
             cv.text_elided(tx, g.identity_r.y + 6 + cv.line_height(), sub.c_str(), tw,
                            g.ap.c("menu.disable_label"));
         }
-        paint_field(cv, g.ap, g.status_field_r,
-                    g.status_msg.empty() && !g.status_field_focus ? "Status message…"
-                                                                 : g.status_msg.c_str(),
-                    g.status_field_focus, true);
+        if (online && g.status_field_r.h > 0)
+            paint_field(cv, g.ap, g.status_field_r,
+                        g.status_msg.empty() && !g.status_field_focus
+                            ? "Status message…"
+                            : g.status_msg.c_str(),
+                        g.status_field_focus, true);
     }
 
     // Roster
@@ -785,9 +925,7 @@ void run_menu(int menu, int row) {
     }
     if (menu == MenuFile) {
         if (row == 0) {
-            g.dialog = DlgSignOn;
-            g.focus_field = 0;
-            g.captcha_visible = false;
+            open_sign_on();
         } else if (row == 1) {
             if (g.providers.empty()) load_providers();
             g.dialog = DlgRegister;
@@ -872,6 +1010,7 @@ void run_menu(int menu, int row) {
 void dialog_ok() {
     if (g.dialog == DlgSignOn) {
         if (g.field_jid.empty() || g.field_pass.empty()) return;
+        // Remember JID only after Online succeeds (see WM_JABBER_EVENT).
         g.client.sign_on(g.field_jid, g.field_pass);
         g.dialog = DlgNone;
         set_status("Signing on…");
@@ -965,6 +1104,7 @@ void mouse_down(int x, int y) {
     if (g.dialog != DlgNone) {
         int dw = 360, dh = 220;
         if (g.dialog == DlgRegister) register_dialog_size(&dw, &dh);
+        else if (g.dialog == DlgSignOn) sign_on_dialog_size(&dw, &dh);
         Rect box{(g.canvas.width() - dw) / 2, (g.canvas.height() - dh) / 2, dw, dh};
         GelLayout gl =
             gel_layout(box.x, box.y, box.w, box.h, GelStyle::Dialog, &g.ap, true);
@@ -991,8 +1131,21 @@ void mouse_down(int x, int y) {
             }
             return;
         }
+        if (g.dialog == DlgSignOn && g.recent_list_r.contains(x, y)) {
+            int row_h = g.canvas.line_height() + 4;
+            int idx = (y - (g.recent_list_r.y + 2 - g.recent_scroll)) / row_h;
+            if (idx >= 0 && idx < (int)g.recent_jids.size()) {
+                select_recent_jid(idx);
+                redraw();
+            }
+            return;
+        }
         if (cl.contains(x, y)) {
-            int n = g.dialog == DlgRegister ? (g.captcha_visible ? 3 : 2) : 4;
+            int n = 2;
+            if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
+            else if (g.dialog == DlgJoinMuc) n = 2;
+            else if (g.dialog == DlgAddBuddy) n = 1;
+            else if (g.dialog == DlgSignOn) n = 2;
             g.focus_field = (g.focus_field + 1) % n;
             redraw();
         }
@@ -1084,6 +1237,11 @@ void mouse_down(int x, int y) {
     }
 
     if (g.identity_r.h > 0 && g.identity_r.contains(x, y)) {
+        if (g.client.state != jabber::ConnState::Online) {
+            open_sign_on();
+            redraw();
+            return;
+        }
         if (g.status_field_r.contains(x, y)) {
             g.status_field_focus = true;
             {
@@ -1261,6 +1419,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             g.ap.set_skin(stock_skin());
         g.client.on_event = [](const jabber::ClientEvent &e) { post_client_event(e); };
         load_providers();
+        load_accounts();
+        if (!g.recent_jids.empty()) g.field_jid = g.recent_jids[0];
         return 0;
     }
     case WM_JABBER_EVENT: {
@@ -1269,6 +1429,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (e->type == jabber::ClientEvent::StatusText ||
             e->type == jabber::ClientEvent::State)
             set_status(e->text);
+        if (e->type == jabber::ClientEvent::State &&
+            g.client.state == jabber::ConnState::Online) {
+            std::string jid;
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                jid = g.client.jid;
+            }
+            if (!jid.empty()) {
+                remember_jid(jid);
+                g.field_jid = jid;
+            }
+        }
         if (e->type == jabber::ClientEvent::CaptchaReady) {
             g.captcha_visible = true;
             g.dialog = DlgRegister;
@@ -1377,6 +1549,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         ScreenToClient(hwnd, &pt);
         if (g.dialog == DlgRegister && g.provider_list_r.contains(pt.x, pt.y)) {
             g.provider_scroll = std::max(0, g.provider_scroll + d);
+        } else if (g.dialog == DlgSignOn && g.recent_list_r.contains(pt.x, pt.y)) {
+            g.recent_scroll = std::max(0, g.recent_scroll + d);
         } else if (g.roster_r.contains(pt.x, pt.y))
             g.roster_scroll = std::max(0, g.roster_scroll + d);
         else

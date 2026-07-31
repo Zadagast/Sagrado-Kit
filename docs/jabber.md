@@ -29,7 +29,9 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 
 ## Layout
 
-1. **Left identity strip** — avatar, display name, presence mark, status message field
+1. **Left identity strip** — avatar, display name, presence mark, status message field.
+   When signed off but a JID is remembered, the strip still shows you (`Signed off`;
+   click → Sign On).
 2. **Left Buddies** — online first; presence mark + name + status text
 3. **Center** — IM tabs, transcript, compose + Send
 4. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
@@ -43,6 +45,9 @@ Kit paint only: `list.*` / `primary.*` / `paint_field` / `paint_menu` — no OS 
 Jabber is federated: a screen name is a **JID** (`name@server`).
 
 **Sign On** — existing JID + password (SASL PLAIN over STARTTLS).  
+Successful sign-ons remember the JID in `accounts.txt` next to the exe (names only —
+**never passwords**). Sign On prefills the last account; with two or more, a compact
+picker sits between screen name and password.  
 **Get an Account** — screen name + password on a curated home server:
 
 1. Choose a host from `providers.txt` (Category A IBR from [providers.xmpp.net](https://providers.xmpp.net/))
@@ -75,10 +80,12 @@ make jabber-connect-smoke   # Wine: TCP + mbedTLS STARTTLS + register form (yax.
 
 Home servers live in `apps/jabber/providers.txt` (copied next to the exe).
 Default pick is the first entry (`yax.im`).
+Recent account JIDs live in `accounts.txt` beside the exe (written on successful Online).
 
 ## Non-goals (v1)
 
 - Matrix / Spaces / Discord server rail
 - Browser or OOB web registration as a supported path
+- Saved passwords / keyring
 - OMEMO, Jingle, full MAM browser, Adium HTML message styles
 - libpurple multi-protocol
