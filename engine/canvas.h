@@ -181,14 +181,12 @@ struct Canvas {
         text(tx, ty, s, c);
     }
 
-    // Blit art 1:1, honouring per-pixel alpha (A=0 skips).
+    // Blit art 1:1 with src-over alpha (A=0 skips, A=255 replace, else blend).
     void blit_image(const SkinImage &img, int dx, int dy) {
         if (img.empty()) return;
         for (int y = 0; y < img.h; ++y)
-            for (int x = 0; x < img.w; ++x) {
-                uint32_t p = img.at(x, y);
-                if (p >> 24) put(dx + x, dy + y, p & 0x00ffffffu);
-            }
+            for (int x = 0; x < img.w; ++x)
+                blend_put(dx + x, dy + y, img.at(x, y));
     }
 
     // Place a symbol (popup arrow, etc.) — same as blit_image.
@@ -258,8 +256,7 @@ struct Canvas {
                      : mid_sw <= 0   ? cl
                                      : cl + (x - cl) * mid_sw / mid_dw;
             if (sy < 0 || sy >= img.h || sx < 0 || sx >= img.w) return;
-            uint32_t p = img.at(sx, sy);
-            if (p >> 24) put(r.x + x, r.y + y, p & 0x00ffffffu);
+            blend_put(r.x + x, r.y + y, img.at(sx, sy));
         };
 
         // Edges + centre (exclude destination corners).
@@ -283,6 +280,28 @@ struct Canvas {
     }
 
   private:
+    // Src-over into the framebuffer (dst is opaque RGB; src A in high byte).
+    void blend_put(int x, int y, uint32_t src) {
+        const unsigned a = src >> 24;
+        if (a == 0) return;
+        if (a == 255) {
+            put(x, y, src & 0x00ffffffu);
+            return;
+        }
+        if (x < clip_.x || y < clip_.y || x >= clip_.right() || y >= clip_.bottom())
+            return;
+        uint32_t &dst = pixels_[size_t(y) * width_ + x];
+        const unsigned ia = 255 - a;
+        const unsigned sr = (src >> 16) & 0xff, sg = (src >> 8) & 0xff,
+                       sb = src & 0xff;
+        const unsigned dr = (dst >> 16) & 0xff, dg = (dst >> 8) & 0xff,
+                       db = dst & 0xff;
+        const unsigned r = (sr * a + dr * ia) / 255;
+        const unsigned g = (sg * a + dg * ia) / 255;
+        const unsigned b = (sb * a + db * ia) / 255;
+        dst = (r << 16) | (g << 8) | b;
+    }
+
     // Fold one input codepoint onto a glyph the face actually has.
     unsigned map_cp(const char *&s) const {
         unsigned cp = fontutil::next_cp(s);
