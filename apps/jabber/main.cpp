@@ -462,6 +462,16 @@ Color xep0392_color(const std::string &id, Color bg) {
     return {ch(r1), ch(g1), ch(b1)};
 }
 
+// XEP-0245 — "/me waves" renders as an action line: "* waves".
+bool chat_is_action(const jabber::ChatLine &ln) {
+    return !ln.system && ln.body.rfind("/me ", 0) == 0;
+}
+
+std::string chat_body_text(const jabber::ChatLine &ln) {
+    if (chat_is_action(ln)) return "*" + ln.body.substr(3);
+    return ln.body;
+}
+
 std::string format_hhmm(time_t when) {
     if (!when) return {};
     std::tm local{};
@@ -491,7 +501,8 @@ int chat_block_height(Canvas &cv, const jabber::ChatLine &ln, bool show_header,
     }
     int h = 0;
     if (show_header) h += lh + 2; // nick + time row
-    h += text_content_height(layout_lines(cv, ln.body, body_wrap, true), lh);
+    h += text_content_height(layout_lines(cv, chat_body_text(ln), body_wrap, true),
+                             lh);
     h += reaction_row_height(ln, lh);
     if (ln.mine && ln.delivered) h += lh; // "Delivered" meta line
     if (show_header) h = std::max(h, kMsgAvatar);
@@ -1387,7 +1398,7 @@ std::string format_chat_line(const jabber::ChatLine &ln, bool muc) {
     if (ln.system) return ln.body;
     std::string who = chat_display_name(ln, muc);
     if (ln.omemo) who += " *";
-    std::string text = who + "\n" + ln.body;
+    std::string text = who + "\n" + chat_body_text(ln);
     if (ln.mine && ln.delivered) text += "\nDelivered";
     return text;
 }
@@ -2545,12 +2556,14 @@ void paint() {
                 Color ink =
                     ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
                 if (ln.file) ink = g.ap.c("menu.hilite_label");
+                if (chat_is_action(ln)) ink = nick_col;
                 if (li == g.chat_sel) ink = g.ap.c("list.hilite_foreground");
-                auto vlines = layout_lines(cv, ln.body, bw, true);
+                std::string btext = chat_body_text(ln);
+                auto vlines = layout_lines(cv, btext, bw, true);
                 for (const auto &vl : vlines) {
                     if (row_y + lh > body.y && row_y < body.bottom())
                         cv.text(text_x, row_y,
-                                ln.body.substr(vl.start, vl.len).c_str(), ink);
+                                btext.substr(vl.start, vl.len).c_str(), ink);
                     row_y += lh;
                 }
                 if (!ln.reactions.empty()) {

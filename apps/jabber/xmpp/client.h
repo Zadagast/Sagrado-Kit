@@ -630,6 +630,44 @@ public:
         captcha_ready_cv_.notify_all();
     }
 
+    // XEP-0030/0115 — identity + features we implement and advertise.
+    static const std::vector<std::string> &client_disco_features() {
+        static const std::vector<std::string> fs = [] {
+            std::vector<std::string> v = {
+                "http://jabber.org/protocol/caps",
+                "http://jabber.org/protocol/chatstates",
+                "http://jabber.org/protocol/disco#info",
+                "http://jabber.org/protocol/muc",
+                "jabber:x:conference",
+                "jabber:x:oob",
+                "urn:xmpp:ping",
+                "urn:xmpp:reactions:0",
+                "urn:xmpp:receipts",
+                "vcard-temp",
+                "vcard-temp:x:update",
+                std::string(omemo::NS_DEVICELIST) + "+notify",
+                "urn:xmpp:bookmarks:1+notify",
+            };
+            std::sort(v.begin(), v.end());
+            return v;
+        }();
+        return fs;
+    }
+
+    // XEP-0115 ver hash: base64(sha1(identity < features <)).
+    static const std::string &caps_ver() {
+        static const std::string ver = [] {
+            std::string s = "client/pc//Sagrado Jabber<";
+            for (const auto &f : client_disco_features()) s += f + "<";
+            unsigned char dig[20];
+            if (!sha1_digest(reinterpret_cast<const uint8_t *>(s.data()), s.size(),
+                             dig))
+                return std::string();
+            return b64(std::string(reinterpret_cast<const char *>(dig), 20));
+        }();
+        return ver;
+    }
+
     void send_chat_state(const std::string &to, const char *state) {
         if (!to.empty() && state && *state)
             queue_send("<message to='" + xml_escape(to) +
@@ -690,7 +728,8 @@ public:
         return mam_inflight_.count(with) != 0;
     }
 
-    void send_message(const std::string &to, const std::string &body) {
+    void send_message(const std::string &to, const std::string &body,
+                      const std::string &oob_url = {}) {
         std::string mid = "m" + std::to_string(msg_seq_++);
         std::string peer = bare_jid(to);
         std::string enc_xml, enc_err;
@@ -710,10 +749,14 @@ public:
         } else {
             if (omemo_.ready()) ensure_omemo_peer(peer);
             stanza = "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
-                     "'><body>" + xml_escape(body) +
-                     "</body><request xmlns='urn:xmpp:receipts'/>"
-                     "<active xmlns='http://jabber.org/protocol/chatstates'/>"
-                     "</message>";
+                     "'><body>" + xml_escape(body) + "</body>";
+            // XEP-0066 — mark HTTP uploads as attachments, not text URLs.
+            if (!oob_url.empty())
+                stanza += "<x xmlns='jabber:x:oob'><url>" + xml_escape(oob_url) +
+                          "</url></x>";
+            stanza += "<request xmlns='urn:xmpp:receipts'/>"
+                      "<active xmlns='http://jabber.org/protocol/chatstates'/>"
+                      "</message>";
         }
         {
             std::lock_guard<std::mutex> lock(mu);
@@ -843,13 +886,13 @@ public:
         std::string room = bare_jid(room_in);
         std::string buddy = bare_jid(buddy_in);
         if (room.empty() || buddy.empty()) return;
-        std::string inv =
-            "<message to='" + xml_escape(room) + "'>"
-            "<x xmlns='http://jabber.org/protocol/muc#user'>"
-            "<invite to='" + xml_escape(buddy) + "'>";
-        if (!reason.empty())
-            inv += "<reason>" + xml_escape(reason) + "</reason>";
-        inv += "</invite></x></message>";
+        // XEP-0249 direct invitation (reaches offline buddies via offline
+        // storage; understood by Conversations/Gajim/Dino).
+        std::string inv = "<message to='" + xml_escape(buddy) +
+                          "'><x xmlns='jabber:x:conference' jid='" +
+                          xml_escape(room) + "'";
+        if (!reason.empty()) inv += " reason='" + xml_escape(reason) + "'";
+        inv += "/></message>";
         queue_send(inv);
         emit(make_event(ClientEvent::StatusText,
                         "Invited " + jid_node(buddy) + " to " + jid_node(room)));
@@ -1283,10 +1326,10 @@ private:
             else
                 stanza += "<photo/>";
             stanza += "</x>";
-            // Advertise OMEMO 0.3 (axolotl) for Conversations/Gajim discovery.
+            // XEP-0115 entity caps — peers disco us once per ver hash.
             stanza += "<c xmlns='http://jabber.org/protocol/caps' "
                       "hash='sha-1' node='https://github.com/Zadagast/Sagrado-Kit' "
-                      "ver='omemo-axolotl'/>";
+                      "ver='" + caps_ver() + "'/>";
             stanza += "</presence>";
         }
         queue_send(stanza);
@@ -1919,6 +1962,8 @@ private:
             ln.from = who;
             ln.body = body;
             ln.mine = mine;
+            // XEP-0066 — OOB-tagged messages are file attachments.
+            ln.file = st.find("jabber:x:oob") != std::string::npos;
             ln.omemo = omemo_line;
             ln.id = mid;
             ln.react_id = react_id;
@@ -1944,6 +1989,36 @@ private:
 
     // Mediated MUC invite (XEP-0045 muc#user) — queue for Accept/Decline UI.
     bool try_queue_muc_invite(const std::string &st) {
+        // XEP-0249 direct invitation: message from inviter, x jid = room.
+        size_t dp = st.find("jabber:x:conference");
+        if (dp != std::string::npos) {
+            size_t open = st.rfind('<', dp);
+            size_t close = st.find('>', dp);
+            if (open != std::string::npos && close != std::string::npos) {
+                std::string tag = st.substr(open, close - open + 1);
+                std::string room = bare_jid(attr(tag, "jid"));
+                std::string inviter = bare_jid(attr(st, "from"));
+                std::string reason = xml_unescape(attr(tag, "reason"));
+                if (!room.empty() && !inviter.empty()) {
+                    MucInvite iv{room, inviter, reason};
+                    bool queued = false;
+                    {
+                        std::lock_guard<std::mutex> lock(mu);
+                        bool have = muc_joined.count(room) != 0;
+                        for (const auto &e : pending_muc_invites)
+                            if (jid_ieq(e.room, room)) have = true;
+                        if (!have) {
+                            pending_muc_invites.push_back(iv);
+                            queued = true;
+                        }
+                    }
+                    if (queued)
+                        emit(make_event(ClientEvent::MucInviteAsk,
+                                        iv.from, iv.room));
+                    return true;
+                }
+            }
+        }
         if (st.find("muc#user") == std::string::npos ||
             st.find("<invite") == std::string::npos)
             return false;
@@ -2157,6 +2232,40 @@ private:
         if (st.find("<iq") == 0) {
             std::string iq_id = attr(st, "id");
             std::string iq_type = attr(st, "type");
+            if (iq_type == "get") {
+                std::string req_from = attr(st, "from");
+                std::string reply_to;
+                if (!req_from.empty())
+                    reply_to = " to='" + xml_escape(req_from) + "'";
+                // XEP-0030 — answer disco#info with our identity + features.
+                if (st.find("disco#info") != std::string::npos) {
+                    std::string node;
+                    size_t qp = st.find("<query");
+                    if (qp != std::string::npos) {
+                        size_t qe = st.find('>', qp);
+                        if (qe != std::string::npos)
+                            node = attr(st.substr(qp, qe - qp + 1), "node");
+                    }
+                    std::string res =
+                        "<iq type='result' id='" + xml_escape(iq_id) + "'" +
+                        reply_to +
+                        "><query xmlns='http://jabber.org/protocol/disco#info'";
+                    if (!node.empty()) res += " node='" + xml_escape(node) + "'";
+                    res += "><identity category='client' type='pc' "
+                           "name='Sagrado Jabber'/>";
+                    for (const auto &f : client_disco_features())
+                        res += "<feature var='" + xml_escape(f) + "'/>";
+                    res += "</query></iq>";
+                    queue_send(res);
+                    return;
+                }
+                // XEP-0199 — pong.
+                if (st.find("urn:xmpp:ping") != std::string::npos) {
+                    queue_send("<iq type='result' id='" + xml_escape(iq_id) +
+                               "'" + reply_to + "/>");
+                    return;
+                }
+            }
             if (iq_id.rfind("vcset", 0) == 0) {
                 if (iq_type == "result") {
                     emit(make_event(ClientEvent::StatusText, "Picture updated"));
@@ -2528,7 +2637,7 @@ private:
         }
         emit(make_event(ClientEvent::FileProgress, "Uploaded", {}, 100));
         std::string body = get;
-        send_message(pending_upload_to_, body);
+        send_message(pending_upload_to_, body, get);
         {
             std::lock_guard<std::mutex> lock(mu);
             auto &lines = chats[bare_jid(pending_upload_to_)];
