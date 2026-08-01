@@ -85,6 +85,7 @@ static const char *kBuddyItems[] = {
 static const char *kChatItems[] = {
     "Send File...",
     "React...",
+    "Retract Message",
     "Browse Chat Rooms...",
     "Join Chat Room...",
     "-",
@@ -105,7 +106,7 @@ struct MenuDef {
 };
 // Appearance is rebuilt from bundled skins (see rebuild_appearance_menu).
 static MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 10}, {kChatItems, 10},
+    {kFileItems, 5}, {kBuddyItems, 10}, {kChatItems, 11},
     {nullptr, 0}, {kHelpItems, 1},
 };
 
@@ -292,6 +293,7 @@ struct App {
 App g;
 
 bool pick_react_target(std::string *react_id_out);
+void retract_selected_message();
 void open_react_dialog();
 void open_compose_emoji();
 void pick_and_send_file();
@@ -597,6 +599,14 @@ void paint_styled_text(Canvas &cv, int x, int y, const std::string &body,
 }
 
 std::string chat_body_text(const jabber::ChatLine &ln) {
+    // XEP-0424/0425 — a retracted message keeps its slot, never its content.
+    if (ln.retracted) {
+        std::string b = ln.retracted_by.empty()
+                            ? std::string("[message retracted]")
+                            : "[message retracted by " + ln.retracted_by + "]";
+        if (!ln.retract_reason.empty()) b += " — " + ln.retract_reason;
+        return b;
+    }
     std::string b = chat_is_action(ln) ? "*" + ln.body.substr(3) : ln.body;
     if (ln.edited) b += " (edited)";
     return b;
@@ -1875,6 +1885,8 @@ void run_ctx_menu(int row) {
     } else if (std::strcmp(lab, "React…") == 0 ||
                std::strcmp(lab, "React...") == 0) {
         open_react_dialog();
+    } else if (std::strcmp(lab, "Retract") == 0) {
+        retract_selected_message();
     }
 }
 
@@ -1885,6 +1897,63 @@ void open_compose_ctx(int x, int y) {
     };
     g.ctx_kind = CtxCompose;
     context_menu_open(g.ctx, x, y, items, 2);
+}
+
+// XEP-0424 for our own messages; XEP-0425 when a moderator retracts somebody
+// else's room message. Falls back to our last message when nothing is selected.
+void retract_selected_message() {
+    if (g.active_tab < 0 || g.active_tab >= (int)g.tabs.size()) {
+        set_status("Open a chat first");
+        return;
+    }
+    std::string key = g.tabs[g.active_tab].jid;
+    bool muc = g.tabs[g.active_tab].muc;
+    std::string target;
+    bool mine = false;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        const auto &lines = g.client.chats[key];
+        int idx = g.chat_sel;
+        if (idx < 0 || idx >= (int)lines.size()) {
+            for (int i = (int)lines.size() - 1; i >= 0; --i) {
+                if (lines[i].mine && !lines[i].system && !lines[i].retracted) {
+                    idx = i;
+                    break;
+                }
+            }
+        }
+        if (idx < 0 || idx >= (int)lines.size()) return;
+        const jabber::ChatLine &ln = lines[idx];
+        if (ln.system || ln.retracted) return;
+        target = ln.react_id.empty() ? ln.id : ln.react_id;
+        mine = ln.mine;
+    }
+    if (target.empty()) {
+        set_status("That message can't be retracted");
+        return;
+    }
+    if (mine) {
+        g.client.send_retract(key, target, muc);
+        set_status("Retracted");
+    } else if (muc) {
+        g.client.moderate_retract(key, target);
+        set_status("Asked the room to retract that message");
+    } else {
+        set_status("Only your own messages can be retracted");
+    }
+    redraw();
+}
+
+bool can_retract_selected() {
+    if (g.active_tab < 0 || g.active_tab >= (int)g.tabs.size()) return false;
+    if (g.chat_sel < 0) return false;
+    std::lock_guard<std::mutex> lock(g.client.mu);
+    const auto &lines = g.client.chats[g.tabs[g.active_tab].jid];
+    if (g.chat_sel >= (int)lines.size()) return false;
+    const jabber::ChatLine &ln = lines[g.chat_sel];
+    if (ln.system || ln.retracted) return false;
+    if (ln.react_id.empty() && ln.id.empty()) return false;
+    return ln.mine || g.tabs[g.active_tab].muc;
 }
 
 void open_transcript_ctx(int x, int y) {
@@ -1901,9 +1970,10 @@ void open_transcript_ctx(int x, int y) {
         {"Copy", g.chat_sel >= 0, false},
         {"Paste", true, false},
         {"React…", can_react && g.emoji_pack_ok, false},
+        {"Retract", can_retract_selected(), false},
     };
     g.ctx_kind = CtxTranscript;
-    context_menu_open(g.ctx, x, y, items, 3);
+    context_menu_open(g.ctx, x, y, items, 4);
 }
 
 const char *show_label(jabber::Show s) {
@@ -3263,18 +3333,20 @@ void run_menu(int menu, int row) {
         } else if (row == 1) {
             open_react_dialog();
         } else if (row == 2) {
+            retract_selected_message();
+        } else if (row == 3) {
             if (g.client.state != jabber::ConnState::Online) {
                 set_status("Sign on first");
             } else {
                 open_browse_muc();
             }
-        } else if (row == 3) {
+        } else if (row == 4) {
             g.dialog = DlgJoinMuc;
             g.focus_field = 0;
             g.field_room_pass.clear();
             if (g.field_nick.empty() && !g.client.jid.empty())
                 g.field_nick = jabber::jid_node(g.client.jid);
-        } else if (row == 5) {
+        } else if (row == 6) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Open a chat room first");
             } else {
@@ -3287,7 +3359,7 @@ void run_menu(int menu, int row) {
                     if (it != g.client.muc_subjects.end()) g.field_topic = it->second;
                 }
             }
-        } else if (row == 6) {
+        } else if (row == 7) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Open a chat room first");
             } else {
@@ -3296,7 +3368,7 @@ void run_menu(int menu, int row) {
                 g.field_invite = selected_buddy_jid();
                 g.field_invite_reason.clear();
             }
-        } else if (row == 7) {
+        } else if (row == 8) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Leave Room is for chat rooms");
             } else {
@@ -3305,7 +3377,7 @@ void run_menu(int menu, int row) {
                 close_tab_jid(room);
                 set_status("Left " + jabber::jid_node(room));
             }
-        } else if (row == 8) {
+        } else if (row == 9) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Bookmark a chat room tab");
             } else {
@@ -3320,7 +3392,7 @@ void run_menu(int menu, int row) {
                 g.client.bookmark_muc(room, jabber::jid_node(room), nick, aj);
                 set_status("Bookmarked " + jabber::jid_node(room));
             }
-        } else if (row == 9) {
+        } else if (row == 10) {
             if (!tab_is_muc(g.active_tab)) {
                 set_status("Autojoin is for chat rooms");
             } else {

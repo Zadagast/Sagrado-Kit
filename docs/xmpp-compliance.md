@@ -55,7 +55,7 @@ Remaining ❌ entries below are non-required "of note" specs.
 | XEP-0392 Consistent Color Generation | ✅ SHA-1 hue algorithm |
 | XEP-0393 Message Styling | ✅ *bold* _italic_ ~strike~ `mono` spans in transcript |
 | XEP-0433 Extended Channel Search | ❌ (disco#items browse only) |
-| XEP-0424 Message Retraction / XEP-0425 Moderation | ❌ |
+| XEP-0424 Message Retraction / XEP-0425 Moderation | ✅ send + receive (Chat → Retract Message, transcript right-click); tombstones in MAM; moderator retraction in MUC |
 
 ## Already beyond the suite
 
@@ -73,3 +73,6 @@ XEP-0444 Reactions, OMEMO (axolotl) 1:1, XEP-0158 CAPTCHA forms.
 3. **Wave C — advanced, big (✅ done):** XEP-0198 stream management (acks + resume);
    MUC MAM; XEP-0234 + XEP-0261 Jingle file transfer (IBB transport);
    XEP-0368 direct TLS.
+4. **Wave D — of-note specs:** XEP-0424 retraction + XEP-0425 moderation
+   (✅ done); XEP-0385 stateless inline media sharing and XEP-0433 extended
+   channel search remain.

@@ -65,6 +65,9 @@ struct ChatLine {
     std::string id;      // message @id (XEP-0184)
     bool delivered = false;
     bool edited = false; // XEP-0308 — body replaced by a correction
+    bool retracted = false;    // XEP-0424 — body withdrawn by its author
+    std::string retracted_by;  // XEP-0425 — moderator nick, when moderated
+    std::string retract_reason;
     std::string react_id; // XEP-0444 target: 1:1 @id, MUC stanza-id
     std::vector<ReactionMark> reactions;
     time_t when = 0; // wall clock; 0 = unknown (omit in UI)
@@ -651,6 +654,7 @@ public:
                 "urn:xmpp:jingle:apps:file-transfer:5",
                 "urn:xmpp:jingle:transports:ibb:1",
                 "urn:xmpp:message-correct:0",
+                "urn:xmpp:message-retract:1",
                 "urn:xmpp:ping",
                 "urn:xmpp:reactions:0",
                 "urn:xmpp:receipts",
@@ -885,6 +889,45 @@ public:
         stanza += "</reactions><store xmlns='urn:xmpp:hints'/></message>";
         queue_send(stanza);
         emit(make_event(ClientEvent::Reaction, react_id, to));
+    }
+
+    // XEP-0424 — withdraw one of our own messages. `target` is the 1:1 message
+    // @id, or the room's XEP-0359 stanza-id in a MUC.
+    void send_retract(const std::string &to_in, const std::string &target,
+                      bool muc) {
+        std::string to = bare_jid(to_in);
+        if (to.empty() || target.empty()) return;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            retract_line_locked(to, target, {}, {});
+        }
+        std::string mid = "rt" + std::to_string(msg_seq_++);
+        queue_send(
+            "<message to='" + xml_escape(to) + "' type='" +
+            (muc ? "groupchat" : "chat") + "' id='" + mid + "'><retract id='" +
+            xml_escape(target) +
+            "' xmlns='urn:xmpp:message-retract:1'/>"
+            "<fallback xmlns='urn:xmpp:fallback:0' "
+            "for='urn:xmpp:message-retract:1'/>"
+            "<body>This person attempted to retract a previous message, but "
+            "it's unsupported by your client.</body>"
+            "<store xmlns='urn:xmpp:hints'/></message>");
+        emit(make_event(ClientEvent::Message, std::string(), to));
+    }
+
+    // XEP-0425 — as a room moderator, ask the service to retract somebody
+    // else's message. Addressed by the stanza-id the room stamped on it.
+    void moderate_retract(const std::string &room_in, const std::string &stanza_id,
+                          const std::string &reason = {}) {
+        std::string room = bare_jid(room_in);
+        if (room.empty() || stanza_id.empty()) return;
+        std::string s = "<iq type='set' to='" + xml_escape(room) + "' id='mod" +
+                        std::to_string(iq_seq_++) + "'><moderate id='" +
+                        xml_escape(stanza_id) +
+                        "' xmlns='urn:xmpp:message-moderate:1'>"
+                        "<retract xmlns='urn:xmpp:message-retract:1'/>";
+        if (!reason.empty()) s += "<reason>" + xml_escape(reason) + "</reason>";
+        queue_send(s + "</moderate></iq>");
     }
 
     void join_muc(const std::string &room_in, const std::string &nick_in,
@@ -1768,7 +1811,16 @@ private:
                 omemo_line = true;
             }
         }
-        if (body.empty()) return false;
+        // XEP-0424 §4 tombstone: the archive kept the message but dropped its
+        // content. Keep the slot so scrollback stays in order.
+        bool tombstone = false;
+        std::string tomb = extract_open_tag(st, "retracted");
+        if (!tomb.empty() &&
+            tomb.find("urn:xmpp:message-retract:1") != std::string::npos) {
+            tombstone = true;
+            body.clear();
+        }
+        if (body.empty() && !tombstone) return false;
 
         bool mine = sent_carbon;
         std::string key;
@@ -1801,6 +1853,7 @@ private:
         ln.body = body;
         ln.mine = mine;
         ln.omemo = omemo_line;
+        ln.retracted = tombstone;
         ln.id = mid;
         ln.react_id = react_id;
         ln.when = delay_stamp_from_stanza(st);
@@ -1938,6 +1991,95 @@ private:
         refresh_line_reactions_locked(chat, react_id);
     }
 
+    // Withdraw one line's content in place. Caller holds mu. `author` empty =
+    // our own retraction (matches only our lines).
+    bool retract_line_locked(const std::string &chat, const std::string &target,
+                             const std::string &author, const std::string &by,
+                             const std::string &reason = {}) {
+        if (chat.empty() || target.empty()) return false;
+        auto cit = chats.find(chat);
+        if (cit == chats.end()) return false;
+        for (auto it = cit->second.rbegin(); it != cit->second.rend(); ++it) {
+            if (it->system) continue;
+            if (it->id != target && it->react_id != target) continue;
+            // Only the author may retract their own message; a moderator
+            // (`by` set) may retract anyone's.
+            if (by.empty()) {
+                if (author.empty()) {
+                    if (!it->mine) return false;
+                } else {
+                    bool same = it->from == author ||
+                                jid_ieq(bare_jid(it->from), bare_jid(author));
+                    if (!same && it->mine) {
+                        // Our own line, retracted from one of our other
+                        // clients: the author reads back as our room nick or
+                        // our bare JID.
+                        auto nit = muc_nicks.find(chat);
+                        same = (nit != muc_nicks.end() &&
+                                jid_ieq(nit->second, author)) ||
+                               jid_ieq(bare_jid(jid), bare_jid(author));
+                    }
+                    if (!same) return false;
+                }
+            }
+            it->body.clear();
+            it->retracted = true;
+            it->edited = false;
+            it->file = false;
+            it->reactions.clear();
+            it->retracted_by = by;
+            it->retract_reason = reason;
+            auto rit = reaction_sets.find(chat);
+            if (rit != reaction_sets.end()) rit->second.erase(target);
+            return true;
+        }
+        return false;
+    }
+
+    // XEP-0424 / XEP-0425 inbound. Returns true when the stanza was a
+    // retraction — its fallback body must never be shown as a message.
+    bool try_apply_retraction(const std::string &st, bool carbon_sent) {
+        if (st.find("urn:xmpp:message-retract:1") == std::string::npos) return false;
+        std::string tag = extract_open_tag(st, "retract");
+        if (tag.empty() ||
+            tag.find("urn:xmpp:message-retract:1") == std::string::npos)
+            return false;
+        std::string target = attr(tag, "id");
+        if (target.empty()) return false;
+
+        std::string from = attr(st, "from");
+        std::string type = attr(st, "type");
+        bool is_muc = (type == "groupchat");
+        std::string key = carbon_sent ? bare_jid(attr(st, "to")) : bare_jid(from);
+        if (key.empty()) key = bare_jid(from);
+        if (!is_muc) {
+            std::lock_guard<std::mutex> lock(mu);
+            is_muc = muc_joined.count(key) != 0;
+        }
+
+        std::string by, reason;
+        if (st.find("urn:xmpp:message-moderate:1") != std::string::npos) {
+            // XEP-0425 §5: only the room service may moderate; a claim from an
+            // occupant or a 1:1 peer is spoofed.
+            if (!is_muc || !jid_resource(from).empty()) return true;
+            std::string mtag = extract_open_tag(st, "moderated");
+            by = jid_resource(attr(mtag, "by"));
+            if (by.empty()) by = attr(mtag, "by");
+            if (by.empty()) by = key;
+            std::string r;
+            if (extract_tag(st, "reason", &r)) reason = xml_unescape(r);
+        }
+
+        std::string author =
+            carbon_sent ? std::string() : (is_muc ? jid_resource(from) : bare_jid(from));
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            retract_line_locked(key, target, author, by, reason);
+        }
+        emit(make_event(ClientEvent::Message, std::string(), key));
+        return true;
+    }
+
     // XEP-0444 inbound / carbon / archive. Returns true if stanza was reactions-only.
     bool try_apply_reactions(const std::string &st, bool carbon_sent) {
         if (st.find("urn:xmpp:reactions:0") == std::string::npos) return false;
@@ -2020,6 +2162,9 @@ private:
                 }
             }
         }
+
+        // XEP-0424/0425 retraction (the body is only a fallback).
+        if (try_apply_retraction(st, carbon_sent)) return;
 
         // XEP-0444 reactions (often body-less).
         if (try_apply_reactions(st, carbon_sent)) return;
@@ -2474,6 +2619,7 @@ private:
                 std::string inner = extract_forwarded_message(st);
                 if (inner.empty()) return;
                 bool sent = jid_ieq(bare_jid(attr(inner, "from")), bare_jid(jid));
+                if (try_apply_retraction(inner, sent)) return;
                 if (try_apply_reactions(inner, sent)) return;
                 std::string key;
                 ChatLine ln;
