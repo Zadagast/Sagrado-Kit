@@ -261,6 +261,8 @@ struct App {
     ContextMenuState ctx{};
     int ctx_kind = CtxNone;
     std::string status_msg; // own presence <status> draft (identity field)
+    std::string correct_id; // XEP-0308 — id of own message being edited
+    std::string correct_jid; // chat the edit belongs to
     bool status_field_focus = false;
     bool presence_menu = false; // popup anchored to identity strip
 
@@ -468,8 +470,9 @@ bool chat_is_action(const jabber::ChatLine &ln) {
 }
 
 std::string chat_body_text(const jabber::ChatLine &ln) {
-    if (chat_is_action(ln)) return "*" + ln.body.substr(3);
-    return ln.body;
+    std::string b = chat_is_action(ln) ? "*" + ln.body.substr(3) : ln.body;
+    if (ln.edited) b += " (edited)";
+    return b;
 }
 
 std::string format_hhmm(time_t when) {
@@ -1383,9 +1386,42 @@ void send_compose() {
         g.client.send_muc_message(tab.jid, body);
     else {
         stop_typing_indicator();
-        g.client.send_message(tab.jid, body);
+        // XEP-0308 — an Up-arrow edit replaces the targeted message.
+        if (!g.correct_id.empty() && g.correct_jid == tab.jid)
+            g.client.send_message(tab.jid, body, {}, g.correct_id);
+        else
+            g.client.send_message(tab.jid, body);
     }
+    g.correct_id.clear();
+    g.correct_jid.clear();
     clear_compose();
+}
+
+// XEP-0308 — Up in an empty compose loads your last message for editing.
+bool begin_edit_last_message() {
+    if (g.active_tab < 0 || !g.compose.doc.text.empty()) return false;
+    auto &tab = g.tabs[g.active_tab];
+    if (tab.muc) return false;
+    std::string body, id;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        auto it = g.client.chats.find(tab.jid);
+        if (it == g.client.chats.end()) return false;
+        for (auto ln = it->second.rbegin(); ln != it->second.rend(); ++ln) {
+            if (ln->mine && !ln->system && !ln->id.empty() && !ln->file) {
+                body = ln->body;
+                id = ln->id;
+                break;
+            }
+        }
+    }
+    if (id.empty()) return false;
+    g.correct_id = id;
+    g.correct_jid = tab.jid;
+    g.compose.doc.text = body;
+    g.compose.doc.caret = g.compose.doc.anchor = body.size();
+    set_status("Editing last message — Enter to save");
+    return true;
 }
 
 void close_ctx_menu() {
@@ -3769,6 +3805,18 @@ void handle_keydown(WPARAM wp) {
     g.compose.focused = true;
     if (wp == VK_RETURN && !shift) {
         send_compose();
+        redraw();
+        return;
+    }
+    if (wp == VK_UP && begin_edit_last_message()) {
+        redraw();
+        return;
+    }
+    if (wp == VK_ESCAPE && !g.correct_id.empty()) {
+        g.correct_id.clear();
+        g.correct_jid.clear();
+        clear_compose();
+        set_status("Edit cancelled");
         redraw();
         return;
     }

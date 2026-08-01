@@ -63,6 +63,7 @@ struct ChatLine {
     bool omemo = false;  // decrypted / sent via OMEMO 0.3
     std::string id;      // message @id (XEP-0184)
     bool delivered = false;
+    bool edited = false; // XEP-0308 — body replaced by a correction
     std::string react_id; // XEP-0444 target: 1:1 @id, MUC stanza-id
     std::vector<ReactionMark> reactions;
     time_t when = 0; // wall clock; 0 = unknown (omit in UI)
@@ -640,6 +641,7 @@ public:
                 "http://jabber.org/protocol/muc",
                 "jabber:x:conference",
                 "jabber:x:oob",
+                "urn:xmpp:message-correct:0",
                 "urn:xmpp:ping",
                 "urn:xmpp:reactions:0",
                 "urn:xmpp:receipts",
@@ -729,9 +731,15 @@ public:
     }
 
     void send_message(const std::string &to, const std::string &body,
-                      const std::string &oob_url = {}) {
+                      const std::string &oob_url = {},
+                      const std::string &replace_id = {}) {
         std::string mid = "m" + std::to_string(msg_seq_++);
         std::string peer = bare_jid(to);
+        // XEP-0308 — correct a previously sent message.
+        std::string replace_xml;
+        if (!replace_id.empty())
+            replace_xml = "<replace id='" + xml_escape(replace_id) +
+                          "' xmlns='urn:xmpp:message-correct:0'/>";
         std::string enc_xml, enc_err;
         bool use_omemo =
             omemo_.ready() && omemo_.encrypt_message(peer, body, &enc_xml, &enc_err);
@@ -741,7 +749,7 @@ public:
             stanza = "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
                      "'><body>I sent you an OMEMO encrypted message but your client "
                      "doesn't seem to support that.</body>" +
-                     enc_xml +
+                     enc_xml + replace_xml +
                      "<request xmlns='urn:xmpp:receipts'/>"
                      "<active xmlns='http://jabber.org/protocol/chatstates'/>"
                      "<store xmlns='urn:xmpp:hints'/>"
@@ -754,21 +762,39 @@ public:
             if (!oob_url.empty())
                 stanza += "<x xmlns='jabber:x:oob'><url>" + xml_escape(oob_url) +
                           "</url></x>";
-            stanza += "<request xmlns='urn:xmpp:receipts'/>"
+            stanza += replace_xml +
+                      "<request xmlns='urn:xmpp:receipts'/>"
                       "<active xmlns='http://jabber.org/protocol/chatstates'/>"
                       "</message>";
         }
         {
             std::lock_guard<std::mutex> lock(mu);
-            ChatLine ln;
-            ln.from = jid;
-            ln.body = body;
-            ln.mine = true;
-            ln.omemo = use_omemo;
-            ln.id = mid;
-            ln.react_id = mid;
-            ln.when = std::time(nullptr);
-            chats[bare_jid(to)].push_back(std::move(ln));
+            auto &lines = chats[bare_jid(to)];
+            bool corrected = false;
+            if (!replace_id.empty()) {
+                for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+                    if (it->mine && it->id == replace_id) {
+                        it->body = body;
+                        it->edited = true;
+                        it->id = mid;
+                        it->react_id = mid;
+                        it->omemo = use_omemo;
+                        corrected = true;
+                        break;
+                    }
+                }
+            }
+            if (!corrected) {
+                ChatLine ln;
+                ln.from = jid;
+                ln.body = body;
+                ln.mine = true;
+                ln.omemo = use_omemo;
+                ln.id = mid;
+                ln.react_id = mid;
+                ln.when = std::time(nullptr);
+                lines.push_back(std::move(ln));
+            }
         }
         queue_send(stanza);
     }
@@ -1933,6 +1959,40 @@ private:
         std::string who =
             is_muc ? (mine ? jid_node(jid) : jid_resource(from)) : (mine ? jid : from);
         if (who.empty()) who = from;
+        // XEP-0308 — apply an inbound correction to the targeted line.
+        std::string replace_id;
+        {
+            size_t rp2 = st.find("urn:xmpp:message-correct:0");
+            if (rp2 != std::string::npos) {
+                size_t open = st.rfind('<', rp2);
+                size_t close = st.find('>', rp2);
+                if (open != std::string::npos && close != std::string::npos)
+                    replace_id = attr(st.substr(open, close - open + 1), "id");
+            }
+        }
+        if (!replace_id.empty()) {
+            bool applied = false;
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                auto &lines = chats[key];
+                for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+                    if (it->id == replace_id && it->mine == mine &&
+                        (!is_muc || it->from == who)) {
+                        it->body = body;
+                        it->edited = true;
+                        it->id = mid;
+                        it->omemo = omemo_line;
+                        applied = true;
+                        break;
+                    }
+                }
+            }
+            if (applied) {
+                if (!from_archive)
+                    emit(make_event(ClientEvent::Message, body, key));
+                return;
+            }
+        }
         // XEP-0444: MUC reactions target stanza-id; 1:1 uses message @id.
         std::string react_id = is_muc ? stanza_id_by(st, key) : mid;
         if (react_id.empty() && !is_muc) react_id = mid;
