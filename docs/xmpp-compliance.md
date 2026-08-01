@@ -40,7 +40,7 @@ This is the living checklist; tick items as they land on main.
 | Chat States (Advanced) | XEP-0085 | ✅ typing |
 | Message Correction (Advanced) | XEP-0308 | ✅ ↑ edits last 1:1 message; inbound replace + "(edited)" |
 | File Upload | XEP-0363 HTTP Upload | ✅ |
-| Direct File Transfer (Advanced) | XEP-0234 Jingle FT + XEP-0261 IBB | ❌ |
+| Direct File Transfer (Advanced) | XEP-0234 Jingle FT + XEP-0261 IBB | ✅ receive over IBB (accept, progress, save to downloads); sending stays on HTTP Upload |
 
 ## Specifications of note (non-required, listed by XEP-0479)
 

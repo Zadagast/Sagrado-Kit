@@ -644,8 +644,12 @@ public:
                 "http://jabber.org/protocol/muc",
                 "jabber:x:conference",
                 "jabber:x:oob",
+                "http://jabber.org/protocol/ibb",
                 "urn:xmpp:avatar:metadata+notify",
                 "urn:xmpp:blocking",
+                "urn:xmpp:jingle:1",
+                "urn:xmpp:jingle:apps:file-transfer:5",
+                "urn:xmpp:jingle:transports:ibb:1",
                 "urn:xmpp:message-correct:0",
                 "urn:xmpp:ping",
                 "urn:xmpp:reactions:0",
@@ -1352,6 +1356,15 @@ private:
     std::string pending_photo_mime_;
     omemo::Manager omemo_;
     std::set<std::string> omemo_bundle_inflight_; // "bare#deviceId"
+    // XEP-0234/0261 — inbound Jingle file transfers over IBB, by IBB sid.
+    struct JingleIbbRecv {
+        std::string peer; // full JID of the initiator
+        std::string jsid; // jingle session id
+        std::string name; // offered file name
+        size_t size = 0;
+        std::string data;
+    };
+    std::map<std::string, JingleIbbRecv> ibb_recv_;
     // XEP-0410 — in-flight self-pings: iq id → (room, sent-at).
     std::map<std::string, std::pair<std::string, time_t>> selfping_pending_;
     time_t selfping_last_ = 0;
@@ -2201,6 +2214,154 @@ private:
         emit(make_event(ClientEvent::MucOccupants));
     }
 
+    // XEP-0234 — accept file offers that come with an IBB transport; other
+    // transports are declined (we keep HTTP upload for sending).
+    void handle_jingle_iq(const std::string &st, const std::string &iq_id) {
+        std::string from = attr(st, "from");
+        std::string reply_to = from.empty() ? "" : " to='" + xml_escape(from) + "'";
+        queue_send("<iq type='result' id='" + xml_escape(iq_id) + "'" + reply_to +
+                   "/>");
+        size_t jp = st.find("<jingle");
+        if (jp == std::string::npos) return;
+        size_t jgt = st.find('>', jp);
+        if (jgt == std::string::npos) return;
+        std::string jtag = st.substr(jp, jgt - jp + 1);
+        std::string action = attr(jtag, "action");
+        std::string jsid = attr(jtag, "sid");
+        if (action == "session-terminate") {
+            for (auto it = ibb_recv_.begin(); it != ibb_recv_.end();)
+                it = it->second.jsid == jsid ? ibb_recv_.erase(it) : ++it;
+            return;
+        }
+        if (action != "session-initiate") return;
+        bool has_ibb =
+            st.find("urn:xmpp:jingle:transports:ibb:1") != std::string::npos;
+        std::string content_name, tsid, fname, fsize;
+        size_t cp = st.find("<content");
+        if (cp != std::string::npos) {
+            size_t cgt = st.find('>', cp);
+            if (cgt != std::string::npos)
+                content_name = attr(st.substr(cp, cgt - cp + 1), "name");
+        }
+        size_t tp = st.find("<transport");
+        if (tp != std::string::npos) {
+            size_t tgt = st.find('>', tp);
+            if (tgt != std::string::npos)
+                tsid = attr(st.substr(tp, tgt - tp + 1), "sid");
+        }
+        extract_tag(st, "name", &fname);
+        extract_tag(st, "size", &fsize);
+        if (!has_ibb || tsid.empty()) {
+            // Decline politely — we only speak IBB inbound.
+            queue_send("<iq type='set' id='jt" + std::to_string(iq_seq_++) +
+                       "'" + reply_to +
+                       "><jingle xmlns='urn:xmpp:jingle:1' "
+                       "action='session-terminate' sid='" + xml_escape(jsid) +
+                       "'><reason><unsupported-transports/></reason>"
+                       "</jingle></iq>");
+            return;
+        }
+        JingleIbbRecv rc;
+        rc.peer = from;
+        rc.jsid = jsid;
+        rc.name = xml_unescape(fname);
+        rc.size = (size_t)strtoul(fsize.c_str(), nullptr, 10);
+        ibb_recv_[tsid] = std::move(rc);
+        if (content_name.empty()) content_name = "file";
+        queue_send(
+            "<iq type='set' id='ja" + std::to_string(iq_seq_++) + "'" +
+            reply_to +
+            "><jingle xmlns='urn:xmpp:jingle:1' action='session-accept' sid='" +
+            xml_escape(jsid) + "' responder='" + xml_escape(jid) + "/" +
+            xml_escape(resource) + "'><content creator='initiator' name='" +
+            xml_escape(content_name) +
+            "'><description xmlns='urn:xmpp:jingle:apps:file-transfer:5'>"
+            "<file><name>" + xml_escape(rc_name_or(tsid)) + "</name></file>"
+            "</description>"
+            "<transport xmlns='urn:xmpp:jingle:transports:ibb:1' "
+            "block-size='4096' sid='" + xml_escape(tsid) +
+            "'/></content></jingle></iq>");
+        emit(make_event(ClientEvent::FileProgress,
+                        "Receiving " + ibb_recv_[tsid].name + "…", {}, 5));
+    }
+
+    const std::string &rc_name_or(const std::string &tsid) {
+        static const std::string fallback = "file";
+        auto it = ibb_recv_.find(tsid);
+        return it != ibb_recv_.end() && !it->second.name.empty()
+                   ? it->second.name
+                   : fallback;
+    }
+
+    // XEP-0261 — IBB open/data/close carrying the accepted Jingle file.
+    void handle_ibb_iq(const std::string &st, const std::string &iq_id) {
+        std::string from = attr(st, "from");
+        std::string reply_to = from.empty() ? "" : " to='" + xml_escape(from) + "'";
+        queue_send("<iq type='result' id='" + xml_escape(iq_id) + "'" + reply_to +
+                   "/>");
+        size_t dp = st.find("<data");
+        if (dp != std::string::npos) {
+            size_t dgt = st.find('>', dp);
+            size_t dend = st.find("</data>", dp);
+            if (dgt == std::string::npos || dend == std::string::npos) return;
+            std::string sid = attr(st.substr(dp, dgt - dp + 1), "sid");
+            auto it = ibb_recv_.find(sid);
+            if (it == ibb_recv_.end()) return;
+            std::string b64chunk = st.substr(dgt + 1, dend - dgt - 1);
+            std::string cleaned;
+            cleaned.reserve(b64chunk.size());
+            for (char c : b64chunk)
+                if (c != ' ' && c != '\n' && c != '\r' && c != '\t')
+                    cleaned.push_back(c);
+            std::vector<uint8_t> bytes;
+            if (b64_decode(cleaned, &bytes))
+                it->second.data.append(bytes.begin(), bytes.end());
+            if (it->second.size)
+                emit(make_event(ClientEvent::FileProgress,
+                                "Receiving " + it->second.name + "…", {},
+                                (int)(it->second.data.size() * 100 /
+                                      it->second.size)));
+            return;
+        }
+        size_t clp = st.find("<close");
+        if (clp != std::string::npos) {
+            size_t cgt = st.find('>', clp);
+            if (cgt == std::string::npos) return;
+            std::string sid = attr(st.substr(clp, cgt - clp + 1), "sid");
+            auto it = ibb_recv_.find(sid);
+            if (it == ibb_recv_.end()) return;
+            finish_ibb_file(it->second);
+            ibb_recv_.erase(it);
+        }
+        // <open> — nothing beyond the ack.
+    }
+
+    void finish_ibb_file(const JingleIbbRecv &rc) {
+        std::string name = rc.name.empty() ? "received.bin" : rc.name;
+        for (auto &c : name)
+            if (c == '/' || c == '\\' || c == ':') c = '_';
+        std::string dir = (store_root.empty() ? "." : store_root) + "\\downloads";
+        CreateDirectoryA(dir.c_str(), nullptr);
+        std::string path = dir + "\\" + name;
+        FILE *f = std::fopen(path.c_str(), "wb");
+        if (f) {
+            std::fwrite(rc.data.data(), 1, rc.data.size(), f);
+            std::fclose(f);
+        }
+        std::string key = bare_jid(rc.peer);
+        ChatLine ln;
+        ln.from = rc.peer;
+        ln.body = "Received file: " + path;
+        ln.file = true;
+        ln.when = std::time(nullptr);
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            chats[key].push_back(std::move(ln));
+        }
+        emit(make_event(ClientEvent::FileProgress, "Received " + name, {}, 100));
+        emit(make_event(ClientEvent::Message, path, key));
+    }
+
     // XEP-0191 — blocklist result and <block>/<unblock> pushes.
     void handle_blocking_iq(const std::string &st) {
         std::string iq_type = attr(st, "type");
@@ -2574,6 +2735,18 @@ private:
             // XEP-0191 — blocklist result / server pushes.
             if (st.find("urn:xmpp:blocking") != std::string::npos)
                 handle_blocking_iq(st);
+            // XEP-0234 — Jingle file-transfer offers (IBB transport).
+            if (iq_type == "set" &&
+                st.find("urn:xmpp:jingle:1") != std::string::npos) {
+                handle_jingle_iq(st, iq_id);
+                return;
+            }
+            // XEP-0261/0047 — in-band bytestream chunks.
+            if (iq_type == "set" &&
+                st.find("http://jabber.org/protocol/ibb") != std::string::npos) {
+                handle_ibb_iq(st, iq_id);
+                return;
+            }
             // XEP-0084 — avatar data node result.
             if (iq_id.rfind("av84", 0) == 0 && iq_type == "result") {
                 handle_pep_avatar(st);
