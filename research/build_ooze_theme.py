@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Build format/skins/ooze/ — Ooze-look Sagrado .sap (original art, no Ooze code).
+"""Build Ooze-look Sagrado .sap packs (original art, no Ooze code).
 
-Aluminum pinstripe gel, classic traffic lights, aqua-tinted controls.
+Light: format/skins/ooze/ — aluminum gel, dense pinstripes, traffic lights.
+Dark:  format/skins/ooze-dark/ — graphite gel, same structure.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "format" / "skins" / "ooze"
 
-# ── Palette (Ooze-inspired; authored here, not imported) ───────────────────
+# ── Palette (mutated per light/dark build) ─────────────────────────────────
 ALUM = (0xF0, 0xF0, 0xF0)
 ALUM_DARK = (0xD8, 0xD8, 0xD8)
 ALUM_EDGE = (0xA8, 0xA8, 0xA8)
@@ -24,7 +25,74 @@ ACCENT = (0x28, 0x68, 0xC8)  # Ooze blue
 CLOSE = (0xFF, 0x5F, 0x56)
 MINI = (0xFF, 0xBC, 0x2E)
 ZOOM = (0x27, 0xC9, 0x40)
-PIN_STRIDE = 4
+BTN_TOP = (0xFC, 0xFC, 0xFC)
+BTN_BOT = (0xD0, 0xD0, 0xD0)
+BTN_DIS_TOP = (0xE8, 0xE8, 0xE8)
+BTN_DIS_BOT = (0xC8, 0xC8, 0xC8)
+TRACK = (0xE0, 0xE0, 0xE0)
+TRACK_LIGHT = (0xEC, 0xEC, 0xEC)
+TRACK_DARK = (0xC0, 0xC0, 0xC0)
+DISABLE_LABEL = (0x99, 0x99, 0x99)
+SORT_COL = (0xF6, 0xF6, 0xF6)
+WORK1 = (0xC8, 0xD4, 0xE8)
+WORK2 = (0xA8, 0xBC, 0xD8)
+# Dense Aqua-style pins (every other row) with readable contrast.
+PIN_STRIDE = 2
+PIN_ALPHA = 0.16
+DARK = False
+THEME_NAME = "Ooze"
+THEME_DESC = "Aqua-inspired aluminum gel, dense pinstripes, and traffic lights"
+SAP_FILE = "ooze.sap"
+
+
+def apply_light_palette() -> None:
+    global ALUM, ALUM_DARK, ALUM_EDGE, ALUM_HI, CLIENT, INK, ACCENT
+    global BTN_TOP, BTN_BOT, BTN_DIS_TOP, BTN_DIS_BOT
+    global TRACK, TRACK_LIGHT, TRACK_DARK, DISABLE_LABEL, SORT_COL, WORK1, WORK2
+    global DARK, THEME_NAME, THEME_DESC, SAP_FILE, PIN_ALPHA
+    ALUM = (0xF0, 0xF0, 0xF0)
+    ALUM_DARK = (0xD0, 0xD0, 0xD0)
+    ALUM_EDGE = (0x9A, 0x9A, 0x9A)
+    ALUM_HI = (0xFF, 0xFF, 0xFF)
+    CLIENT = (0xF7, 0xF7, 0xF8)
+    INK = (0x22, 0x22, 0x22)
+    ACCENT = (0x28, 0x68, 0xC8)
+    BTN_TOP, BTN_BOT = (0xFC, 0xFC, 0xFC), (0xD0, 0xD0, 0xD0)
+    BTN_DIS_TOP, BTN_DIS_BOT = (0xE8, 0xE8, 0xE8), (0xC8, 0xC8, 0xC8)
+    TRACK, TRACK_LIGHT, TRACK_DARK = (0xE0, 0xE0, 0xE0), (0xEC, 0xEC, 0xEC), (0xC0, 0xC0, 0xC0)
+    DISABLE_LABEL = (0x99, 0x99, 0x99)
+    SORT_COL = (0xEE, 0xEE, 0xF0)
+    WORK1, WORK2 = (0xC8, 0xD4, 0xE8), (0xA8, 0xBC, 0xD8)
+    DARK = False
+    PIN_ALPHA = 0.18
+    THEME_NAME = "Ooze"
+    THEME_DESC = "Aqua-inspired aluminum gel, dense pinstripes, and traffic lights"
+    SAP_FILE = "ooze.sap"
+
+
+def apply_dark_palette() -> None:
+    global ALUM, ALUM_DARK, ALUM_EDGE, ALUM_HI, CLIENT, INK, ACCENT
+    global BTN_TOP, BTN_BOT, BTN_DIS_TOP, BTN_DIS_BOT
+    global TRACK, TRACK_LIGHT, TRACK_DARK, DISABLE_LABEL, SORT_COL, WORK1, WORK2
+    global DARK, THEME_NAME, THEME_DESC, SAP_FILE, PIN_ALPHA
+    ALUM = (0x3C, 0x3C, 0x42)
+    ALUM_DARK = (0x2E, 0x2E, 0x34)
+    ALUM_EDGE = (0x18, 0x18, 0x1C)
+    ALUM_HI = (0x5A, 0x5A, 0x64)
+    CLIENT = (0x1A, 0x1A, 0x1E)
+    INK = (0xEE, 0xEE, 0xF2)
+    ACCENT = (0x4A, 0x8A, 0xE8)
+    BTN_TOP, BTN_BOT = (0x4A, 0x4A, 0x52), (0x32, 0x32, 0x38)
+    BTN_DIS_TOP, BTN_DIS_BOT = (0x36, 0x36, 0x3C), (0x28, 0x28, 0x2C)
+    TRACK, TRACK_LIGHT, TRACK_DARK = (0x28, 0x28, 0x2C), (0x34, 0x34, 0x3A), (0x14, 0x14, 0x18)
+    DISABLE_LABEL = (0x88, 0x88, 0x90)
+    SORT_COL = (0x24, 0x24, 0x28)
+    WORK1, WORK2 = (0x1A, 0x22, 0x34), (0x12, 0x18, 0x28)
+    DARK = True
+    PIN_ALPHA = 0.22
+    THEME_NAME = "Ooze Dark"
+    THEME_DESC = "Dark graphite gel, dense pinstripes, and traffic lights"
+    SAP_FILE = "ooze-dark.sap"
 
 
 def argb(a: int, r: int, g: int, b: int) -> int:
@@ -124,17 +192,32 @@ def write_png(path: Path, img: Img) -> None:
     )
 
 
-def pinstripe_fill(img: Img, x0: int, y0: int, w: int, h: int, base=ALUM, alpha=0.07) -> None:
-    hi = ALUM_HI
+def pinstripe_fill(
+    img: Img, x0: int, y0: int, w: int, h: int, base=None, alpha=None
+) -> None:
+    """Horizontal pin lines — dense Aqua/brushed-metal read."""
+    if base is None:
+        base = ALUM
+    if alpha is None:
+        alpha = PIN_ALPHA
+    # Light theme: bright pins. Dark theme: lighter graphite sheen.
+    pin = ALUM_HI
     for y in range(y0, y0 + h):
-        row = lerp(base, ALUM_DARK, 0.08) if (y - y0) % 2 else base
+        odd = ((y - y0) % PIN_STRIDE) != 0
+        row = lerp(base, ALUM_DARK, 0.14) if odd else base
         stripe = ((y - y0) % PIN_STRIDE) == 0
         for x in range(x0, x0 + w):
-            c = row
-            if stripe:
-                c = lerp(row, hi, alpha / 0.07 * 0.55 if alpha < 0.07 else 0.55)
-            # slight vertical bevel toward edges of band
+            c = lerp(row, pin, alpha) if stripe else row
             img.set(x, y, rgb(*c))
+
+
+def tile_pinstripe(w: int, h: int, base=None, alpha=None) -> Img:
+    """Tileable pattern plate (1px mid caps) for client / menu bar."""
+    if base is None:
+        base = ALUM
+    img = Img(w, h, caps=(0, 0, 0, 0), pos=(0, 0, 0, 0))
+    pinstripe_fill(img, 0, 0, w, h, base=base, alpha=alpha)
+    return img
 
 
 def draw_circle(img: Img, cx: float, cy: float, rad: float, color: tuple, gloss=True) -> None:
@@ -190,21 +273,15 @@ def gel_frame(focused: bool) -> Img:
     img = Img(w, h, caps=(L, T, R, B), pos=(2, 22, 2, 2), fill=0)
     base = ALUM if focused else lerp(ALUM, (200, 200, 200), 0.25)
 
-    # Fill entire frame plate with aluminum
-    for y in range(h):
-        for x in range(w):
-            img.set(x, y, rgb(*base))
+    pin_a = PIN_ALPHA if focused else PIN_ALPHA * 0.65
 
-    # Title band pinstripes (top T rows)
-    pinstripe_fill(img, 0, 0, w, T, base=base, alpha=0.08 if focused else 0.04)
+    # Title band + side/bottom rails all get dense pinstripes.
+    pinstripe_fill(img, 0, 0, w, T, base=base, alpha=pin_a)
+    rail = lerp(base, ALUM_DARK, 0.1)
+    pinstripe_fill(img, 0, T, w, h - T, base=rail, alpha=pin_a * 0.85)
 
-    # Side/bottom rails: flatter aluminum
-    for y in range(T, h):
-        for x in range(w):
-            img.set(x, y, rgb(*lerp(base, ALUM_DARK, 0.12)))
-
-    # Outer rim
-    rim_hi = ALUM_HI if focused else (230, 230, 230)
+    # Outer rim (pin edges)
+    rim_hi = ALUM_HI if focused else lerp(ALUM_HI, ALUM, 0.35)
     rim_lo = ALUM_EDGE
     for x in range(w):
         img.set(x, 0, rgb(*rim_hi))
@@ -214,26 +291,27 @@ def gel_frame(focused: bool) -> Img:
         img.set(w - 1, y, rgb(*rim_lo))
 
     # Inner client edge (under title / inside sides)
-    # The stretchable mid pixel column/row carries into the frame interior.
     for x in range(L, L + 1):
         for y in range(T, h - B):
             img.set(x, y, rgb(*CLIENT))
     for y in range(T, T + 1):
         for x in range(L, w - R):
-            # under-title hairline
+            # under-title hairline (extra pin)
             img.set(x, y, rgb(*ALUM_EDGE))
 
-    # Soft bottom of title
+    # Soft bottom of title + second pin
     for x in range(w):
-        img.set(x, T - 1, rgb(*lerp(base, ALUM_EDGE, 0.5)))
+        img.set(x, T - 1, rgb(*lerp(base, ALUM_EDGE, 0.55)))
+        if T >= 3:
+            img.set(x, T - 2, rgb(*lerp(base, ALUM_EDGE, 0.25)))
 
     if focused:
-        # faint blue wash on title for focus read
+        wash = 0.05 if not DARK else 0.08
         for y in range(T):
             for x in range(w):
                 p = img.get(x, y)
                 r, g, b = (p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF
-                nr, ng, nb = lerp((r, g, b), ACCENT, 0.04)
+                nr, ng, nb = lerp((r, g, b), ACCENT, wash)
                 img.set(x, y, rgb(nr, ng, nb))
     return img
 
@@ -242,13 +320,13 @@ def aqua_button(w: int, h: int, caps, state: str) -> Img:
     """Rounded gel button; state: normal|hilited|disabled."""
     img = Img(w, h, caps=caps, fill=0)
     if state == "hilited":
-        top, bot = lerp(ACCENT, (255, 255, 255), 0.45), ACCENT
+        top, bot = lerp(ACCENT, ALUM_HI, 0.45), ACCENT
         edge = lerp(ACCENT, (0, 0, 0), 0.35)
     elif state == "disabled":
-        top, bot = (0xE8, 0xE8, 0xE8), (0xC8, 0xC8, 0xC8)
-        edge = (0xA0, 0xA0, 0xA0)
+        top, bot = BTN_DIS_TOP, BTN_DIS_BOT
+        edge = ALUM_EDGE
     else:
-        top, bot = (0xFC, 0xFC, 0xFC), (0xD0, 0xD0, 0xD0)
+        top, bot = BTN_TOP, BTN_BOT
         edge = ALUM_EDGE
 
     rad = min(h // 2, 6)
@@ -257,7 +335,8 @@ def aqua_button(w: int, h: int, caps, state: str) -> Img:
         fill = lerp(top, bot, t)
         # gloss band
         if 0.08 < t < 0.42 and state != "disabled":
-            fill = lerp(fill, (255, 255, 255), 0.35 * (1 - abs(t - 0.22) / 0.2))
+            gloss = 0.35 if not DARK else 0.22
+            fill = lerp(fill, ALUM_HI, gloss * (1 - abs(t - 0.22) / 0.2))
         for x in range(w):
             # rounded rect SDF-ish
             cx = min(x, w - 1 - x)
@@ -300,8 +379,8 @@ def column_header(state: str) -> Img:
     img = Img(5, 20, caps=(2, 10, 2, 9))
     base = ALUM if state != "hilited" else lerp(ALUM, ACCENT, 0.12)
     if state == "disabled":
-        base = (0xDD, 0xDD, 0xDD)
-    pinstripe_fill(img, 0, 0, 5, 20, base=base, alpha=0.06)
+        base = lerp(ALUM, ALUM_DARK, 0.35)
+    pinstripe_fill(img, 0, 0, 5, 20, base=base, alpha=PIN_ALPHA)
     for x in range(5):
         img.set(x, 0, rgb(*ALUM_HI))
         img.set(x, 19, rgb(*ALUM_EDGE))
@@ -676,13 +755,27 @@ def transition_stops(n: int, a, b) -> list[str]:
     return [hex_of(lerp(a, b, i / max(1, n - 1))) for i in range(n)]
 
 
-def build() -> None:
+def build(out: Path | None = None) -> None:
+    global OUT
+    if out is not None:
+        OUT = out
     OUT.mkdir(parents=True, exist_ok=True)
+    for old in OUT.glob("*"):
+        if old.is_file():
+            old.unlink()
     arts: dict[str, Img] = {}
 
     # Gel frame + traffic lights (Mac order: close, minimize, zoom)
     arts["window.frame.normal"] = gel_frame(False)
     arts["window.frame.focus"] = gel_frame(True)
+
+    # Dense pin tiles for client + menu bar (tiled by the kit).
+    arts["primary.background_pattern"] = tile_pinstripe(
+        8, 8, base=CLIENT, alpha=PIN_ALPHA * 0.55
+    )
+    arts["menu_bar.pattern"] = tile_pinstripe(8, 8, base=ALUM, alpha=PIN_ALPHA)
+    arts["menu_bar.background"] = tile_pinstripe(16, 20, base=ALUM, alpha=PIN_ALPHA)
+    arts["menu.background_pattern"] = tile_pinstripe(8, 8, base=ALUM, alpha=PIN_ALPHA * 0.9)
 
     # 14px lights; title 22 → y=4. Gaps ~8px between.
     # close @ x=10, mini @ 10+14+8=32, zoom @ 32+14+8=54
@@ -827,22 +920,23 @@ def build() -> None:
             f"positions = [{pos}]\n"
         )
 
+    hilite_label = "#ffffff" if not DARK else hex_of(INK)
     lines = [
-        "# SagradoKit skin — Ooze look (original art; aluminum gel + traffic lights)",
+        f"# SagradoKit skin — {THEME_NAME} (original art; gel + dense pinstripes)",
         'format = "sap"',
         "version = 1",
         "",
         "[meta]",
-        'name = "Ooze"',
+        f'name = "{THEME_NAME}"',
         'creator = "SagradoKit"',
-        'description = "Aqua-inspired aluminum gel, pinstripes, and traffic lights"',
-        'version = "1.0"',
+        f'description = "{THEME_DESC}"',
+        'version = "1.1"',
         "",
         "[colors.primary]",
         f'background = "{hex_of(CLIENT)}"',
         f'dark = "{hex_of(ALUM_EDGE)}"',
-        'disable_frame = "#bbbbbb"',
-        'disable_label = "#999999"',
+        f'disable_frame = "{hex_of(lerp(ALUM_EDGE, ALUM, 0.35))}"',
+        f'disable_label = "{hex_of(DISABLE_LABEL)}"',
         f'frame = "{hex_of(ALUM_EDGE)}"',
         f'label = "{hex_of(INK)}"',
         f'light = "{hex_of(ALUM_HI)}"',
@@ -851,41 +945,41 @@ def build() -> None:
         f'box = "{hex_of(ACCENT)}"',
         "",
         "[colors.text]",
-        f'background = "{hex_of(CLIENT)}"',
+        f'background = "{hex_of(CLIENT if not DARK else lerp(CLIENT, ALUM_HI, 0.06))}"',
         f'foreground = "{hex_of(INK)}"',
         f'hilite_background = "{hex_of(ACCENT)}"',
-        'hilite_foreground = "#ffffff"',
+        f'hilite_foreground = "{hilite_label}"',
         f'insertion_point = "{hex_of(ACCENT)}"',
         "",
         "[colors.list]",
         f'background = "{hex_of(CLIENT)}"',
         f'label = "{hex_of(INK)}"',
         f'hilite_background = "{hex_of(ACCENT)}"',
-        'hilite_foreground = "#ffffff"',
-        'sort_column_background = "#f6f6f6"',
-        f'separator = "{hex_of(ALUM_DARK)}"',
+        f'hilite_foreground = "{hilite_label}"',
+        f'sort_column_background = "{hex_of(SORT_COL)}"',
+        f'separator = "{hex_of(ALUM_EDGE)}"',
         "",
         "[colors.button]",
         f'light2 = "{hex_of(ALUM_HI)}"',
         f'light1 = "{hex_of(ALUM)}"',
         f'face = "{hex_of(ALUM_DARK)}"',
         f'dark1 = "{hex_of(ALUM_EDGE)}"',
-        'dark2 = "#888888"',
+        f'dark2 = "{hex_of(lerp(ALUM_EDGE, (0,0,0), 0.25))}"',
         f'frame = "{hex_of(ALUM_EDGE)}"',
         f'label = "{hex_of(INK)}"',
         "",
         "[colors.button_disable]",
-        'light2 = "#f0f0f0"',
-        'light1 = "#e0e0e0"',
-        'face = "#d8d8d8"',
-        'dark1 = "#c0c0c0"',
-        'dark2 = "#b0b0b0"',
-        'frame = "#bbbbbb"',
-        'label = "#999999"',
+        f'light2 = "{hex_of(BTN_DIS_TOP)}"',
+        f'light1 = "{hex_of(lerp(BTN_DIS_TOP, BTN_DIS_BOT, 0.3))}"',
+        f'face = "{hex_of(BTN_DIS_BOT)}"',
+        f'dark1 = "{hex_of(lerp(BTN_DIS_BOT, ALUM_EDGE, 0.4))}"',
+        f'dark2 = "{hex_of(ALUM_EDGE)}"',
+        f'frame = "{hex_of(ALUM_EDGE)}"',
+        f'label = "{hex_of(DISABLE_LABEL)}"',
         "",
         "[colors.button_hilite]",
-        f'light2 = "{hex_of(lerp(ACCENT, (255,255,255), 0.4))}"',
-        f'light1 = "{hex_of(lerp(ACCENT, (255,255,255), 0.2))}"',
+        f'light2 = "{hex_of(lerp(ACCENT, ALUM_HI, 0.4))}"',
+        f'light1 = "{hex_of(lerp(ACCENT, ALUM_HI, 0.2))}"',
         f'face = "{hex_of(ACCENT)}"',
         f'dark1 = "{hex_of(lerp(ACCENT, (0,0,0), 0.2))}"',
         f'dark2 = "{hex_of(lerp(ACCENT, (0,0,0), 0.35))}"',
@@ -893,7 +987,7 @@ def build() -> None:
         'label = "#ffffff"',
         "",
         "[colors.default_button]",
-        f'light = "{hex_of(lerp(ACCENT, (255,255,255), 0.35))}"',
+        f'light = "{hex_of(lerp(ACCENT, ALUM_HI, 0.35))}"',
         f'face = "{hex_of(ACCENT)}"',
         f'dark = "{hex_of(lerp(ACCENT, (0,0,0), 0.25))}"',
         f'frame = "{hex_of(lerp(ACCENT, (0,0,0), 0.4))}"',
@@ -928,18 +1022,18 @@ def build() -> None:
         f'face = "{hex_of(ALUM)}"',
         f'dark = "{hex_of(ALUM_EDGE)}"',
         f'label = "{hex_of(INK)}"',
-        f'hilite_light = "{hex_of(lerp(ACCENT, (255,255,255), 0.3))}"',
+        f'hilite_light = "{hex_of(lerp(ACCENT, ALUM_HI, 0.3))}"',
         f'hilite = "{hex_of(ACCENT)}"',
         f'hilite_dark = "{hex_of(lerp(ACCENT, (0,0,0), 0.25))}"',
         'hilite_label = "#ffffff"',
         f'indicator_light = "{hex_of(ALUM_HI)}"',
         f'indicator = "{hex_of(ALUM)}"',
         f'indicator_dark = "{hex_of(ALUM_DARK)}"',
-        'track_light2 = "#ececec"',
-        'track_light1 = "#e4e4e4"',
-        'track = "#e0e0e0"',
-        'track_dark1 = "#d0d0d0"',
-        'track_dark2 = "#c0c0c0"',
+        f'track_light2 = "{hex_of(TRACK_LIGHT)}"',
+        f'track_light1 = "{hex_of(lerp(TRACK_LIGHT, TRACK, 0.5))}"',
+        f'track = "{hex_of(TRACK)}"',
+        f'track_dark1 = "{hex_of(lerp(TRACK, TRACK_DARK, 0.5))}"',
+        f'track_dark2 = "{hex_of(TRACK_DARK)}"',
         "",
         "[colors.column_header]",
         f'frame = "{hex_of(ALUM_EDGE)}"',
@@ -947,7 +1041,7 @@ def build() -> None:
         f'face = "{hex_of(ALUM)}"',
         f'dark = "{hex_of(ALUM_DARK)}"',
         f'label = "{hex_of(INK)}"',
-        f'hilite_light = "{hex_of(lerp(ACCENT, (255,255,255), 0.3))}"',
+        f'hilite_light = "{hex_of(lerp(ACCENT, ALUM_HI, 0.3))}"',
         f'hilite = "{hex_of(ACCENT)}"',
         f'hilite_dark = "{hex_of(lerp(ACCENT, (0,0,0), 0.2))}"',
         'hilite_label = "#ffffff"',
@@ -955,43 +1049,43 @@ def build() -> None:
         "[colors.menu]",
         f'background = "{hex_of(ALUM)}"',
         f'label = "{hex_of(INK)}"',
-        'disabled_label = "#999999"',
+        f'disabled_label = "{hex_of(DISABLE_LABEL)}"',
         f'hilite_background = "{hex_of(ACCENT)}"',
         'hilite_label = "#ffffff"',
         f'frame = "{hex_of(ALUM_EDGE)}"',
-        f'separator = "{hex_of(ALUM_DARK)}"',
+        f'separator = "{hex_of(ALUM_EDGE)}"',
         "",
         "[colors.progress]",
-        'bkgnd = "#e8e8e8"',
-        'bkgnd_dark = "#d0d0d0"',
-        'bkgnd_light = "#f5f5f5"',
+        f'bkgnd = "{hex_of(TRACK_LIGHT)}"',
+        f'bkgnd_dark = "{hex_of(TRACK)}"',
+        f'bkgnd_light = "{hex_of(lerp(TRACK_LIGHT, ALUM_HI, 0.4))}"',
         f'frame = "{hex_of(ALUM_EDGE)}"',
         f'label = "{hex_of(ACCENT)}"',
         "transition = [",
-        *[f'  "{c}",' for c in transition_stops(10, lerp(ACCENT, (255, 255, 255), 0.4), ACCENT)],
+        *[f'  "{c}",' for c in transition_stops(10, lerp(ACCENT, ALUM_HI, 0.4), ACCENT)],
         "]",
         "",
         "[colors.slider]",
-        'bar = "#d0d0d0"',
+        f'bar = "{hex_of(TRACK)}"',
         f'bar_frame = "{hex_of(ALUM_EDGE)}"',
         f'bar_hilite = "{hex_of(ACCENT)}"',
         f'bar_hilite_frame = "{hex_of(lerp(ACCENT, (0,0,0), 0.3))}"',
-        'disable = "#e0e0e0"',
-        'disable_dark = "#d0d0d0"',
-        'disable_frame = "#bbbbbb"',
-        'disable_light = "#f0f0f0"',
+        f'disable = "{hex_of(BTN_DIS_BOT)}"',
+        f'disable_dark = "{hex_of(lerp(BTN_DIS_BOT, ALUM_EDGE, 0.3))}"',
+        f'disable_frame = "{hex_of(ALUM_EDGE)}"',
+        f'disable_light = "{hex_of(BTN_DIS_TOP)}"',
         f'indicator = "{hex_of(ALUM)}"',
         f'indicator_dark = "{hex_of(ALUM_DARK)}"',
         f'indicator_frame = "{hex_of(ALUM_EDGE)}"',
         f'indicator_hilite = "{hex_of(ACCENT)}"',
         f'indicator_hilite_dark = "{hex_of(lerp(ACCENT, (0,0,0), 0.2))}"',
         f'indicator_hilite_frame = "{hex_of(lerp(ACCENT, (0,0,0), 0.35))}"',
-        f'indicator_hilite_light = "{hex_of(lerp(ACCENT, (255,255,255), 0.3))}"',
+        f'indicator_hilite_light = "{hex_of(lerp(ACCENT, ALUM_HI, 0.3))}"',
         f'indicator_light = "{hex_of(ALUM_HI)}"',
         "",
         "[colors.workspace]",
-        'background1 = "#c8d4e8"',
-        'background2 = "#a8bcd8"',
+        f'background1 = "{hex_of(WORK1)}"',
+        f'background2 = "{hex_of(WORK2)}"',
         "",
         "[colors.important]",
         f'label = "{hex_of(CLOSE)}"',
@@ -1011,9 +1105,13 @@ def build() -> None:
         lines.append(f'{key} = "{fname}"')
     lines.append("")
 
-    (OUT / "ooze.sap").write_text("\n".join(lines), encoding="utf-8")
-    print(f"wrote {OUT}/ooze.sap with {len(arts)} art slots + {len(icons)} icons")
+    sap_path = OUT / SAP_FILE
+    sap_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"wrote {sap_path} with {len(arts)} art slots + {len(icons)} icons")
 
 
 if __name__ == "__main__":
-    build()
+    apply_light_palette()
+    build(ROOT / "format" / "skins" / "ooze")
+    apply_dark_palette()
+    build(ROOT / "format" / "skins" / "ooze-dark")

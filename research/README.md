@@ -8,7 +8,7 @@ Working files for mapping Haxial’s Appearance Engine into SagradoKit.
 | `probe_haps.py` | Slot occupancy / caps / positions across `.hap` samples |
 | `probe-report.txt` | Last probe output |
 | `build_completion_pack.py` | Rebuild `format/skins/completion/` soft-fill pack |
-| `build_ooze_theme.py` | Regenerate `format/skins/ooze/` (aluminum gel + traffic lights) |
+| `build_ooze_theme.py` | Regenerate `format/skins/ooze/` + `ooze-dark/` (dense pinstripes, traffic lights) |
 | `extract_milk_redux.py` | Extract Milk Redux `.hap` → donor-filled `.sap` |
 | `ft_qa.cpp` | Headless File Transfers / WonderLight / LED dump harness |
 
