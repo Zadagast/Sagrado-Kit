@@ -6,6 +6,7 @@
 #include "socket_tls.h"
 
 #include <mbedtls/sha1.h>
+#include <mbedtls/sha256.h>
 
 #include <algorithm>
 #include <atomic>
@@ -263,6 +264,59 @@ inline std::string b64(const std::string &in) {
     if (valb > -6) o.push_back(t[((val << 8) >> (valb + 8)) & 0x3F]);
     while (o.size() % 4) o.push_back('=');
     return o;
+}
+
+// XEP-0300 hash, base64 of the raw digest (what SIMS/SFS carry).
+inline std::string sha256_b64(const std::vector<uint8_t> &data) {
+    unsigned char dig[32];
+    if (mbedtls_sha256(data.data(), data.size(), dig, 0) != 0) return {};
+    return b64(std::string(reinterpret_cast<const char *>(dig), sizeof dig));
+}
+
+// XEP-0385 Stateless Inline Media Sharing: an attachment described by
+// XEP-0446 file metadata (with a XEP-0300 hash) plus its download source.
+inline std::string sims_reference(const std::string &url,
+                                  const std::string &name,
+                                  const std::string &mime,
+                                  const std::vector<uint8_t> &bytes) {
+    if (url.empty()) return {};
+    std::string s = "<reference xmlns='urn:xmpp:reference:0' type='data'>"
+                    "<media-sharing xmlns='urn:xmpp:sims:1'>"
+                    "<file xmlns='urn:xmpp:jingle:apps:file-transfer:5'>";
+    if (!mime.empty()) s += "<media-type>" + xml_escape(mime) + "</media-type>";
+    if (!name.empty()) s += "<name>" + xml_escape(name) + "</name>";
+    s += "<size>" + std::to_string(bytes.size()) + "</size>";
+    std::string h = sha256_b64(bytes);
+    if (!h.empty())
+        s += "<hash xmlns='urn:xmpp:hashes:2' algo='sha-256'>" + h + "</hash>";
+    s += "</file><sources><reference xmlns='urn:xmpp:reference:0' type='data' "
+         "uri='" +
+         xml_escape(url) + "'/></sources></media-sharing></reference>";
+    return s;
+}
+
+// Inbound XEP-0385 (sims) / XEP-0447 (sfs): the attachment's download URI.
+inline std::string shared_media_url(const std::string &st) {
+    if (st.find("urn:xmpp:sims:1") == std::string::npos &&
+        st.find("urn:xmpp:sfs:0") == std::string::npos)
+        return {};
+    auto tag_at = [&](size_t p) -> std::string {
+        size_t gt = st.find('>', p);
+        if (gt == std::string::npos) return {};
+        return st.substr(p, gt - p + 1);
+    };
+    // XEP-0447 sources are <url-source target='…'/>.
+    size_t p = st.find("<url-source");
+    if (p != std::string::npos) {
+        std::string u = xml_unescape(attr(tag_at(p), "target"));
+        if (!u.empty()) return u;
+    }
+    // XEP-0385 sources are <reference type='data' uri='…'/> under <sources>.
+    size_t s = st.find("<sources");
+    if (s == std::string::npos) return {};
+    size_t r = st.find("<reference", s);
+    if (r == std::string::npos) return {};
+    return xml_unescape(attr(tag_at(r), "uri"));
 }
 
 inline bool b64_decode(const std::string &in, std::vector<uint8_t> *out) {
@@ -655,8 +709,11 @@ public:
                 "urn:xmpp:jingle:transports:ibb:1",
                 "urn:xmpp:message-correct:0",
                 "urn:xmpp:message-retract:1",
+                "urn:xmpp:hashes:2",
                 "urn:xmpp:ping",
                 "urn:xmpp:reactions:0",
+                "urn:xmpp:reference:0",
+                "urn:xmpp:sims:1",
                 "urn:xmpp:receipts",
                 "vcard-temp",
                 "vcard-temp:x:update",
@@ -763,7 +820,8 @@ public:
 
     void send_message(const std::string &to, const std::string &body,
                       const std::string &oob_url = {},
-                      const std::string &replace_id = {}) {
+                      const std::string &replace_id = {},
+                      const std::string &sims_xml = {}) {
         std::string mid = "m" + std::to_string(msg_seq_++);
         std::string peer = bare_jid(to);
         // XEP-0308 — correct a previously sent message.
@@ -793,6 +851,9 @@ public:
             if (!oob_url.empty())
                 stanza += "<x xmlns='jabber:x:oob'><url>" + xml_escape(oob_url) +
                           "</url></x>";
+            // XEP-0385 — the same attachment with metadata, for clients that
+            // can preview it without downloading first.
+            stanza += sims_xml;
             stanza += replace_xml +
                       "<request xmlns='urn:xmpp:receipts'/>"
                       "<active xmlns='http://jabber.org/protocol/chatstates'/>"
@@ -1853,6 +1914,9 @@ private:
         ln.body = body;
         ln.mine = mine;
         ln.omemo = omemo_line;
+        ln.file = !tombstone &&
+                  (st.find("jabber:x:oob") != std::string::npos ||
+                   !shared_media_url(st).empty());
         ln.retracted = tombstone;
         ln.id = mid;
         ln.react_id = react_id;
@@ -2219,6 +2283,11 @@ private:
             }
             emit(make_event(ClientEvent::MucSubject, subject, key));
         }
+        // XEP-0385/0447 — a shared file may travel without a text body; the
+        // source URI is what we show and what the transcript downloads.
+        std::string media_url = shared_media_url(st);
+        if (body.empty() && !media_url.empty()) body = media_url;
+
         if (body.empty()) {
             if (cs) {
                 {
@@ -2307,8 +2376,9 @@ private:
             ln.from = who;
             ln.body = body;
             ln.mine = mine;
-            // XEP-0066 — OOB-tagged messages are file attachments.
-            ln.file = st.find("jabber:x:oob") != std::string::npos;
+            // XEP-0066 OOB or XEP-0385/0447 sharing marks an attachment.
+            ln.file = !media_url.empty() ||
+                      st.find("jabber:x:oob") != std::string::npos;
             ln.omemo = omemo_line;
             ln.id = mid;
             ln.react_id = react_id;
@@ -3251,7 +3321,9 @@ private:
         }
         emit(make_event(ClientEvent::FileProgress, "Uploaded", {}, 100));
         std::string body = get;
-        send_message(pending_upload_to_, body, get);
+        send_message(pending_upload_to_, body, get, {},
+                     sims_reference(get, pending_upload_name_,
+                                    pending_upload_mime_, pending_upload_data_));
         {
             std::lock_guard<std::mutex> lock(mu);
             auto &lines = chats[bare_jid(pending_upload_to_)];
