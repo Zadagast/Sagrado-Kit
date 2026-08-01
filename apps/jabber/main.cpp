@@ -39,7 +39,6 @@ constexpr int kRosterW = 220;
 constexpr int kIdentityH = 64;
 constexpr int kAvatarSz = 40;
 constexpr int kTabH = 22;
-constexpr int kChatHeaderH = 44;
 constexpr int kComposeH = 72;
 constexpr int kTextPad = 4;
 constexpr int kBuddyRowH = 36;
@@ -267,11 +266,9 @@ struct App {
     bool presence_menu = false; // popup anchored to identity strip
 
     Rect identity_r{}, avatar_r{}, presence_r{}, status_field_r{};
-    Rect roster_r{}, roster_sbar{}, tabs_r{}, chat_header_r{}, transcript_r{},
-        chat_sbar{};
+    Rect roster_r{}, roster_sbar{}, tabs_r{}, transcript_r{}, chat_sbar{};
     Rect compose_r{}, status_r{};
     Rect btn_send{}, btn_compose_emoji{}, btn_compose_attach{};
-    Rect btn_header_file{}, btn_header_react{};
     Rect occ_r{}, progress_r{};
 
     bool tray_added = false;
@@ -301,7 +298,13 @@ bool file_exists(const std::string &p) {
 
 std::string find_default_skin() {
     std::string base = exe_dir();
+    // Gamespot is the default appearance; Milk is fallback.
     const char *cands[] = {
+        "\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\research\\haps\\Gamespot-1100.hap",
+        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\format\\skins\\Gamespot-1100.hap",
+        "\\..\\format\\skins\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
@@ -977,11 +980,8 @@ void layout() {
     int cw = cl.right() - cx;
     g.tabs_r = {cx, top, cw, kTabH};
     g.compose_r = {cx, g.status_r.y - kComposeH, cw, kComposeH};
-    int header_h =
-        (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) ? kChatHeaderH : 0;
-    g.chat_header_r = {cx, g.tabs_r.bottom(), cw, header_h};
-    g.transcript_r = {cx, g.chat_header_r.bottom(), cw,
-                      g.compose_r.y - g.chat_header_r.bottom()};
+    g.transcript_r = {cx, g.tabs_r.bottom(), cw,
+                      g.compose_r.y - g.tabs_r.bottom()};
 
     auto layout_compose_btns = [&]() {
         const int bh = 28;
@@ -995,14 +995,6 @@ void layout() {
     };
     layout_compose_btns();
 
-    g.btn_header_file = {};
-    g.btn_header_react = {};
-    if (header_h > 0) {
-        int by = g.chat_header_r.y + (g.chat_header_r.h - 26) / 2;
-        g.btn_header_react = {g.chat_header_r.right() - 70, by, 62, 26};
-        g.btn_header_file = {g.btn_header_react.x - 70, by, 62, 26};
-    }
-
     g.progress_r = {};
     if (g.file_progress >= 0) {
         g.progress_r = {g.status_r.right() - 140, g.status_r.y + 3, 128,
@@ -1011,19 +1003,13 @@ void layout() {
     g.occ_r = {};
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
         g.tabs[g.active_tab].muc) {
-        // Full-height nick rail beside header + transcript + compose.
+        // Full-height nick rail beside transcript + compose.
         int occ_w = 120;
         g.occ_r = {cl.right() - occ_w, g.tabs_r.bottom(), occ_w,
                    g.status_r.y - g.tabs_r.bottom()};
-        g.chat_header_r.w -= occ_w;
         g.transcript_r.w -= occ_w;
         g.compose_r.w -= occ_w;
         layout_compose_btns();
-        if (header_h > 0) {
-            int by = g.chat_header_r.y + (g.chat_header_r.h - 26) / 2;
-            g.btn_header_react = {g.chat_header_r.right() - 70, by, 62, 26};
-            g.btn_header_file = {g.btn_header_react.x - 70, by, 62, 26};
-        }
     }
 }
 
@@ -2337,62 +2323,6 @@ void paint() {
         tx += tw + 4;
     }
 
-    // Chat header — peer/room identity + File / React actions (Gajim-shaped).
-    if (g.chat_header_r.h > 0 && g.active_tab >= 0 &&
-        g.active_tab < (int)g.tabs.size()) {
-        cv.fill(g.chat_header_r, g.ap.c("primary.background"));
-        cv.hline(g.chat_header_r.x, g.chat_header_r.right(),
-                 g.chat_header_r.bottom() - 1, g.ap.c("list.separator"));
-        std::string key = g.tabs[g.active_tab].jid;
-        bool muc = g.tabs[g.active_tab].muc;
-        const int hav = 32;
-        Rect hav_r{g.chat_header_r.x + 10,
-                   g.chat_header_r.y + (g.chat_header_r.h - hav) / 2, hav, hav};
-        std::string title = jabber::jid_node(key);
-        std::string sub;
-        SkinImage peer_av;
-        bool have_peer = false;
-        Color nick_col = xep0392_color(muc ? key : jabber::bare_jid(key),
-                                       g.ap.c("primary.background"));
-        {
-            std::lock_guard<std::mutex> lock(g.client.mu);
-            if (muc) {
-                auto it = g.client.muc_occupants.find(key);
-                int n = it != g.client.muc_occupants.end() ? (int)it->second.size() : 0;
-                sub = std::to_string(n) + " in room";
-                auto sit = g.client.muc_subjects.find(key);
-                if (sit != g.client.muc_subjects.end() && !sit->second.empty())
-                    sub += " · " + sit->second;
-            } else {
-                auto it = g.client.roster.find(key);
-                if (it != g.client.roster.end()) {
-                    if (!it->second.name.empty()) title = it->second.name;
-                    sub = show_label(it->second.show);
-                    if (!it->second.status.empty())
-                        sub += " · " + it->second.status;
-                    if (!it->second.avatar.empty()) {
-                        peer_av = it->second.avatar;
-                        have_peer = true;
-                    }
-                } else {
-                    sub = "Chat";
-                }
-            }
-        }
-        paint_avatar_tile(cv, g.ap, hav_r, have_peer ? &peer_av : nullptr,
-                          chat_initials(title), have_peer ? Color{} : nick_col);
-        int hx = hav_r.right() + 10;
-        int hw = g.btn_header_file.x - hx - 8;
-        if (hw < 40) hw = 40;
-        Color title_ink = muc ? g.ap.c("primary.label") : nick_col;
-        cv.text_elided(hx, g.chat_header_r.y + 6, title.c_str(), hw, title_ink);
-        if (!sub.empty())
-            cv.text_elided(hx, g.chat_header_r.y + 6 + cv.line_height(), sub.c_str(),
-                           hw, g.ap.c("menu.disable_label"));
-        paint_button(cv, g.ap, g.btn_header_file, "File", false, false);
-        paint_button(cv, g.ap, g.btn_header_react, "React", false, false);
-    }
-
     // Transcript (+ sticky subject for MUC) — kit soft-wrap; bar only if overflow.
     cv.fill(g.transcript_r, g.ap.c("text.background"));
     g.chat_sbar = {};
@@ -3361,18 +3291,6 @@ void mouse_down(int x, int y) {
         pick_and_send_file();
         redraw();
         return;
-    }
-    if (g.chat_header_r.h > 0) {
-        if (g.btn_header_file.contains(x, y)) {
-            pick_and_send_file();
-            redraw();
-            return;
-        }
-        if (g.btn_header_react.contains(x, y)) {
-            open_react_dialog();
-            redraw();
-            return;
-        }
     }
 
     if (g.dialog == DlgNone &&

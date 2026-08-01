@@ -69,7 +69,6 @@ int main(int argc, char **argv) {
     constexpr int kAvatarSz = 40;
     constexpr int kBuddyRowH = 36;
     constexpr int kTabH = 22;
-    constexpr int kChatHeaderH = 44;
     constexpr int kComposeH = 72;
     constexpr int kMsgAvatar = 32;
     constexpr int kMsgPadX = 12;
@@ -93,8 +92,7 @@ int main(int argc, char **argv) {
     Rect roster{cl.x, top + kIdentityH, kRosterW, body_h - kIdentityH};
     Rect tabs{roster.right(), top, cl.right() - roster.right(), kTabH};
     Rect compose{tabs.x, status.y - kComposeH, tabs.w, kComposeH};
-    Rect header{tabs.x, tabs.bottom(), tabs.w, kChatHeaderH};
-    Rect transcript{tabs.x, header.bottom(), tabs.w, compose.y - header.bottom()};
+    Rect transcript{tabs.x, tabs.bottom(), tabs.w, compose.y - tabs.bottom()};
 
     // Identity strip (Yahoo-shaped)
     cv.fill(identity, ap.c("primary.background"));
@@ -139,23 +137,7 @@ int main(int argc, char **argv) {
     cv.fill({tabs.x + 4, tabs.y + 2, 56, tabs.h - 3}, ap.c("list.hilite_background"));
     cv.text(tabs.x + 12, tabs.y + 3, "Alice", ap.c("list.hilite_foreground"));
 
-    // Chat header
-    cv.fill(header, ap.c("primary.background"));
-    cv.hline(header.x, header.right(), header.bottom() - 1, ap.c("list.separator"));
-    Color alice_col = xep0392_smoke("alice@yax.im", ap.c("primary.background"));
-    Rect hav{header.x + 10, header.y + (header.h - 32) / 2, 32, 32};
-    cv.fill(hav, alice_col);
-    cv.frame(hav, ap.c("list.separator"));
-    cv.text(hav.x + 8, hav.y + 8, "AL", Color{245, 245, 245});
-    cv.text(hav.right() + 10, header.y + 6, "Alice", alice_col);
-    cv.text(hav.right() + 10, header.y + 6 + cv.line_height(), "Available",
-            ap.c("menu.disable_label"));
-    paint_button(cv, ap, {header.right() - 140, header.y + 9, 62, 26}, "File", false,
-                 false);
-    paint_button(cv, ap, {header.right() - 70, header.y + 9, 62, 26}, "React", false,
-                 false);
-
-    // Gajim-like transcript: colored nick + time + body + reaction pill
+    // Transcript: colored nick + time + body + reaction pill (no chat header strip)
     cv.fill(transcript, ap.c("text.background"));
     {
         CanvasClip clip(cv, transcript);
@@ -164,6 +146,7 @@ int main(int argc, char **argv) {
         const int text_x = transcript.x + pad + kMsgAvatar + kMsgAvatarGap;
         int ty = transcript.y + 8;
         Color tbg = ap.c("text.background");
+        Color alice_col = xep0392_smoke("alice@yax.im", tbg);
 
         auto paint_av = [&](int yy, const char *initials, Color fill) {
             Rect a{transcript.x + pad, yy, kMsgAvatar, kMsgAvatar};

@@ -227,12 +227,16 @@ bool file_exists(const std::string &p) {
 
 std::string find_default_skin() {
     std::string base = exe_dir();
+    // Gamespot is the default appearance; Milk / stock are fallbacks.
     const char *cands[] = {
+        "\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\research\\haps\\Gamespot-1100.hap",
+        "\\format\\skins\\Gamespot-1100.hap",
+        "\\..\\format\\skins\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
-        "\\..\\research\\haps\\Gamespot-1100.hap",
-        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
         "\\format\\skins\\milk-redux\\milk-redux.sap",
         "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
         "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",

@@ -71,6 +71,8 @@ jabber-connect-smoke: $(JABBER_CONNECT_SMOKE)
 skins: | $(BUILD)
 	mkdir -p $(BUILD)/format/skins
 	cp -f format/skins/*.sap $(BUILD)/format/skins/ 2>/dev/null || true
+	# Default appearance (Gamespot) next to the binaries for Load / cold start.
+	cp -f "research/haps/Gamespot-1100.hap" $(BUILD)/format/skins/Gamespot-1100.hap
 	# Art skins live in subfolders (images + .sap)
 	for d in format/skins/*/; do \
 	  [ -d "$$d" ] || continue; \
