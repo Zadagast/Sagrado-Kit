@@ -4,8 +4,11 @@ Target: **XMPP Compliance Suites 2023 (XEP-0479)** — Core + IM categories,
 Advanced Client level. Audit of `apps/jabber/` against the required providers.
 This is the living checklist; tick items as they land on main.
 
-**Status: all required Core + IM providers (Advanced level) are implemented.**
-Remaining ❌ entries below are non-required "of note" specs.
+**Status: all required Core + IM providers (Advanced level) are implemented, as
+are the non-required "of note" specs listed by XEP-0479.** The one partial entry
+is PEP (XEP-0163), which we use for bookmarks and avatars but do not expose as a
+general publish/subscribe surface. Live interoperability against a real server is
+untested for the newest waves.
 
 ## Core Compliance Suite (Client)
 
@@ -51,10 +54,10 @@ Remaining ❌ entries below are non-required "of note" specs.
 |---|---|
 | XEP-0077 In-Band Registration | ✅ (+ XEP-0158 CAPTCHA) |
 | XEP-0066 Out-of-Band Data (mark uploads as attachments) | ✅ |
-| XEP-0385 Stateless Inline Media Sharing | ❌ |
+| XEP-0385 Stateless Inline Media Sharing | ✅ uploads carry a sims reference (XEP-0446 metadata + XEP-0300 sha-256); inbound sims/sfs sources render as attachments |
 | XEP-0392 Consistent Color Generation | ✅ SHA-1 hue algorithm |
 | XEP-0393 Message Styling | ✅ *bold* _italic_ ~strike~ `mono` spans in transcript |
-| XEP-0433 Extended Channel Search | ❌ (disco#items browse only) |
+| XEP-0433 Extended Channel Search | ✅ Browse Chat Rooms search field; disco'd search service, else search.jabber.network |
 | XEP-0424 Message Retraction / XEP-0425 Moderation | ✅ send + receive (Chat → Retract Message, transcript right-click); tombstones in MAM; moderator retraction in MUC |
 
 ## Already beyond the suite
@@ -73,6 +76,6 @@ XEP-0444 Reactions, OMEMO (axolotl) 1:1, XEP-0158 CAPTCHA forms.
 3. **Wave C — advanced, big (✅ done):** XEP-0198 stream management (acks + resume);
    MUC MAM; XEP-0234 + XEP-0261 Jingle file transfer (IBB transport);
    XEP-0368 direct TLS.
-4. **Wave D — of-note specs:** XEP-0424 retraction + XEP-0425 moderation
-   (✅ done); XEP-0385 stateless inline media sharing and XEP-0433 extended
-   channel search remain.
+4. **Wave D — of-note specs (✅ done):** XEP-0424 retraction + XEP-0425
+   moderation; XEP-0385 stateless inline media sharing (XEP-0446 metadata,
+   XEP-0300 hashes); XEP-0433 extended channel search.
