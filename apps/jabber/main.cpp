@@ -26,6 +26,7 @@
 #include "../../engine/clipboard.h"
 #include "../../engine/context_menu.h"
 #include "../../engine/emoji_picker.h"
+#include "../../engine/font_native.h"
 #include "../../engine/gel_host.h"
 #include "../../engine/hfnt.h"
 #include "../../engine/list_view.h"
@@ -4933,6 +4934,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int show) {
     g.hinst = hinst;
+    // Smooth system text for the whole UI; falls back to the bundled bitmap
+    // face if the host has nothing usable.
+    sagrado::use_native_text(15);
     // Unicode class: WM_CHAR then carries UTF-16 units, so emoji and accented
     // text can be typed / pasted into the compose field.
     WNDCLASSW wc{};

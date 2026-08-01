@@ -18,6 +18,35 @@ inline EmojiProbeFn &kit_emoji_probe() {
 
 inline void set_kit_emoji_probe(EmojiProbeFn f) { kit_emoji_probe() = f; }
 
+// Optional anti-aliased text face. The 1bpp stock faces are authentic but read
+// as ancient at today's pixel densities, so a host may install a smooth face
+// (see engine/font_native.h) and every Kit text call picks it up. `cov` is
+// w*h bytes of 0..255 coverage, placed at (pen + left, baseline - top).
+struct AAGlyph {
+    const uint8_t *cov = nullptr;
+    int w = 0, h = 0;
+    int left = 0, top = 0;
+    int advance = 0;
+};
+using AAGlyphFn = const AAGlyph *(*)(unsigned cp);
+
+struct AAFace {
+    AAGlyphFn glyph = nullptr;
+    int line_height = 0;
+    int ascent = 0; // baseline offset from the text origin
+};
+
+inline AAFace &kit_aa_face() {
+    static AAFace f;
+    return f;
+}
+
+inline void set_kit_aa_face(AAGlyphFn fn, int line_height, int ascent) {
+    kit_aa_face() = {fn, line_height, ascent};
+}
+
+inline void clear_kit_aa_face() { kit_aa_face() = {}; }
+
 struct Color {
     uint8_t r = 0, g = 0, b = 0;
 };
@@ -115,7 +144,10 @@ struct Canvas {
         font_ = (f && fontutil::font_usable(*f)) ? f : &stock_font();
     }
     const Font &font() const { return *font_; }
-    int line_height() const { return font_->line_height; }
+    int line_height() const {
+        const AAFace &aa = kit_aa_face();
+        return aa.glyph ? aa.line_height : font_->line_height;
+    }
 
     // Byte length of the next drawable unit at `s`: an emoji cluster when the
     // probe matches it, otherwise one UTF-8 codepoint. Text iteration must step
@@ -147,6 +179,10 @@ struct Canvas {
                     continue;
                 }
             }
+            if (const AAGlyph *g = aa_glyph(s)) {
+                w += g->advance;
+                continue;
+            }
             w += font_->advance(map_cp(s));
         }
         return w;
@@ -158,6 +194,26 @@ struct Canvas {
         bool any = false;
         int pen = 0;
         while (*s) {
+            if (const AAGlyph *ag = aa_glyph(s)) {
+                const int base = kit_aa_face().ascent;
+                for (int row = 0; row < ag->h; ++row)
+                    for (int col = 0; col < ag->w; ++col) {
+                        if (!ag->cov[size_t(row) * ag->w + col]) continue;
+                        int px = pen + ag->left + col, py = base - ag->top + row;
+                        if (!any) {
+                            x0 = x1 = px;
+                            y0 = y1 = py;
+                            any = true;
+                        } else {
+                            if (px < x0) x0 = px;
+                            if (px > x1) x1 = px;
+                            if (py < y0) y0 = py;
+                            if (py > y1) y1 = py;
+                        }
+                    }
+                pen += ag->advance;
+                continue;
+            }
             unsigned cp = map_cp(s);
             const FontGlyph &g = font_->glyphs[cp];
             for (int row = 0; row < g.h; ++row)
@@ -209,6 +265,17 @@ struct Canvas {
                     continue;
                 }
             }
+            if (const AAGlyph *ag = aa_glyph(s)) {
+                const int base = y + kit_aa_face().ascent;
+                for (int row = 0; row < ag->h; ++row)
+                    for (int col = 0; col < ag->w; ++col) {
+                        unsigned a = ag->cov[size_t(row) * ag->w + col];
+                        if (a) blend_put(x + ag->left + col, base - ag->top + row,
+                                         (a << 24) | (p & 0x00ffffffu));
+                    }
+                x += ag->advance;
+                continue;
+            }
             const FontGlyph &g = font_->glyphs[map_cp(s)];
             for (int row = 0; row < g.h; ++row)
                 for (int col = 0; col < g.w; ++col)
@@ -235,8 +302,9 @@ struct Canvas {
         while (*p) {
             int n = unit_len(p);
             if (n <= 0) break;
-            const char *q = p; // map_cp advances its argument
-            int adv = font_->advance(map_cp(q));
+            const char *q = p; // both aa_glyph and map_cp advance their argument
+            const AAGlyph *ag = aa_glyph(q);
+            int adv = ag ? ag->advance : font_->advance(map_cp(q));
             if (auto probe = kit_emoji_probe()) {
                 int len = 0;
                 const SkinImage *ic = nullptr;
@@ -406,6 +474,20 @@ struct Canvas {
         const unsigned g = (sg * a + dg * ia) / 255;
         const unsigned b = (sb * a + db * ia) / 255;
         dst = (r << 16) | (g << 8) | b;
+    }
+
+    // Smooth-face glyph for the next codepoint, advancing `s` past it. Null
+    // when no smooth face is installed or it has nothing for this codepoint,
+    // in which case `s` is left alone for the bitmap path.
+    const AAGlyph *aa_glyph(const char *&s) const {
+        const AAFace &aa = kit_aa_face();
+        if (!aa.glyph) return nullptr;
+        const char *p = s;
+        unsigned cp = fontutil::next_cp(p);
+        const AAGlyph *g = aa.glyph(cp);
+        if (!g) return nullptr;
+        s = p;
+        return g;
     }
 
     // Fold one input codepoint onto a glyph the face actually has.
