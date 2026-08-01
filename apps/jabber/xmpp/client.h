@@ -11,6 +11,7 @@
 #include <cctype>
 #include <condition_variable>
 #include <cstdio>
+#include <ctime>
 #include <cstring>
 #include <functional>
 #include <iterator>
@@ -62,6 +63,7 @@ struct ChatLine {
     bool delivered = false;
     std::string react_id; // XEP-0444 target: 1:1 @id, MUC stanza-id
     std::vector<ReactionMark> reactions;
+    time_t when = 0; // wall clock; 0 = unknown (omit in UI)
 };
 
 struct MucRoomInfo {
@@ -196,6 +198,11 @@ inline std::string sha1_hex(const std::vector<uint8_t> &data) {
     return sha1_hex(data.data(), data.size());
 }
 
+// Raw SHA-1 digest (20 bytes). Used by XEP-0392 angle generation.
+inline bool sha1_digest(const uint8_t *data, size_t len, unsigned char out[20]) {
+    return mbedtls_sha1(data, len, out) == 0;
+}
+
 // Remove <PHOTO>…</PHOTO> / self-closing PHOTO from a vCard fragment.
 inline std::string vcard_strip_photo(std::string vcard) {
     for (;;) {
@@ -300,6 +307,52 @@ inline std::string attr(const std::string &tag, const std::string &key) {
     size_t b = tag.find(q, a);
     if (b == std::string::npos) return {};
     return tag.substr(a, b - a);
+}
+
+// Parse XEP-0082 / delay stamp → time_t (UTC). Empty / bad → 0.
+inline time_t parse_iso8601_stamp(const std::string &stamp) {
+    if (stamp.size() < 19) return 0;
+    int Y = 0, M = 0, D = 0, h = 0, m = 0, s = 0;
+    if (std::sscanf(stamp.c_str(), "%d-%d-%dT%d:%d:%d", &Y, &M, &D, &h, &m, &s) < 6)
+        return 0;
+    std::tm t{};
+    t.tm_year = Y - 1900;
+    t.tm_mon = M - 1;
+    t.tm_mday = D;
+    t.tm_hour = h;
+    t.tm_min = m;
+    t.tm_sec = s;
+#ifdef _WIN32
+    return _mkgmtime(&t);
+#else
+    return timegm(&t);
+#endif
+}
+
+// XEP-0203 / jabber:x:delay stamp from a stanza (first match).
+inline time_t delay_stamp_from_stanza(const std::string &st) {
+    auto find_stamp = [&](const char *marker) -> time_t {
+        size_t p = 0;
+        while ((p = st.find(marker, p)) != std::string::npos) {
+            size_t tag_start = st.rfind('<', p);
+            size_t gt = st.find('>', p);
+            if (tag_start == std::string::npos || gt == std::string::npos) {
+                p += 1;
+                continue;
+            }
+            std::string tag = st.substr(tag_start, gt - tag_start + 1);
+            std::string stamp = attr(tag, "stamp");
+            if (!stamp.empty()) {
+                time_t tt = parse_iso8601_stamp(stamp);
+                if (tt) return tt;
+            }
+            p = gt + 1;
+        }
+        return 0;
+    };
+    time_t t = find_stamp("urn:xmpp:delay");
+    if (t) return t;
+    return find_stamp("jabber:x:delay");
 }
 
 // XEP-0359 stanza-id assigned by `by` (bare JID).
@@ -609,6 +662,7 @@ public:
             ln.mine = true;
             ln.id = mid;
             ln.react_id = mid;
+            ln.when = std::time(nullptr);
             chats[bare_jid(to)].push_back(std::move(ln));
         }
         queue_send(stanza);
@@ -626,13 +680,14 @@ public:
             ln.body = body;
             ln.mine = true;
             ln.id = mid;
+            ln.when = std::time(nullptr);
             // react_id filled from room stanza-id when our echo arrives.
             chats[bare_jid(room)].push_back(std::move(ln));
         }
         queue_send(stanza);
     }
 
-    // XEP-0444 — toggle one emoji on a message (single reaction per us).
+    // XEP-0444 — add/toggle one emoji in our reaction set (multi-react).
     // Empty emoji clears our reactions. muc=true → type=groupchat.
     void send_reaction(const std::string &to_in, const std::string &react_id,
                        const std::string &emoji_in, bool muc) {
@@ -652,16 +707,12 @@ public:
             if (emoji.empty()) {
                 mine.clear();
             } else {
-                bool had = false;
-                for (const auto &e : cur)
-                    if (e == emoji) {
-                        had = true;
-                        break;
-                    }
-                if (had)
-                    mine.clear(); // toggle off
+                mine = cur;
+                auto it = std::find(mine.begin(), mine.end(), emoji);
+                if (it != mine.end())
+                    mine.erase(it); // toggle off that emoji only
                 else
-                    mine = {emoji}; // one at a time
+                    mine.push_back(emoji);
             }
             apply_reaction_locked(to, react_id, from_key, mine);
         }
@@ -719,6 +770,7 @@ public:
             ChatLine ln;
             ln.body = "Topic: " + subject;
             ln.system = true;
+            ln.when = std::time(nullptr);
             chats[room].push_back(std::move(ln));
         }
         emit(make_event(ClientEvent::MucSubject, subject, room));
@@ -1422,6 +1474,8 @@ private:
         ln.mine = mine;
         ln.id = mid;
         ln.react_id = react_id;
+        ln.when = delay_stamp_from_stanza(st);
+        if (!ln.when) ln.when = std::time(nullptr);
         *key_out = key;
         *ln_out = std::move(ln);
         return true;
@@ -1662,6 +1716,8 @@ private:
                 ChatLine ln;
                 ln.body = "Topic: " + subject;
                 ln.system = true;
+                ln.when = delay_stamp_from_stanza(st);
+                if (!ln.when) ln.when = std::time(nullptr);
                 chats[key].push_back(std::move(ln));
             }
             emit(make_event(ClientEvent::MucSubject, subject, key));
@@ -1722,6 +1778,8 @@ private:
             ln.mine = mine;
             ln.id = mid;
             ln.react_id = react_id;
+            ln.when = delay_stamp_from_stanza(st);
+            if (!ln.when) ln.when = std::time(nullptr);
             chats[key].push_back(std::move(ln));
             if (!mine && !from_archive) chat_states.erase(key);
             // Attach any reactions that arrived before the message (rare).

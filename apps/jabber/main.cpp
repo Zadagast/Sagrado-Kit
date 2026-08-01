@@ -8,9 +8,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <string>
 #include <utility>
@@ -37,7 +39,8 @@ constexpr int kRosterW = 220;
 constexpr int kIdentityH = 64;
 constexpr int kAvatarSz = 40;
 constexpr int kTabH = 22;
-constexpr int kComposeH = 64;
+constexpr int kChatHeaderH = 44;
+constexpr int kComposeH = 72;
 constexpr int kTextPad = 4;
 constexpr int kBuddyRowH = 36;
 constexpr int kGroupHeaderH = 20;
@@ -211,6 +214,7 @@ struct App {
     std::string field_invite;
     std::string field_invite_reason;
     std::string react_target_id; // XEP-0444 target for floating emoji host
+    bool emoji_compose_mode = false; // picker inserts into compose (not react)
     sagrado::EmojiPickerState emoji_st{};
     sagrado::EmojiPickerLayout emoji_lay{};
     sagrado::GelHost emoji_host{};
@@ -263,9 +267,12 @@ struct App {
     bool presence_menu = false; // popup anchored to identity strip
 
     Rect identity_r{}, avatar_r{}, presence_r{}, status_field_r{};
-    Rect roster_r{}, roster_sbar{}, tabs_r{}, transcript_r{}, chat_sbar{};
+    Rect roster_r{}, roster_sbar{}, tabs_r{}, chat_header_r{}, transcript_r{},
+        chat_sbar{};
     Rect compose_r{}, status_r{};
-    Rect btn_send{}, occ_r{}, progress_r{};
+    Rect btn_send{}, btn_compose_emoji{}, btn_compose_attach{};
+    Rect btn_header_file{}, btn_header_react{};
+    Rect occ_r{}, progress_r{};
 
     bool tray_added = false;
     bool in_tray = false; // window hidden; live in the notification area
@@ -276,6 +283,8 @@ App g;
 
 bool pick_react_target(std::string *react_id_out);
 void open_react_dialog();
+void open_compose_emoji();
+void pick_and_send_file();
 
 std::string exe_dir() {
     char buf[MAX_PATH];
@@ -346,18 +355,21 @@ void load_emoji_pack() {
     load_emoji_recent();
 }
 
-// Modern transcript rows (Gajim/Discord-shaped): avatar + nick header + body.
-constexpr int kMsgAvatar = 28;
-constexpr int kMsgGap = 8;      // between different senders
-constexpr int kMsgGapCont = 3;  // continuation from same sender
-constexpr int kMsgPadX = 10;
-constexpr int kMsgAvatarGap = 8;
+// Gajim-like transcript rows: avatar + colored nick + time + body + reaction pills.
+constexpr int kMsgAvatar = 32;
+constexpr int kMsgGap = 12;     // between different senders
+constexpr int kMsgGapCont = 4;  // continuation from same sender
+constexpr int kMsgPadX = 12;
+constexpr int kMsgAvatarGap = 10;
+constexpr int kReactGlyph = 22;
+constexpr int kReactPillPad = 4;
+constexpr int kReactPillGap = 6;
 
-// Height of the reaction marks row under a chat line.
+// Height of the reaction pills row under a chat line.
 int reaction_row_height(const jabber::ChatLine &ln, int lh) {
     if (ln.reactions.empty()) return 0;
-    if (g.emoji_pack_ok) return std::max(lh, 34);
-    return lh;
+    if (g.emoji_pack_ok) return std::max(lh + 4, 30);
+    return lh + 4;
 }
 
 std::string chat_display_name(const jabber::ChatLine &ln, bool muc) {
@@ -365,6 +377,18 @@ std::string chat_display_name(const jabber::ChatLine &ln, bool muc) {
     if (ln.mine) return "You";
     if (muc) return ln.from.empty() ? "?" : ln.from;
     return jabber::jid_node(ln.from).empty() ? ln.from : jabber::jid_node(ln.from);
+}
+
+// Stable color-key for XEP-0392 (own bare JID for "You").
+std::string chat_color_key(const jabber::ChatLine &ln, bool muc) {
+    if (ln.system) return {};
+    if (ln.mine) {
+        std::string bare = jabber::bare_jid(g.client.jid);
+        return bare.empty() ? std::string("You") : bare;
+    }
+    if (muc) return ln.from.empty() ? "?" : ln.from;
+    std::string bare = jabber::bare_jid(ln.from);
+    return bare.empty() ? ln.from : bare;
 }
 
 std::string chat_initials(const std::string &name) {
@@ -386,42 +410,138 @@ bool chat_same_sender(const jabber::ChatLine &a, const jabber::ChatLine &b, bool
     return jabber::jid_ieq(jabber::bare_jid(a.from), jabber::bare_jid(b.from));
 }
 
+// XEP-0392: SHA-1 → hue angle; HSL→RGB with lightness adapted to transcript bg.
+Color xep0392_color(const std::string &id, Color bg) {
+    if (id.empty()) return {160, 160, 160};
+    unsigned char dig[20];
+    if (!jabber::sha1_digest(reinterpret_cast<const uint8_t *>(id.data()), id.size(),
+                             dig))
+        return {160, 160, 160};
+    // Little-endian least-significant 16 bits (first two bytes).
+    unsigned v = unsigned(dig[0]) | (unsigned(dig[1]) << 8);
+    double angle = (double(v) / 65536.0) * 360.0;
+    double lum = (0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b) / 255.0;
+    double L = lum < 0.45 ? 0.72 : 0.38; // light on dark / dark on light
+    double S = 0.70;
+    double C = (1.0 - std::fabs(2.0 * L - 1.0)) * S;
+    double Hp = angle / 60.0;
+    double X = C * (1.0 - std::fabs(std::fmod(Hp, 2.0) - 1.0));
+    double r1 = 0, g1 = 0, b1 = 0;
+    if (Hp < 1) {
+        r1 = C;
+        g1 = X;
+    } else if (Hp < 2) {
+        r1 = X;
+        g1 = C;
+    } else if (Hp < 3) {
+        g1 = C;
+        b1 = X;
+    } else if (Hp < 4) {
+        g1 = X;
+        b1 = C;
+    } else if (Hp < 5) {
+        r1 = X;
+        b1 = C;
+    } else {
+        r1 = C;
+        b1 = X;
+    }
+    double m = L - C / 2.0;
+    auto ch = [&](double v) -> uint8_t {
+        int n = int(std::lround((v + m) * 255.0));
+        return uint8_t(std::clamp(n, 0, 255));
+    };
+    return {ch(r1), ch(g1), ch(b1)};
+}
+
+std::string format_hhmm(time_t when) {
+    if (!when) return {};
+    std::tm local{};
+#ifdef _WIN32
+    if (localtime_s(&local, &when) != 0) return {};
+#else
+    if (!localtime_r(&when, &local)) return {};
+#endif
+    char buf[8];
+    if (std::strftime(buf, sizeof(buf), "%H:%M", &local) == 0) return {};
+    return buf;
+}
+
 // Body wrap width — avatar gutter kept for headed and continuation rows.
 int chat_body_wrap(int transcript_w, int pad, bool /*show_header*/) {
     return std::max(8, transcript_w - 2 * pad - kMsgAvatar - kMsgAvatarGap);
 }
 
-int chat_block_height(Canvas &cv, const jabber::ChatLine &ln, bool show_header, int body_wrap) {
+int chat_block_height(Canvas &cv, const jabber::ChatLine &ln, bool show_header,
+                      int body_wrap) {
     const int lh = cv.line_height();
     if (ln.system) {
-        int h = text_content_height(layout_lines(cv, ln.body, body_wrap + kMsgAvatar + kMsgAvatarGap, true),
-                                    lh);
+        int h = text_content_height(
+            layout_lines(cv, ln.body, body_wrap + kMsgAvatar + kMsgAvatarGap, true),
+            lh);
         return h + kMsgGapCont;
     }
     int h = 0;
-    if (show_header) h += lh + 2; // nick row
+    if (show_header) h += lh + 2; // nick + time row
     h += text_content_height(layout_lines(cv, ln.body, body_wrap, true), lh);
     h += reaction_row_height(ln, lh);
     if (ln.mine && ln.delivered) h += lh; // "Delivered" meta line
-    // Avatar column sets a minimum for headed rows.
     if (show_header) h = std::max(h, kMsgAvatar);
     h += show_header ? kMsgGap : kMsgGapCont;
     return h;
 }
 
-// Paint reaction marks; returns pixels advanced in y.
-int paint_reaction_row(Canvas &cv, int x, int y, int /*wrap_w*/,
-                       const jabber::ChatLine &ln, Color count_ink) {
+struct ReactPill {
+    Rect r;
+    std::string emoji;
+};
+
+// Layout reaction pills (optionally paint). Returns row height.
+int layout_reaction_pills(Canvas &cv, const Appearance &ap, int x, int y,
+                          const jabber::ChatLine &ln, Color count_ink, Color bg,
+                          bool paint, std::vector<ReactPill> *out) {
     if (ln.reactions.empty()) return 0;
     const int row_h = reaction_row_height(ln, cv.line_height());
-    std::vector<std::pair<std::string, int>> marks;
-    std::vector<bool> mine;
+    const int lh = cv.line_height();
+    int px = x;
     for (const auto &rx : ln.reactions) {
-        marks.push_back({rx.emoji, rx.count});
-        mine.push_back(rx.mine);
+        int glyph = g.emoji_pack_ok ? kReactGlyph : 0;
+        int count_w = 0;
+        std::string count_s;
+        if (rx.count > 1) {
+            count_s = std::to_string(rx.count);
+            count_w = cv.text_width(count_s.c_str()) + 4;
+        }
+        int inner = (glyph > 0 ? glyph : cv.text_width("+")) + count_w;
+        int pill_w = inner + kReactPillPad * 2 + 4;
+        Rect pill{px, y, pill_w, row_h - 2};
+        if (out) out->push_back({pill, rx.emoji});
+        if (paint) {
+            Color fill = rx.mine ? ap.c("list.hilite_background") : ap.c("list.background");
+            cv.fill(pill, fill);
+            rounded_frame(cv, pill, ap.c("list.separator"), bg);
+            int ix = pill.x + kReactPillPad;
+            if (glyph > 0) {
+                const SkinImage *ic = sagrado::emoji_icon(rx.emoji, 32);
+                if (ic && !ic->empty()) {
+                    int iy = pill.y + (pill.h - glyph) / 2;
+                    cv.blit_image_scaled(*ic, ix, iy, glyph, glyph);
+                    ix += glyph + 2;
+                }
+            }
+            if (!count_s.empty()) {
+                Color ink = rx.mine ? ap.c("list.hilite_foreground") : count_ink;
+                cv.text(ix, pill.y + (pill.h - lh) / 2, count_s.c_str(), ink);
+            }
+        }
+        px += pill_w + kReactPillGap;
     }
-    return sagrado::paint_emoji_marks(cv, x + 10, y, row_h, marks, count_ink,
-                                      mine);
+    return row_h;
+}
+
+int paint_reaction_row(Canvas &cv, int x, int y, const jabber::ChatLine &ln,
+                       Color count_ink, Color bg) {
+    return layout_reaction_pills(cv, g.ap, x, y, ln, count_ink, bg, true, nullptr);
 }
 void redraw();
 void stop_typing_indicator();
@@ -857,12 +977,32 @@ void layout() {
     int cw = cl.right() - cx;
     g.tabs_r = {cx, top, cw, kTabH};
     g.compose_r = {cx, g.status_r.y - kComposeH, cw, kComposeH};
-    g.transcript_r = {cx, g.tabs_r.bottom(), cw,
-                      g.compose_r.y - g.tabs_r.bottom()};
-    g.btn_send = {g.compose_r.right() - 72, g.compose_r.y + 8, 64,
-                  g.compose_r.h - 16};
-    g.compose_field_r = {g.compose_r.x + 8, g.compose_r.y + 8,
-                         g.btn_send.x - g.compose_r.x - 16, g.compose_r.h - 16};
+    int header_h =
+        (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size()) ? kChatHeaderH : 0;
+    g.chat_header_r = {cx, g.tabs_r.bottom(), cw, header_h};
+    g.transcript_r = {cx, g.chat_header_r.bottom(), cw,
+                      g.compose_r.y - g.chat_header_r.bottom()};
+
+    auto layout_compose_btns = [&]() {
+        const int bh = 28;
+        const int by = g.compose_r.y + (g.compose_r.h - bh) / 2;
+        g.btn_send = {g.compose_r.right() - 72, by, 64, bh};
+        g.btn_compose_attach = {g.btn_send.x - 36, by, 28, bh};
+        g.btn_compose_emoji = {g.compose_r.x + 8, by, 28, bh};
+        g.compose_field_r = {g.btn_compose_emoji.right() + 6, g.compose_r.y + 8,
+                             g.btn_compose_attach.x - g.btn_compose_emoji.right() - 12,
+                             g.compose_r.h - 16};
+    };
+    layout_compose_btns();
+
+    g.btn_header_file = {};
+    g.btn_header_react = {};
+    if (header_h > 0) {
+        int by = g.chat_header_r.y + (g.chat_header_r.h - 26) / 2;
+        g.btn_header_react = {g.chat_header_r.right() - 70, by, 62, 26};
+        g.btn_header_file = {g.btn_header_react.x - 70, by, 62, 26};
+    }
+
     g.progress_r = {};
     if (g.file_progress >= 0) {
         g.progress_r = {g.status_r.right() - 140, g.status_r.y + 3, 128,
@@ -871,16 +1011,19 @@ void layout() {
     g.occ_r = {};
     if (g.active_tab >= 0 && g.active_tab < (int)g.tabs.size() &&
         g.tabs[g.active_tab].muc) {
-        // Full-height nick rail beside transcript + compose (no dead pad under list).
+        // Full-height nick rail beside header + transcript + compose.
         int occ_w = 120;
         g.occ_r = {cl.right() - occ_w, g.tabs_r.bottom(), occ_w,
                    g.status_r.y - g.tabs_r.bottom()};
+        g.chat_header_r.w -= occ_w;
         g.transcript_r.w -= occ_w;
         g.compose_r.w -= occ_w;
-        g.btn_send.x = g.compose_r.right() - 72;
-        g.compose_field_r = {g.compose_r.x + 8, g.compose_r.y + 8,
-                             g.btn_send.x - g.compose_r.x - 16,
-                             g.compose_r.h - 16};
+        layout_compose_btns();
+        if (header_h > 0) {
+            int by = g.chat_header_r.y + (g.chat_header_r.h - 26) / 2;
+            g.btn_header_react = {g.chat_header_r.right() - 70, by, 62, 26};
+            g.btn_header_file = {g.btn_header_react.x - 70, by, 62, 26};
+        }
     }
 }
 
@@ -1025,8 +1168,9 @@ void pick_and_set_picture() {
 }
 
 void paint_avatar_tile(Canvas &cv, const Appearance &ap, Rect r, const SkinImage *img,
-                       const std::string &initials) {
-    cv.fill(r, ap.c("list.background"));
+                       const std::string &initials, Color fill = {}) {
+    Color tile_bg = (fill.r | fill.g | fill.b) ? fill : ap.c("list.background");
+    cv.fill(r, tile_bg);
     cv.frame(r, ap.c("list.separator"));
     if (img && !img->empty()) {
         CanvasClip clip(cv, r);
@@ -1042,8 +1186,11 @@ void paint_avatar_tile(Canvas &cv, const Appearance &ap, Rect r, const SkinImage
     } else {
         std::string t = initials.empty() ? "?" : initials.substr(0, 2);
         int tw = cv.text_width(t.c_str());
+        // Prefer light ink on saturated XEP-0392 fills.
+        Color ink = (fill.r | fill.g | fill.b) ? Color{245, 245, 245}
+                                               : ap.c("primary.label");
         cv.text(r.x + (r.w - tw) / 2, r.y + (r.h - cv.line_height()) / 2, t.c_str(),
-                ap.c("primary.label"));
+                ink);
     }
 }
 
@@ -1293,6 +1440,63 @@ int hit_transcript_line(int x, int y) {
     return -1;
 }
 
+// Hit a reaction pill under a message; returns line index or -1.
+int hit_reaction_pill(int x, int y, std::string *emoji_out) {
+    if (emoji_out) emoji_out->clear();
+    if (g.active_tab < 0 || !g.transcript_r.contains(x, y)) return -1;
+    if (g.chat_sbar.w > 0 && g.chat_sbar.contains(x, y)) return -1;
+    std::string key = g.tabs[g.active_tab].jid;
+    bool muc = g.tabs[g.active_tab].muc;
+    std::vector<jabber::ChatLine> lines;
+    std::string subject;
+    {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        lines = g.client.chats[key];
+        if (muc) {
+            auto it = g.client.muc_subjects.find(key);
+            if (it != g.client.muc_subjects.end()) subject = it->second;
+        }
+    }
+    const int pad = kMsgPadX;
+    const int lh = g.canvas.line_height();
+    const int full_wrap = std::max(8, g.transcript_r.w - 2 * pad);
+    int top = g.transcript_r.y + 4;
+    if (muc && !subject.empty()) {
+        std::string sub = "Topic: " + subject;
+        top += text_content_height(layout_lines(g.canvas, sub, full_wrap, true), lh) +
+               4;
+    }
+    Rect body{g.transcript_r.x, top, g.transcript_r.w,
+              g.transcript_r.bottom() - top};
+    if (!body.contains(x, y)) return -1;
+    int ty = body.y - g.chat_scroll;
+    Color tbg = g.ap.c("text.background");
+    for (int i = 0; i < (int)lines.size(); ++i) {
+        bool headed = lines[i].system || i == 0 ||
+                      !chat_same_sender(lines[size_t(i - 1)], lines[size_t(i)], muc);
+        int bw = chat_body_wrap(g.transcript_r.w, pad, headed);
+        int h = chat_block_height(g.canvas, lines[size_t(i)], headed, bw);
+        if (y >= ty && y < ty + h && !lines[i].system && !lines[i].reactions.empty()) {
+            int text_x = body.x + pad + kMsgAvatar + kMsgAvatarGap;
+            int row_y = ty;
+            if (headed) row_y += lh + 2;
+            row_y += text_content_height(
+                layout_lines(g.canvas, lines[i].body, bw, true), lh);
+            std::vector<ReactPill> pills;
+            layout_reaction_pills(g.canvas, g.ap, text_x, row_y, lines[i],
+                                  g.ap.c("menu.disable_label"), tbg, false, &pills);
+            for (const auto &p : pills) {
+                if (p.r.contains(x, y)) {
+                    if (emoji_out) *emoji_out = p.emoji;
+                    return i;
+                }
+            }
+        }
+        ty += h;
+    }
+    return -1;
+}
+
 void run_ctx_menu(int row) {
     if (!g.ctx.open || row < 0 || row >= (int)g.ctx.items.size()) {
         close_ctx_menu();
@@ -1436,6 +1640,7 @@ bool pick_react_target(std::string *react_id_out) {
 
 void close_emoji_host() {
     g.react_target_id.clear();
+    g.emoji_compose_mode = false;
     g.emoji_sbar_thumb = false;
     g.emoji_sbar_arrow = false;
     g.emoji_sbar_ah = ScrollArrowHot::None;
@@ -1513,14 +1718,27 @@ bool emoji_host_input(sagrado::GelHost &host, UINT msg, WPARAM wp, LPARAM lp,
         if (hit.kind == HK::Cell && hit.index >= 0) {
             std::string wire =
                 sagrado::emoji_picker_wire_at(g.emoji_st, hit.index);
-            if (!wire.empty() && g.active_tab >= 0 &&
-                !g.react_target_id.empty()) {
-                bool muc = g.tabs[g.active_tab].muc;
-                g.client.send_reaction(g.tabs[g.active_tab].jid,
-                                       g.react_target_id, wire, muc);
-                sagrado::emoji_recent_push(g.emoji_st, wire);
-                save_emoji_recent();
-                set_status("Reacted");
+            if (!wire.empty() && g.active_tab >= 0) {
+                if (!g.react_target_id.empty()) {
+                    bool muc = g.tabs[g.active_tab].muc;
+                    g.client.send_reaction(g.tabs[g.active_tab].jid,
+                                           g.react_target_id, wire, muc);
+                    sagrado::emoji_recent_push(g.emoji_st, wire);
+                    save_emoji_recent();
+                    set_status("Reacted");
+                    // Stay open so more reactions can be added (Esc closes).
+                    redraw();
+                    return true;
+                }
+                if (g.emoji_compose_mode) {
+                    g.compose.doc.insert(wire);
+                    sagrado::emoji_recent_push(g.emoji_st, wire);
+                    save_emoji_recent();
+                    close_emoji_host();
+                    g.compose.focused = true;
+                    redraw();
+                    return true;
+                }
             }
             close_emoji_host();
             redraw();
@@ -1609,23 +1827,12 @@ void ensure_emoji_host() {
                                    emoji_host_input, nullptr, emoji_host_close);
 }
 
-void open_react_dialog() {
-    if (g.active_tab < 0) {
-        set_status("Open a chat first");
-        return;
-    }
-    if (!g.emoji_pack_ok) {
-        set_status("Emoji pack missing — run make emoji-pack");
-        return;
-    }
-    if (!pick_react_target(&g.react_target_id)) {
-        set_status("No message to react to yet");
-        return;
-    }
+void show_emoji_host() {
     ensure_emoji_host();
     if (!g.emoji_host.hwnd) {
         set_status("Could not open emoji window");
         g.react_target_id.clear();
+        g.emoji_compose_mode = false;
         return;
     }
     g.emoji_st.query.clear();
@@ -1639,6 +1846,62 @@ void open_react_dialog() {
     g.emoji_sbar_arrow = false;
     g.emoji_sbar_ah = ScrollArrowHot::None;
     sagrado::gel_host_show(g.emoji_host, true);
+}
+
+void open_react_dialog() {
+    if (g.active_tab < 0) {
+        set_status("Open a chat first");
+        return;
+    }
+    if (!g.emoji_pack_ok) {
+        set_status("Emoji pack missing — run make emoji-pack");
+        return;
+    }
+    g.emoji_compose_mode = false;
+    if (!pick_react_target(&g.react_target_id)) {
+        set_status("No message to react to yet");
+        return;
+    }
+    show_emoji_host();
+}
+
+void open_compose_emoji() {
+    if (g.active_tab < 0) {
+        set_status("Open a chat first");
+        return;
+    }
+    if (!g.emoji_pack_ok) {
+        set_status("Emoji pack missing — run make emoji-pack");
+        return;
+    }
+    g.react_target_id.clear();
+    g.emoji_compose_mode = true;
+    show_emoji_host();
+}
+
+void pick_and_send_file() {
+    if (g.active_tab < 0) {
+        set_status("Open a chat first");
+        return;
+    }
+    OPENFILENAMEA ofn{};
+    char file[MAX_PATH] = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g.hwnd;
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST;
+    if (!GetOpenFileNameA(&ofn)) return;
+    std::ifstream f(file, std::ios::binary);
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
+    std::string name = file;
+    auto slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    if (!g.client.send_file(g.tabs[g.active_tab].jid, file, name, data,
+                            "application/octet-stream"))
+        set_status("HTTP Upload not available on this server");
+    else
+        set_status("Uploading " + name + "…");
 }
 
 bool tab_is_muc(int idx) {
@@ -2074,6 +2337,62 @@ void paint() {
         tx += tw + 4;
     }
 
+    // Chat header — peer/room identity + File / React actions (Gajim-shaped).
+    if (g.chat_header_r.h > 0 && g.active_tab >= 0 &&
+        g.active_tab < (int)g.tabs.size()) {
+        cv.fill(g.chat_header_r, g.ap.c("primary.background"));
+        cv.hline(g.chat_header_r.x, g.chat_header_r.right(),
+                 g.chat_header_r.bottom() - 1, g.ap.c("list.separator"));
+        std::string key = g.tabs[g.active_tab].jid;
+        bool muc = g.tabs[g.active_tab].muc;
+        const int hav = 32;
+        Rect hav_r{g.chat_header_r.x + 10,
+                   g.chat_header_r.y + (g.chat_header_r.h - hav) / 2, hav, hav};
+        std::string title = jabber::jid_node(key);
+        std::string sub;
+        SkinImage peer_av;
+        bool have_peer = false;
+        Color nick_col = xep0392_color(muc ? key : jabber::bare_jid(key),
+                                       g.ap.c("primary.background"));
+        {
+            std::lock_guard<std::mutex> lock(g.client.mu);
+            if (muc) {
+                auto it = g.client.muc_occupants.find(key);
+                int n = it != g.client.muc_occupants.end() ? (int)it->second.size() : 0;
+                sub = std::to_string(n) + " in room";
+                auto sit = g.client.muc_subjects.find(key);
+                if (sit != g.client.muc_subjects.end() && !sit->second.empty())
+                    sub += " · " + sit->second;
+            } else {
+                auto it = g.client.roster.find(key);
+                if (it != g.client.roster.end()) {
+                    if (!it->second.name.empty()) title = it->second.name;
+                    sub = show_label(it->second.show);
+                    if (!it->second.status.empty())
+                        sub += " · " + it->second.status;
+                    if (!it->second.avatar.empty()) {
+                        peer_av = it->second.avatar;
+                        have_peer = true;
+                    }
+                } else {
+                    sub = "Chat";
+                }
+            }
+        }
+        paint_avatar_tile(cv, g.ap, hav_r, have_peer ? &peer_av : nullptr,
+                          chat_initials(title), have_peer ? Color{} : nick_col);
+        int hx = hav_r.right() + 10;
+        int hw = g.btn_header_file.x - hx - 8;
+        if (hw < 40) hw = 40;
+        Color title_ink = muc ? g.ap.c("primary.label") : nick_col;
+        cv.text_elided(hx, g.chat_header_r.y + 6, title.c_str(), hw, title_ink);
+        if (!sub.empty())
+            cv.text_elided(hx, g.chat_header_r.y + 6 + cv.line_height(), sub.c_str(),
+                           hw, g.ap.c("menu.disable_label"));
+        paint_button(cv, g.ap, g.btn_header_file, "File", false, false);
+        paint_button(cv, g.ap, g.btn_header_react, "React", false, false);
+    }
+
     // Transcript (+ sticky subject for MUC) — kit soft-wrap; bar only if overflow.
     cv.fill(g.transcript_r, g.ap.c("text.background"));
     g.chat_sbar = {};
@@ -2214,20 +2533,11 @@ void paint() {
                     ty + content_block > body.y && ty < body.bottom()) {
                     Rect hilite{body.x + 2, ty, body.w - 4, content_block};
                     cv.fill(hilite, g.ap.c("list.hilite_background"));
-                } else if (!ln.system && ln.mine &&
-                           ty + content_block > body.y && ty < body.bottom()) {
-                    // Soft band for your messages — not a card / bubble stack.
-                    Rect band{body.x + 2, ty, body.w - 4, content_block};
-                    Color bg = g.ap.c("list.background");
-                    Color hi = g.ap.c("list.hilite_background");
-                    Color soft{uint8_t((bg.r * 3 + hi.r) / 4),
-                               uint8_t((bg.g * 3 + hi.g) / 4),
-                               uint8_t((bg.b * 3 + hi.b) / 4)};
-                    cv.fill(band, soft);
                 }
 
                 int text_x = body.x + pad + kMsgAvatar + kMsgAvatarGap;
                 int row_y = ty;
+                Color tbg = g.ap.c("text.background");
 
                 if (ln.system) {
                     Color ink = g.ap.c("menu.disable_label");
@@ -2242,6 +2552,7 @@ void paint() {
                     continue;
                 }
 
+                Color nick_col = xep0392_color(chat_color_key(ln, muc), tbg);
                 if (headed) {
                     Rect av{body.x + pad, ty, kMsgAvatar, kMsgAvatar};
                     if (ty + kMsgAvatar > body.y && ty < body.bottom()) {
@@ -2249,15 +2560,21 @@ void paint() {
                         if (ln.mine && have_own) img = &own_av;
                         else if (!ln.mine && !muc && have_peer) img = &peer_av;
                         paint_avatar_tile(cv, g.ap, av, img,
-                                          chat_initials(chat_display_name(ln, muc)));
+                                          chat_initials(chat_display_name(ln, muc)),
+                                          img ? Color{} : nick_col);
                     }
                     std::string who = chat_display_name(ln, muc);
-                    Color nick_ink = (li == g.chat_sel)
-                                         ? g.ap.c("list.hilite_foreground")
-                                         : (ln.mine ? g.ap.c("list.hilite_background")
-                                                    : g.ap.c("primary.label"));
-                    if (ty + lh > body.y && ty < body.bottom())
+                    Color nick_ink =
+                        (li == g.chat_sel) ? g.ap.c("list.hilite_foreground") : nick_col;
+                    if (ty + lh > body.y && ty < body.bottom()) {
                         cv.text(text_x, ty, who.c_str(), nick_ink);
+                        std::string clock = format_hhmm(ln.when);
+                        if (!clock.empty()) {
+                            int tw = cv.text_width(clock.c_str());
+                            cv.text(body.right() - pad - tw, ty, clock.c_str(),
+                                    g.ap.c("menu.disable_label"));
+                        }
+                    }
                     row_y = ty + lh + 2;
                 }
 
@@ -2277,7 +2594,7 @@ void paint() {
                                                     : g.ap.c("menu.disable_label");
                     if (row_y + reaction_row_height(ln, lh) > body.y &&
                         row_y < body.bottom())
-                        row_y += paint_reaction_row(cv, text_x, row_y, bw, ln, rink);
+                        row_y += paint_reaction_row(cv, text_x, row_y, ln, rink, tbg);
                     else
                         row_y += reaction_row_height(ln, lh);
                 }
@@ -2333,10 +2650,13 @@ void paint() {
                 g.peer_typing.c_str(), g.ap.c("menu.disable_label"));
     }
 
-    // Compose — kit multiline field (Enter sends; Shift+Enter newline).
+    // Compose — emoji + attach + field + Send (Enter sends; Shift+Enter newline).
     cv.fill(g.compose_r, g.ap.c("primary.background"));
+    cv.hline(g.compose_r.x, g.compose_r.right(), g.compose_r.y, g.ap.c("list.separator"));
     g.compose.focused = (g.dialog == DlgNone && g.focused && !g.ctx.open);
+    paint_button(cv, g.ap, g.btn_compose_emoji, ":)", false, false);
     paint_text_field(cv, g.ap, g.compose_field_r, g.compose, g.compose.focused);
+    paint_button(cv, g.ap, g.btn_compose_attach, "+", false, false);
     paint_button(cv, g.ap, g.btn_send, "Send", false, true);
 
     // Status — durable account/roster/context line (not a chat firehose).
@@ -2536,29 +2856,7 @@ void run_menu(int menu, int row) {
             g.client.set_show(jabber::Show::Unavailable);
     } else if (menu == MenuChat) {
         if (row == 0) {
-            if (g.active_tab < 0) {
-                set_status("Open a chat first");
-            } else {
-                OPENFILENAMEA ofn{};
-                char file[MAX_PATH] = {};
-                ofn.lStructSize = sizeof(ofn);
-                ofn.hwndOwner = g.hwnd;
-                ofn.lpstrFile = file;
-                ofn.nMaxFile = MAX_PATH;
-                ofn.Flags = OFN_FILEMUSTEXIST;
-                if (GetOpenFileNameA(&ofn)) {
-                    std::ifstream f(file, std::ios::binary);
-                    std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
-                    std::string name = file;
-                    auto slash = name.find_last_of("/\\");
-                    if (slash != std::string::npos) name = name.substr(slash + 1);
-                    if (!g.client.send_file(g.tabs[g.active_tab].jid, file, name, data,
-                                            "application/octet-stream"))
-                        set_status("HTTP Upload not available on this server");
-                    else
-                        set_status("Uploading " + name + "…");
-                }
-            }
+            pick_and_send_file();
         } else if (row == 1) {
             open_react_dialog();
         } else if (row == 2) {
@@ -3054,6 +3352,28 @@ void mouse_down(int x, int y) {
         redraw();
         return;
     }
+    if (g.btn_compose_emoji.contains(x, y) && g.active_tab >= 0) {
+        open_compose_emoji();
+        redraw();
+        return;
+    }
+    if (g.btn_compose_attach.contains(x, y) && g.active_tab >= 0) {
+        pick_and_send_file();
+        redraw();
+        return;
+    }
+    if (g.chat_header_r.h > 0) {
+        if (g.btn_header_file.contains(x, y)) {
+            pick_and_send_file();
+            redraw();
+            return;
+        }
+        if (g.btn_header_react.contains(x, y)) {
+            open_react_dialog();
+            redraw();
+            return;
+        }
+    }
 
     if (g.dialog == DlgNone &&
         text_field_mouse_down(g.compose, g.canvas, g.compose_field_r, x, y,
@@ -3149,9 +3469,29 @@ void mouse_down(int x, int y) {
         }
     }
 
-    // Click a transcript line to select it (Chat → React…).
+    // Click a reaction pill to toggle that emoji (multi-react).
     if (g.active_tab >= 0 && g.transcript_r.contains(x, y) &&
         !(g.chat_sbar.w > 0 && g.chat_sbar.contains(x, y))) {
+        std::string emoji;
+        int rhit = hit_reaction_pill(x, y, &emoji);
+        if (rhit >= 0 && !emoji.empty()) {
+            g.chat_sel = rhit;
+            std::string key = g.tabs[g.active_tab].jid;
+            bool muc = g.tabs[g.active_tab].muc;
+            std::string react_id;
+            {
+                std::lock_guard<std::mutex> lock(g.client.mu);
+                const auto &lines = g.client.chats[key];
+                if (rhit < (int)lines.size()) react_id = lines[size_t(rhit)].react_id;
+            }
+            if (!react_id.empty()) {
+                g.client.send_reaction(key, react_id, emoji, muc);
+                set_status("Reacted");
+            }
+            redraw();
+            return;
+        }
+        // Click a transcript line to select it (Chat → React…).
         int hit = hit_transcript_line(x, y);
         if (hit != g.chat_sel) {
             g.chat_sel = hit;
