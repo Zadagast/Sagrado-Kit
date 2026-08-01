@@ -3748,12 +3748,18 @@ private:
                 size_t gt = stream_buf_.find('>', p);
                 if (gt != std::string::npos) {
                     std::string tag = stream_buf_.substr(p, gt - p + 1);
+                    // Counting starts at <enabled/>: stanzas the server sent
+                    // before it must not bump h. Flush the pre-enable prefix
+                    // while sm_enabled_ is still false, then start counting.
+                    std::string rest = stream_buf_.substr(gt + 1);
+                    stream_buf_.erase(p);
+                    pump_incoming();
                     sm_enabled_ = true;
                     sm_id_ = attr(tag, "id");
                     std::string res = attr(tag, "resume");
                     sm_can_resume_ =
                         !sm_id_.empty() && (res == "true" || res == "1");
-                    stream_buf_.erase(p, gt - p + 1);
+                    stream_buf_ += rest;
                     return;
                 }
             }
