@@ -3117,6 +3117,23 @@ private:
         return auth_flow_from_tcp();
     }
 
+    // RFC 6120 SRV + XEP-0368 direct TLS connect. On success *tls_done tells
+    // whether the socket already speaks TLS (so STARTTLS is skipped).
+    bool connect_xmpp(bool *tls_done) {
+        *tls_done = false;
+        for (const auto &r : resolve_srv("_xmpps-client._tcp." + host_)) {
+            if (!sock_.connect_tcp(r.target, r.port)) continue;
+            if (sock_.start_tls(host_)) {
+                *tls_done = true;
+                return true;
+            }
+            sock_.close();
+        }
+        for (const auto &r : resolve_srv("_xmpp-client._tcp." + host_))
+            if (sock_.connect_tcp(r.target, r.port)) return true;
+        return sock_.connect_tcp(host_, 5222);
+    }
+
     bool auth_flow_from_tcp() {
         set_state(ConnState::Connecting, "Opening stream to " + host_ + "…");
         if (!open_stream(false)) {
@@ -3243,8 +3260,9 @@ private:
         set_state(ConnState::Connecting, "Connection lost — resuming…");
         sock_.close();
         stream_buf_.clear();
-        if (!sock_.connect_tcp(host_, 5222)) return false;
-        if (!open_stream(false)) return false;
+        bool tls_done = false;
+        if (!connect_xmpp(&tls_done)) return false;
+        if (!open_stream(tls_done)) return false;
         if (stream_buf_.find("starttls") != std::string::npos) {
             sock_.send_all("<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>");
             if (!read_until("proceed")) return false;
@@ -3443,7 +3461,8 @@ private:
 
     void run() {
         set_state(ConnState::Connecting, "Connecting to " + host_ + "…");
-        if (!sock_.connect_tcp(host_, 5222)) {
+        bool tls_done = false;
+        if (!connect_xmpp(&tls_done)) {
             set_state(ConnState::Error,
                       sock_.last_error.empty()
                           ? ("Could not reach " + host_ +

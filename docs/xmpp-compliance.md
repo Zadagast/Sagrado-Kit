@@ -10,7 +10,7 @@ This is the living checklist; tick items as they land on main.
 |---|---|---|
 | Core features | RFC 6120 | ✅ stream, SASL PLAIN, STARTTLS |
 | TLS | RFC 7590 | ✅ mbedTLS STARTTLS |
-| Direct TLS (Advanced) | XEP-0368 SRV for XMPP-over-TLS | ❌ no SRV / 5223 direct TLS |
+| Direct TLS (Advanced) | XEP-0368 SRV for XMPP-over-TLS | ✅ _xmpps-client SRV direct TLS, then _xmpp-client SRV, then host:5222 |
 | Feature discovery | XEP-0030 Service Discovery | ✅ query + answer disco#info |
 | Feature broadcasts | XEP-0115 Entity Capabilities | ✅ sha-1 ver hash in presence |
 | Event publishing (Advanced) | XEP-0163 PEP | 🟡 PEP bookmarks + vCard photo update only |

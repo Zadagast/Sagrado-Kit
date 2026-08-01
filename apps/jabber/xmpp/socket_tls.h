@@ -5,6 +5,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <wincrypt.h>
+#include <windns.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -20,6 +21,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "dnsapi.lib")
 
 namespace jabber {
 
@@ -41,6 +43,39 @@ inline int mbedtls_win_entropy_poll(void * /*data*/, unsigned char *output, size
 extern "C" int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len,
                                      size_t *olen) {
     return mbedtls_win_entropy_poll(data, output, len, olen);
+}
+
+// RFC 2782 SRV lookup (priority-ordered). Used for _xmpp-client (STARTTLS)
+// and _xmpps-client (XEP-0368 direct TLS) service records.
+struct SrvRecord {
+    std::string target;
+    int port = 0;
+    int priority = 0;
+    int weight = 0;
+};
+
+inline std::vector<SrvRecord> resolve_srv(const std::string &name) {
+    std::vector<SrvRecord> out;
+    PDNS_RECORDA rec = nullptr;
+    DNS_STATUS st =
+        DnsQuery_A(name.c_str(), DNS_TYPE_SRV, DNS_QUERY_STANDARD, nullptr,
+                   (PDNS_RECORD *)&rec, nullptr);
+    if (st != 0 || !rec) return out;
+    for (PDNS_RECORDA r = rec; r; r = r->pNext) {
+        if (r->wType != DNS_TYPE_SRV) continue;
+        SrvRecord s;
+        s.target = r->Data.SRV.pNameTarget ? r->Data.SRV.pNameTarget : "";
+        s.port = r->Data.SRV.wPort;
+        s.priority = r->Data.SRV.wPriority;
+        s.weight = r->Data.SRV.wWeight;
+        if (!s.target.empty() && s.target != ".") out.push_back(s);
+    }
+    DnsRecordListFree((PDNS_RECORD)rec, DnsFreeRecordListDeep);
+    std::sort(out.begin(), out.end(), [](const SrvRecord &a, const SrvRecord &b) {
+        if (a.priority != b.priority) return a.priority < b.priority;
+        return a.weight > b.weight;
+    });
+    return out;
 }
 
 struct TlsSocket {

@@ -39,7 +39,7 @@ JABBER_CXXFLAGS := $(CXXFLAGS) -Iapps/jabber -Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/protobuf-c \
 	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>' \
 	-DJABBER_OMEMO=1
-JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32 -lshell32
+JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32 -lshell32 -ldnsapi
 
 .PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke jabber-omemo-smoke emoji-pack
 
@@ -87,7 +87,7 @@ $(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h \
 
 $(JABBER_CONNECT_SMOKE): apps/jabber/connect_smoke.cpp apps/jabber/xmpp/*.h $(MBEDTLS_LIB) $(OMEMO_LIB) | $(BUILD)
 	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/connect_smoke.cpp $(MBEDTLS_LIB) $(OMEMO_LIB) \
-	  -o $@ -lws2_32 -lcrypt32
+	  -o $@ -lws2_32 -lcrypt32 -ldnsapi
 
 $(JABBER_OMEMO_SMOKE): apps/jabber/omemo_smoke.cpp apps/jabber/xmpp/omemo.h $(MBEDTLS_LIB) $(OMEMO_LIB) | $(BUILD)
 	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/omemo_smoke.cpp $(MBEDTLS_LIB) $(OMEMO_LIB) \
