@@ -2,7 +2,9 @@
 # Cross-compile from Linux with MinGW-w64; run under Wine.
 
 # Force MinGW — Make's built-in CXX=g++ would otherwise win over ?=
-CXX      := i686-w64-mingw32-g++
+# Jabber needs <thread>/<mutex>, which the win32-threads MinGW flavour lacks;
+# prefer the -posix driver when the distro ships both.
+CXX      := $(shell command -v i686-w64-mingw32-g++-posix 2>/dev/null || echo i686-w64-mingw32-g++)
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Iengine -static -static-libgcc -static-libstdc++
 LDFLAGS  := -mwindows -lgdi32 -luser32 -lcomdlg32 -lcomctl32
 
@@ -18,7 +20,7 @@ MBEDTLS_CFLAGS := -O2 -Wall \
 	-Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/mbedtls/include \
 	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
-CC_MINGW := i686-w64-mingw32-gcc
+CC_MINGW := $(shell command -v i686-w64-mingw32-gcc-posix 2>/dev/null || echo i686-w64-mingw32-gcc)
 JABBER_CXXFLAGS := $(CXXFLAGS) -Iapps/jabber -Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/mbedtls/include \
 	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
