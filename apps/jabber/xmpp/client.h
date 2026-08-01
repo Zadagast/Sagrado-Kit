@@ -529,7 +529,9 @@ public:
     std::string own_status;
     std::string own_nick;
     SkinImage own_avatar;
+    // Published vCard PHOTO ceiling (after resize/compress). Source files may be larger.
     static constexpr size_t kMaxPhotoBytes = 96 * 1024;
+    static constexpr size_t kMaxPhotoSourceBytes = 12 * 1024 * 1024;
 
     using EventFn = std::function<void(const ClientEvent &)>;
     EventFn on_event;
@@ -1003,22 +1005,25 @@ public:
     }
 
     // Publish own icon via XEP-0054 vCard PHOTO (AIM-shaped Set Picture).
-    bool set_own_photo(const std::vector<uint8_t> &bytes, const std::string &mime_in) {
+    // Large camera photos are cropped/scaled/compressed like Gajim/Conversations.
+    bool set_own_photo(const std::vector<uint8_t> &bytes, const std::string & /*mime_in*/) {
         if (bytes.empty()) {
             emit(make_event(ClientEvent::StatusText, "No image selected"));
             return false;
         }
-        if (bytes.size() > kMaxPhotoBytes) {
-            emit(make_event(ClientEvent::StatusText, "Picture too large (max 96 KB)"));
+        if (bytes.size() > kMaxPhotoSourceBytes) {
+            emit(make_event(ClientEvent::StatusText, "Picture file too large to open"));
             return false;
         }
         SkinImage av;
-        if (!decode_image_vec(bytes, av)) {
-            emit(make_event(ClientEvent::StatusText, "Could not read that image"));
+        std::vector<uint8_t> pub;
+        std::string mime;
+        if (!prepare_vcard_avatar(bytes, kMaxPhotoBytes, &av, &pub, &mime)) {
+            emit(make_event(ClientEvent::StatusText,
+                            "Could not read or shrink that image"));
             return false;
         }
-        std::string mime = mime_in.empty() ? "image/png" : mime_in;
-        std::string hash = sha1_hex(bytes);
+        std::string hash = sha1_hex(pub);
         std::string nick;
         std::string cached;
         {
@@ -1026,7 +1031,7 @@ public:
             own_avatar = std::move(av);
             vcard_avatars[bare_jid(jid)] = own_avatar;
             own_photo_hash_ = hash;
-            pending_photo_bytes_ = bytes;
+            pending_photo_bytes_ = pub;
             pending_photo_mime_ = mime;
             nick = own_nick.empty() ? jid_node(jid) : own_nick;
             cached = own_vcard_xml_;
@@ -1036,7 +1041,7 @@ public:
 
         std::string photo =
             "<PHOTO><TYPE>" + xml_escape(mime) + "</TYPE><BINVAL>" +
-            b64(std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size())) +
+            b64(std::string(reinterpret_cast<const char *>(pub.data()), pub.size())) +
             "</BINVAL></PHOTO>";
         std::string vcard;
         if (!cached.empty()) {

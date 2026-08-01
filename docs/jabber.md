@@ -41,7 +41,8 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 1. **Left identity strip** — avatar, display name, presence mark, status message field.
    When signed off but a JID is remembered, the strip still shows you (`Signed off`;
    click → Sign On). When online, click your avatar (or Buddy → Set Picture…) to
-   change your icon — published as your vCard photo (max ~96 KB).
+   change your icon — cropped/scaled to a square ~96px and compressed (PNG/JPEG)
+   like other XMPP clients, then published as your vCard PHOTO (under ~96 KB).
 2. **Left Buddies** — roster groups (default **Buddies**); online-first within each group;
    buddy icon + presence mark + name + status text
 3. **Center** — IM tabs (close with **x**), then Gajim-shaped transcript rows: avatar,
