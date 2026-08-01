@@ -56,21 +56,26 @@ inline bool ends_with_ci(const std::string &s, const char *ext) {
 
 // Hap Info name only — no image decode.
 inline std::string peek_hap_name(const std::string &path) {
+    // Header then the Info block only — appearance menus peek many files.
     std::ifstream f(path, std::ios::binary);
     if (!f) return path_stem(path);
-    std::vector<uint8_t> d((std::istreambuf_iterator<char>(f)), {});
-    using namespace haputil;
-    if (d.size() < 0x90 || d[0] != '%' || d[1] != 'H' || d[2] != 'A' ||
-        d[3] != 'P')
+    uint8_t hdr[0x90];
+    if (!f.read(reinterpret_cast<char *>(hdr), sizeof(hdr)))
         return path_stem(path);
-    size_t info_off = rd32(d, 0x2c), info_len = rd32(d, 0x30);
+    std::vector<uint8_t> h(hdr, hdr + sizeof(hdr));
+    using namespace haputil;
+    if (h[0] != '%' || h[1] != 'H' || h[2] != 'A' || h[3] != 'P')
+        return path_stem(path);
+    size_t info_off = rd32(h, 0x2c), info_len = rd32(h, 0x30);
+    if (info_len < 0x34 || info_len > (1u << 20)) return path_stem(path);
+    std::vector<uint8_t> info(info_len);
+    f.seekg((std::streamoff)info_off, std::ios::beg);
+    if (!f.read(reinterpret_cast<char *>(info.data()), (std::streamsize)info_len))
+        return path_stem(path);
     std::string name;
-    if (info_len >= 0x34 && info_off + 0x34 <= d.size()) {
-        size_t l = d[info_off + 0x22];
-        size_t s = info_off + 0x34;
-        if (l > 0 && s + l <= d.size())
-            name.assign(reinterpret_cast<const char *>(&d[s]), l);
-    }
+    size_t l = info[0x22];
+    if (l > 0 && 0x34 + l <= info.size())
+        name.assign(reinterpret_cast<const char *>(&info[0x34]), l);
     return name.empty() ? path_stem(path) : name;
 }
 

@@ -316,6 +316,9 @@ bool file_exists(const std::string &p) {
 }
 
 void rebuild_appearance_menu() {
+    // Bundled skins don't change while running; scanning ~100 files under
+    // Wine on every menu open (and hover-switch) makes the menu bar laggy.
+    if (!g.bundled_skins.empty()) return;
     g.bundled_skins = sagrado::list_bundled_skins(exe_dir());
     g.appearance_labels.clear();
     g.appearance_labels.reserve(g.bundled_skins.size() + 4);

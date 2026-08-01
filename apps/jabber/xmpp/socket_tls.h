@@ -149,8 +149,16 @@ struct TlsSocket {
             set_err("DNS failed for " + host);
             return false;
         }
+        // IPv4 first: broken/unroutable IPv6 otherwise stalls sign-on for a
+        // full connect timeout per AAAA record before v4 is ever tried.
+        std::vector<addrinfo *> order;
+        for (addrinfo *p = res; p; p = p->ai_next)
+            if (p->ai_family == AF_INET) order.push_back(p);
+        for (addrinfo *p = res; p; p = p->ai_next)
+            if (p->ai_family != AF_INET) order.push_back(p);
+        if (order.size() > 1) timeout_ms = std::min(timeout_ms, 4000);
         bool ok = false;
-        for (addrinfo *p = res; p; p = p->ai_next) {
+        for (addrinfo *p : order) {
             sock = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
             if (sock == INVALID_SOCKET) continue;
             u_long nb = 1;
