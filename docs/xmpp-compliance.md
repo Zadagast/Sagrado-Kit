@@ -21,24 +21,24 @@ This is the living checklist; tick items as they land on main.
 |---|---|---|
 | Core IM | RFC 6121 roster/presence | ✅ roster, subscriptions, presence |
 | The /me Command | XEP-0245 | ✅ action lines in transcript |
-| User Avatars (Advanced) | XEP-0084 User Avatar (PEP) | ❌ (vCard only) |
+| User Avatars (Advanced) | XEP-0084 User Avatar (PEP) | ✅ receive (metadata+notify → data fetch); vCard fallback kept |
 | Avatar Compatibility (Advanced) | XEP-0153 vCard-Based Avatars | ✅ |
 | vcard-temp | XEP-0054 | ✅ |
 | Outbound Message Sync | XEP-0280 Carbons | ✅ |
-| User Blocking (Advanced) | XEP-0191 Blocking Command | ❌ |
+| User Blocking (Advanced) | XEP-0191 Blocking Command | ✅ Buddy → Block/Unblock; blocklist fetch + server pushes |
 | Group Chat | XEP-0045 MUC | ✅ join/topic/invite/leave/browse |
 | Group Chat | XEP-0249 Direct MUC Invitations | ✅ send + receive (mediated receive kept) |
 | Advanced Group Chat | XEP-0048 Bookmarks | ✅ (fallback) |
 | Advanced Group Chat | XEP-0402 PEP Native Bookmarks | ✅ |
 | Advanced Group Chat | XEP-0313 MAM | 🟡 1:1 only; no MUC archive |
-| Advanced Group Chat | XEP-0410 MUC Self-Ping | ❌ (XEP-0199 pong done) |
+| Advanced Group Chat | XEP-0410 MUC Self-Ping | ✅ 90s self-ping; auto-rejoin on error/timeout |
 | Private data via PubSub (Adv.) | XEP-0223 | 🟡 via bookmarks path only |
 | Private XML Storage (Adv.) | XEP-0049 | ✅ (legacy bookmarks) |
 | Stream Management (Advanced) | XEP-0198 | ❌ no ack/resume |
 | Message Acknowledgements (Adv.) | XEP-0184 Delivery Receipts | ✅ |
 | History (Advanced) | XEP-0313 MAM | ✅ 1:1 paging |
 | Chat States (Advanced) | XEP-0085 | ✅ typing |
-| Message Correction (Advanced) | XEP-0308 | ❌ |
+| Message Correction (Advanced) | XEP-0308 | ✅ ↑ edits last 1:1 message; inbound replace + "(edited)" |
 | File Upload | XEP-0363 HTTP Upload | ✅ |
 | Direct File Transfer (Advanced) | XEP-0234 Jingle FT + XEP-0261 IBB | ❌ |
 

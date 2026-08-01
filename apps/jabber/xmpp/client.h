@@ -643,6 +643,7 @@ public:
                 "http://jabber.org/protocol/muc",
                 "jabber:x:conference",
                 "jabber:x:oob",
+                "urn:xmpp:avatar:metadata+notify",
                 "urn:xmpp:blocking",
                 "urn:xmpp:message-correct:0",
                 "urn:xmpp:ping",
@@ -2087,6 +2088,33 @@ private:
             emit(make_event(ClientEvent::Message, body, key));
     }
 
+    // XEP-0084 — decode <data xmlns='urn:xmpp:avatar:data'> into the shared
+    // avatar cache (preferred over the vCard photo when present).
+    void handle_pep_avatar(const std::string &st) {
+        std::string bare = bare_jid(attr(st, "from"));
+        if (bare.empty()) return;
+        std::string b64data;
+        if (!extract_tag(st, "data", &b64data) || b64data.empty()) return;
+        std::string cleaned;
+        cleaned.reserve(b64data.size());
+        for (char c : b64data)
+            if (c != ' ' && c != '\n' && c != '\r' && c != '\t')
+                cleaned.push_back(c);
+        std::vector<uint8_t> bytes;
+        if (!b64_decode(cleaned, &bytes)) return;
+        SkinImage avatar;
+        decode_image_vec(bytes, avatar);
+        if (avatar.empty()) return;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            vcard_avatars[bare] = avatar;
+            if (roster.count(bare)) roster[bare].avatar = avatar;
+        }
+        emit(make_event(ClientEvent::Identity, {}, bare));
+        emit(make_event(ClientEvent::Roster));
+        emit(make_event(ClientEvent::MucOccupants));
+    }
+
     // XEP-0191 — blocklist result and <block>/<unblock> pushes.
     void handle_blocking_iq(const std::string &st) {
         std::string iq_type = attr(st, "type");
@@ -2237,6 +2265,28 @@ private:
                 bool sent = st.find("<sent") != std::string::npos;
                 std::string inner = extract_forwarded_message(st);
                 if (!inner.empty()) ingest_message(inner, sent);
+                return;
+            }
+            // XEP-0084 — PEP avatar metadata notify: fetch the data node.
+            if (st.find("pubsub#event") != std::string::npos &&
+                st.find("urn:xmpp:avatar:metadata") != std::string::npos) {
+                std::string bare = bare_jid(attr(st, "from"));
+                size_t ip = st.find("<info");
+                std::string item_id;
+                if (ip != std::string::npos) {
+                    size_t gt = st.find('>', ip);
+                    if (gt != std::string::npos)
+                        item_id = attr(st.substr(ip, gt - ip + 1), "id");
+                }
+                if (!bare.empty() && !item_id.empty() &&
+                    !jid_ieq(bare, bare_jid(jid)))
+                    queue_send("<iq type='get' id='av84" +
+                               std::to_string(iq_seq_++) + "' to='" +
+                               xml_escape(bare) +
+                               "'><pubsub xmlns='http://jabber.org/protocol/pubsub'>"
+                               "<items node='urn:xmpp:avatar:data'><item id='" +
+                               xml_escape(item_id) +
+                               "'/></items></pubsub></iq>");
                 return;
             }
             if (try_queue_muc_invite(st)) return;
@@ -2438,6 +2488,11 @@ private:
             // XEP-0191 — blocklist result / server pushes.
             if (st.find("urn:xmpp:blocking") != std::string::npos)
                 handle_blocking_iq(st);
+            // XEP-0084 — avatar data node result.
+            if (iq_id.rfind("av84", 0) == 0 && iq_type == "result") {
+                handle_pep_avatar(st);
+                return;
+            }
             if (st.find("urn:xmpp:bookmarks:1") != std::string::npos ||
                 st.find("storage:bookmarks") != std::string::npos)
                 handle_bookmarks_iq(st);
