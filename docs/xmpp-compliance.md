@@ -50,7 +50,7 @@ This is the living checklist; tick items as they land on main.
 | XEP-0066 Out-of-Band Data (mark uploads as attachments) | ✅ |
 | XEP-0385 Stateless Inline Media Sharing | ❌ |
 | XEP-0392 Consistent Color Generation | ✅ SHA-1 hue algorithm |
-| XEP-0393 Message Styling | ❌ |
+| XEP-0393 Message Styling | ✅ *bold* _italic_ ~strike~ `mono` spans in transcript |
 | XEP-0433 Extended Channel Search | ❌ (disco#items browse only) |
 | XEP-0424 Message Retraction / XEP-0425 Moderation | ❌ |
 

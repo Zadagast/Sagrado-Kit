@@ -470,6 +470,70 @@ bool chat_is_action(const jabber::ChatLine &ln) {
     return !ln.system && ln.body.rfind("/me ", 0) == 0;
 }
 
+// XEP-0393 — message styling spans (*bold* _italic_ ~strike~ `mono`).
+// Directive characters stay visible (allowed by the XEP); spans never cross
+// newlines and require non-space chars just inside the directives.
+struct StyleSpan {
+    size_t start, end; // inclusive directive positions
+    char kind;         // '*', '_', '~', '`'
+};
+
+std::vector<StyleSpan> styling_spans(const std::string &s) {
+    std::vector<StyleSpan> spans;
+    for (size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        if (c != '*' && c != '_' && c != '~' && c != '`') continue;
+        if (i + 2 >= s.size() || s[i + 1] == c ||
+            std::isspace((unsigned char)s[i + 1]))
+            continue;
+        size_t j = s.find(c, i + 1);
+        while (j != std::string::npos &&
+               std::isspace((unsigned char)s[j - 1]))
+            j = s.find(c, j + 1);
+        if (j == std::string::npos) continue;
+        if (s.find('\n', i) < j) continue;
+        spans.push_back({i, j, c});
+        i = j;
+    }
+    return spans;
+}
+
+// Paint one wrapped visual line, applying any styling spans that overlap it.
+void paint_styled_text(Canvas &cv, int x, int y, const std::string &body,
+                       size_t start, size_t len,
+                       const std::vector<StyleSpan> &spans, Color ink,
+                       Color dim, Color mono_bg) {
+    if (spans.empty()) {
+        cv.text(x, y, body.substr(start, len).c_str(), ink);
+        return;
+    }
+    int lh = cv.line_height();
+    size_t pos = start, end = start + len;
+    while (pos < end) {
+        const StyleSpan *sp = nullptr;
+        size_t next = end;
+        for (const auto &s : spans) {
+            if (s.end < pos || s.start >= end) continue;
+            if (s.start <= pos && pos <= s.end) {
+                sp = &s;
+                break;
+            }
+            if (s.start > pos && s.start < next) next = s.start;
+        }
+        size_t run_end = sp ? std::min(sp->end + 1, end) : next;
+        std::string run = body.substr(pos, run_end - pos);
+        if (sp && sp->kind == '`') {
+            int w = cv.text_width(run.c_str());
+            cv.fill({x, y, w, lh}, mono_bg);
+        }
+        int nx = cv.text(x, y, run.c_str(), sp && sp->kind == '_' ? dim : ink);
+        if (sp && sp->kind == '*') cv.text(x + 1, y, run.c_str(), ink);
+        if (sp && sp->kind == '~') cv.hline(x, nx, y + lh / 2, ink);
+        x = sp && sp->kind == '*' ? nx + 1 : nx;
+        pos = run_end;
+    }
+}
+
 std::string chat_body_text(const jabber::ChatLine &ln) {
     std::string b = chat_is_action(ln) ? "*" + ln.body.substr(3) : ln.body;
     if (ln.edited) b += " (edited)";
@@ -2596,11 +2660,15 @@ void paint() {
                 if (chat_is_action(ln)) ink = nick_col;
                 if (li == g.chat_sel) ink = g.ap.c("list.hilite_foreground");
                 std::string btext = chat_body_text(ln);
+                auto spans = ln.system ? std::vector<StyleSpan>{}
+                                       : styling_spans(btext);
                 auto vlines = layout_lines(cv, btext, bw, true);
                 for (const auto &vl : vlines) {
                     if (row_y + lh > body.y && row_y < body.bottom())
-                        cv.text(text_x, row_y,
-                                btext.substr(vl.start, vl.len).c_str(), ink);
+                        paint_styled_text(cv, text_x, row_y, btext, vl.start,
+                                          vl.len, spans, ink,
+                                          g.ap.c("menu.disable_label"),
+                                          g.ap.c("list.hilite_background"));
                     row_y += lh;
                 }
                 if (!ln.reactions.empty()) {
