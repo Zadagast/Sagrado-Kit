@@ -30,7 +30,7 @@ This is the living checklist; tick items as they land on main.
 | Group Chat | XEP-0249 Direct MUC Invitations | ✅ send + receive (mediated receive kept) |
 | Advanced Group Chat | XEP-0048 Bookmarks | ✅ (fallback) |
 | Advanced Group Chat | XEP-0402 PEP Native Bookmarks | ✅ |
-| Advanced Group Chat | XEP-0313 MAM | 🟡 1:1 only; no MUC archive |
+| Advanced Group Chat | XEP-0313 MAM | ✅ room archive on open + older paging |
 | Advanced Group Chat | XEP-0410 MUC Self-Ping | ✅ 90s self-ping; auto-rejoin on error/timeout |
 | Private data via PubSub (Adv.) | XEP-0223 | 🟡 via bookmarks path only |
 | Private XML Storage (Adv.) | XEP-0049 | ✅ (legacy bookmarks) |

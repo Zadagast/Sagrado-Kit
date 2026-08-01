@@ -2455,6 +2455,7 @@ void paint() {
         bool muc = g.tabs[g.active_tab].muc;
         // When MAM disco arrives after the tab opened, still pull history once.
         if (!muc) g.client.request_mam_history(key);
+        else g.client.request_muc_history(key);
         std::vector<jabber::ChatLine> lines;
         std::string subject;
         {

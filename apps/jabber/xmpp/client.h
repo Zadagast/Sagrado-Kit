@@ -699,6 +699,23 @@ public:
         send_mam_query(with, max, /*older=*/false, {});
     }
 
+    // XEP-0313 — MUC archive: query the room's own MAM service (support is
+    // per-room; an error fin simply clears the in-flight mark).
+    void request_muc_history(const std::string &room_in, int max = 40) {
+        std::string room = bare_jid(room_in);
+        if (room.empty() || state != ConnState::Online) return;
+        if (max < 1) max = 1;
+        if (max > 100) max = 100;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (mam_initial_done_.count(room) || mam_inflight_.count(room))
+                return;
+            mam_initial_done_.insert(room);
+            mam_inflight_.insert(room);
+        }
+        send_mam_query(room, max, /*older=*/false, {});
+    }
+
     // XEP-0313 — page older than the current window (RSM before=oldest archive id).
     void request_mam_older(const std::string &with_bare, int max = 40) {
         std::string with = bare_jid(with_bare);
@@ -708,7 +725,7 @@ public:
         std::string before;
         {
             std::lock_guard<std::mutex> lock(mu);
-            if (!mam_available) return;
+            if (!mam_available && !muc_joined.count(with)) return;
             if (mam_complete_.count(with) && mam_complete_[with]) return;
             if (mam_inflight_.count(with)) return;
             auto it = mam_oldest_.find(with);
@@ -722,7 +739,8 @@ public:
     bool mam_can_load_older(const std::string &with_bare) {
         std::string with = bare_jid(with_bare);
         std::lock_guard<std::mutex> lock(mu);
-        if (!mam_available || with.empty()) return false;
+        if (with.empty()) return false;
+        if (!mam_available && !muc_joined.count(with)) return false;
         if (mam_inflight_.count(with)) return false;
         if (mam_complete_.count(with) && mam_complete_[with]) return false;
         auto it = mam_oldest_.find(with);
@@ -1681,8 +1699,10 @@ private:
     void send_mam_query(const std::string &with, int max, bool older,
                         const std::string &before_uid) {
         std::string id = "mam" + std::to_string(iq_seq_++);
+        bool muc;
         {
             std::lock_guard<std::mutex> lock(mu);
+            muc = muc_joined.count(with) != 0;
             MamPending pend;
             pend.with = with;
             pend.older = older;
@@ -1691,12 +1711,18 @@ private:
         std::string before_xml =
             before_uid.empty() ? "<before/>"
                                : ("<before>" + xml_escape(before_uid) + "</before>");
+        // A room's archive lives at the room itself — iq to=room, no with.
+        std::string to_attr = muc ? " to='" + xml_escape(with) + "'" : "";
+        std::string with_field =
+            muc ? ""
+                : "<field var='with'><value>" + xml_escape(with) +
+                      "</value></field>";
         queue_send(
-            "<iq type='set' id='" + id + "'><query xmlns='urn:xmpp:mam:2' queryid='" +
+            "<iq type='set' id='" + id + "'" + to_attr +
+            "><query xmlns='urn:xmpp:mam:2' queryid='" +
             id + "'><x xmlns='jabber:x:data' type='submit'>"
-            "<field var='FORM_TYPE' type='hidden'><value>urn:xmpp:mam:2</value></field>"
-            "<field var='with'><value>" + xml_escape(with) +
-            "</value></field></x>"
+            "<field var='FORM_TYPE' type='hidden'><value>urn:xmpp:mam:2</value></field>" +
+            with_field + "</x>"
             "<set xmlns='http://jabber.org/protocol/rsm'><max>" +
             std::to_string(max) + "</max>" + before_xml + "</set></query></iq>");
     }
@@ -1748,6 +1774,12 @@ private:
         std::string who =
             is_muc ? (mine ? jid_node(jid) : jid_resource(from)) : (mine ? jid : from);
         if (who.empty()) who = from;
+        if (is_muc && !mine) {
+            // Room archives echo our own lines from room/ournick.
+            std::lock_guard<std::mutex> lock(mu);
+            auto it = muc_nicks.find(key);
+            if (it != muc_nicks.end() && it->second == who) mine = true;
+        }
         std::string react_id = is_muc ? stanza_id_by(st, key) : mid;
         if (react_id.empty() && !is_muc) react_id = mid;
 
