@@ -251,6 +251,9 @@ struct App {
     int recent_scroll = 0; // pixels
     Rect recent_list_r{}, recent_sbar{};
 
+    // Where each dialog text field landed this paint, so a click focuses the
+    // field under the cursor instead of just cycling.
+    std::vector<std::pair<int, Rect>> dlg_field_rs;
     // Browse Chat Rooms dialog
     int browse_sel = -1; // index into browse_rows
     int browse_scroll = 0; // pixels
@@ -2449,6 +2452,7 @@ void paint_dialog(Canvas &cv) {
     g.browse_sbar = {};
     g.provider_list_r = {};
     g.provider_sbar = {};
+    g.dlg_field_rs.clear();
     auto field = [&](const char *lab, const std::string &val, int idx, bool secret) {
         cv.text(cl.x + 12, y, lab, g.ap.c("primary.label"));
         y += lh + 2;
@@ -2456,6 +2460,7 @@ void paint_dialog(Canvas &cv) {
         paint_field(cv, g.ap, fr, secret ? std::string(val.size(), '*').c_str()
                                          : val.c_str(),
                     g.focus_field == idx, true);
+        g.dlg_field_rs.push_back({idx, fr});
         y += 30;
     };
     if (g.dialog == DlgSignOn) {
@@ -2497,6 +2502,7 @@ void paint_dialog(Canvas &cv) {
         y += lh + 2;
         Rect fr{cl.x + 12, y, cl.w - 24, 24};
         paint_field(cv, g.ap, fr, g.field_user.c_str(), g.focus_field == 0, true);
+        g.dlg_field_rs.push_back({0, fr});
         y += 28;
         {
             std::string preview =
@@ -2546,6 +2552,7 @@ void paint_dialog(Canvas &cv) {
         fr = {cl.x + 12, y, cl.w - 24, 24};
         paint_field(cv, g.ap, fr, std::string(g.field_pass.size(), '*').c_str(),
                     g.focus_field == 1, true);
+        g.dlg_field_rs.push_back({1, fr});
         y += 30;
 
         if (g.captcha_visible && !g.client.captcha_image.empty()) {
@@ -2559,6 +2566,7 @@ void paint_dialog(Canvas &cv) {
             y += ih + 6;
             fr = {cl.x + 12, y, cl.w - 24, 24};
             paint_field(cv, g.ap, fr, g.field_captcha.c_str(), g.focus_field == 2, true);
+            g.dlg_field_rs.push_back({2, fr});
         }
     } else if (g.dialog == DlgAddBuddy) {
         field("Buddy JID", g.field_buddy, 0, false);
@@ -3766,6 +3774,12 @@ void mouse_down(int x, int y) {
                 }
                 redraw();
             }
+            return;
+        }
+        for (const auto &f : g.dlg_field_rs) {
+            if (!f.second.contains(x, y)) continue;
+            g.focus_field = f.first;
+            redraw();
             return;
         }
         if (cl.contains(x, y)) {
