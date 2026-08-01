@@ -44,12 +44,15 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    change your icon — published as your vCard photo (max ~96 KB).
 2. **Left Buddies** — roster groups (default **Buddies**); online-first within each group;
    buddy icon + presence mark + name + status text
-3. **Center** — IM tabs (close with **x**), soft-wrapped transcript (kit `layout_lines`),
-   kit multiline compose (`paint_text_field`) + Send; peer typing line when composing.
-   **Enter** sends; **Shift+Enter** inserts a newline. Click a line to select it; reactions
-   show as Noto PNG marks under the line (`paint_emoji_marks` — kit font is Latin-1).
-   Right-click compose → Copy / Paste; right-click a message → Copy / Paste / React…
-   (kit `context_menu` + clipboard; React opens the floating emoji host)
+3. **Center** — IM tabs (close with **x**), modern transcript rows (avatar + nick header
+   + body — Gajim/Discord-shaped, not IRC `nick:`), soft-wrapped via kit `layout_lines`;
+   same-sender lines collapse the header. Your messages get a soft band; receipts show
+   as a **Delivered** meta line. Kit multiline compose (`paint_text_field`) + Send; peer
+   typing line when composing. **Enter** sends; **Shift+Enter** inserts a newline. Click
+   a row to select it; reactions show as Noto PNG marks under the body
+   (`paint_emoji_marks` — kit font is Latin-1). Right-click compose → Copy / Paste;
+   right-click a message → Copy / Paste / React… (kit `context_menu` + clipboard; React
+   opens the floating emoji host)
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
 5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
 6. **Status strip** — durable line: signed on as / presence / buddies online / active

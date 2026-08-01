@@ -37,7 +37,7 @@ constexpr int kRosterW = 220;
 constexpr int kIdentityH = 64;
 constexpr int kAvatarSz = 40;
 constexpr int kTabH = 22;
-constexpr int kComposeH = 56;
+constexpr int kComposeH = 64;
 constexpr int kTextPad = 4;
 constexpr int kBuddyRowH = 36;
 constexpr int kGroupHeaderH = 20;
@@ -346,11 +346,67 @@ void load_emoji_pack() {
     load_emoji_recent();
 }
 
+// Modern transcript rows (Gajim/Discord-shaped): avatar + nick header + body.
+constexpr int kMsgAvatar = 28;
+constexpr int kMsgGap = 8;      // between different senders
+constexpr int kMsgGapCont = 3;  // continuation from same sender
+constexpr int kMsgPadX = 10;
+constexpr int kMsgAvatarGap = 8;
+
 // Height of the reaction marks row under a chat line.
 int reaction_row_height(const jabber::ChatLine &ln, int lh) {
     if (ln.reactions.empty()) return 0;
     if (g.emoji_pack_ok) return std::max(lh, 34);
     return lh;
+}
+
+std::string chat_display_name(const jabber::ChatLine &ln, bool muc) {
+    if (ln.system) return {};
+    if (ln.mine) return "You";
+    if (muc) return ln.from.empty() ? "?" : ln.from;
+    return jabber::jid_node(ln.from).empty() ? ln.from : jabber::jid_node(ln.from);
+}
+
+std::string chat_initials(const std::string &name) {
+    std::string out;
+    for (char c : name) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+            if (out.size() >= 2) break;
+        }
+    }
+    return out.empty() ? "?" : out;
+}
+
+bool chat_same_sender(const jabber::ChatLine &a, const jabber::ChatLine &b, bool muc) {
+    if (a.system || b.system || a.file != b.file) return false;
+    if (a.mine != b.mine) return false;
+    if (a.mine) return true;
+    if (muc) return a.from == b.from;
+    return jabber::jid_ieq(jabber::bare_jid(a.from), jabber::bare_jid(b.from));
+}
+
+// Body wrap width — avatar gutter kept for headed and continuation rows.
+int chat_body_wrap(int transcript_w, int pad, bool /*show_header*/) {
+    return std::max(8, transcript_w - 2 * pad - kMsgAvatar - kMsgAvatarGap);
+}
+
+int chat_block_height(Canvas &cv, const jabber::ChatLine &ln, bool show_header, int body_wrap) {
+    const int lh = cv.line_height();
+    if (ln.system) {
+        int h = text_content_height(layout_lines(cv, ln.body, body_wrap + kMsgAvatar + kMsgAvatarGap, true),
+                                    lh);
+        return h + kMsgGapCont;
+    }
+    int h = 0;
+    if (show_header) h += lh + 2; // nick row
+    h += text_content_height(layout_lines(cv, ln.body, body_wrap, true), lh);
+    h += reaction_row_height(ln, lh);
+    if (ln.mine && ln.delivered) h += lh; // "Delivered" meta line
+    // Avatar column sets a minimum for headed rows.
+    if (show_header) h = std::max(h, kMsgAvatar);
+    h += show_header ? kMsgGap : kMsgGapCont;
+    return h;
 }
 
 // Paint reaction marks; returns pixels advanced in y.
@@ -1188,16 +1244,12 @@ void close_ctx_menu() {
     g.ctx_kind = CtxNone;
 }
 
+// Clipboard / debug string — nick and body on separate lines (not IRC "nick:").
 std::string format_chat_line(const jabber::ChatLine &ln, bool muc) {
     if (ln.system) return ln.body;
-    if (muc) {
-        std::string who = ln.mine ? "You" : ln.from;
-        if (who.empty()) who = "?";
-        return who + ": " + ln.body;
-    }
-    std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-    std::string text = who + ": " + ln.body;
-    if (ln.mine && ln.delivered) text += "  ok";
+    std::string who = chat_display_name(ln, muc);
+    std::string text = who + "\n" + ln.body;
+    if (ln.mine && ln.delivered) text += "\nDelivered";
     return text;
 }
 
@@ -1217,13 +1269,13 @@ int hit_transcript_line(int x, int y) {
             if (it != g.client.muc_subjects.end()) subject = it->second;
         }
     }
-    const int pad = 6;
+    const int pad = kMsgPadX;
     const int lh = g.canvas.line_height();
-    const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
+    const int full_wrap = std::max(8, g.transcript_r.w - 2 * pad);
     int top = g.transcript_r.y + 4;
     if (muc && !subject.empty()) {
         std::string sub = "Topic: " + subject;
-        top += text_content_height(layout_lines(g.canvas, sub, wrap_w, true), lh) +
+        top += text_content_height(layout_lines(g.canvas, sub, full_wrap, true), lh) +
                4;
     }
     Rect body{g.transcript_r.x, top, g.transcript_r.w,
@@ -1231,12 +1283,10 @@ int hit_transcript_line(int x, int y) {
     if (!body.contains(x, y)) return -1;
     int ty = body.y - g.chat_scroll;
     for (int i = 0; i < (int)lines.size(); ++i) {
-        int h = text_content_height(
-                    layout_lines(g.canvas, format_chat_line(lines[i], muc),
-                                 wrap_w, true),
-                    lh);
-        h += reaction_row_height(lines[i], lh);
-        h += 2;
+        bool headed = lines[i].system || i == 0 ||
+                      !chat_same_sender(lines[size_t(i - 1)], lines[size_t(i)], muc);
+        int bw = chat_body_wrap(g.transcript_r.w, pad, headed);
+        int h = chat_block_height(g.canvas, lines[size_t(i)], headed, bw);
         if (y >= ty && y < ty + h) return lines[i].system ? -1 : i;
         ty += h;
     }
@@ -2042,66 +2092,69 @@ void paint() {
                 if (it != g.client.muc_subjects.end()) subject = it->second;
             }
         }
-        const int pad = 6;
+        const int pad = kMsgPadX;
         const int lh = cv.line_height();
-        // 1:1 delivered (XEP-0184) → subtle " ok" on your lines.
-        auto format_line = [&](const jabber::ChatLine &ln) {
-            if (ln.system) return ln.body;
-            std::string text;
-            if (muc) {
-                std::string who = ln.mine ? "You" : ln.from;
-                if (who.empty()) who = "?";
-                text = who + ": " + ln.body;
-            } else {
-                std::string who = ln.mine ? "You" : jabber::jid_node(ln.from);
-                text = who + ": " + ln.body;
-                if (ln.mine && ln.delivered) text += "  ok";
-            }
-            return text;
+        auto row_headed = [&](int i) -> bool {
+            if (i <= 0) return true;
+            return !chat_same_sender(lines[size_t(i - 1)], lines[size_t(i)], muc);
         };
-        auto line_block_h = [&](const jabber::ChatLine &ln, int wrap_w) {
-            int h = text_content_height(layout_lines(cv, format_line(ln), wrap_w, true),
-                                        lh);
-            h += reaction_row_height(ln, lh);
-            return h + 2;
+        auto line_block_h = [&](int i) {
+            bool headed = row_headed(i);
+            int bw = chat_body_wrap(g.transcript_r.w, pad, headed);
+            return chat_block_height(cv, lines[size_t(i)], headed, bw);
         };
-        auto measure_chat = [&](int wrap_w) {
+        auto measure_chat = [&]() {
             int h = 0;
-            for (auto &ln : lines) h += line_block_h(ln, wrap_w);
+            for (int i = 0; i < (int)lines.size(); ++i) h += line_block_h(i);
             return h;
         };
-        // Subject height is measured with the final wrap width below.
+        // Snapshot avatars for this paint (roster / self).
+        SkinImage own_av;
+        SkinImage peer_av;
+        bool have_own = false, have_peer = false;
+        {
+            std::lock_guard<std::mutex> lock(g.client.mu);
+            if (!g.client.own_avatar.empty()) {
+                own_av = g.client.own_avatar;
+                have_own = true;
+            }
+            if (!muc) {
+                auto it = g.client.roster.find(key);
+                if (it != g.client.roster.end() && !it->second.avatar.empty()) {
+                    peer_av = it->second.avatar;
+                    have_peer = true;
+                }
+            }
+        }
+
         int top = g.transcript_r.y + 4;
         Rect body{g.transcript_r.x, top, g.transcript_r.w,
                   g.transcript_r.bottom() - top};
-        // Probe overflow at full width (narrower wrap only grows height).
-        int wrap_probe = std::max(8, body.w - 2 * pad);
+        int wrap_full = std::max(8, body.w - 2 * pad);
         int subject_h = 0;
         if (muc && !subject.empty()) {
             std::string sub = "Topic: " + subject;
-            subject_h = text_content_height(layout_lines(cv, sub, wrap_probe, true), lh) +
-                        4;
+            subject_h =
+                text_content_height(layout_lines(cv, sub, wrap_full, true), lh) + 4;
         }
-        int content_h = measure_chat(wrap_probe);
+        int content_h = measure_chat();
         g.chat_page = std::max(1, body.h - subject_h);
         g.chat_max = std::max(0, content_h - g.chat_page);
         if (g.chat_max > 0) {
             claim_v_sbar(g.transcript_r, g.chat_sbar, g.chat_max);
             body.w = g.transcript_r.w;
-            // Remeasure with gutter reserved — soft-wrap may grow.
-            wrap_probe = std::max(8, body.w - 2 * pad);
+            wrap_full = std::max(8, body.w - 2 * pad);
             if (muc && !subject.empty()) {
                 std::string sub = "Topic: " + subject;
                 subject_h =
-                    text_content_height(layout_lines(cv, sub, wrap_probe, true), lh) +
+                    text_content_height(layout_lines(cv, sub, wrap_full, true), lh) +
                     4;
             }
-            content_h = measure_chat(wrap_probe);
+            content_h = measure_chat();
             g.chat_page = std::max(1, body.h - subject_h);
             g.chat_max = std::max(0, content_h - g.chat_page);
             g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
             if (g.chat_max <= 0) {
-                // Edge: overflow vanished after layout tweak — give width back.
                 g.transcript_r.w += g.chat_sbar.w;
                 g.chat_sbar = {};
                 body.w = g.transcript_r.w;
@@ -2109,11 +2162,10 @@ void paint() {
         } else {
             g.chat_scroll = 0;
         }
-        const int wrap_w = std::max(8, g.transcript_r.w - 2 * pad);
         top = g.transcript_r.y + 4;
         if (muc && !subject.empty()) {
             std::string sub = "Topic: " + subject;
-            auto sub_lines = layout_lines(cv, sub, wrap_w, true);
+            auto sub_lines = layout_lines(cv, sub, wrap_full, true);
             int sy = top;
             for (const auto &vl : sub_lines) {
                 cv.text(g.transcript_r.x + pad, sy,
@@ -2128,11 +2180,10 @@ void paint() {
         body = {g.transcript_r.x, top, g.transcript_r.w, g.transcript_r.bottom() - top};
         g.chat_page = std::max(1, body.h);
         g.chat_max = std::max(0, content_h - g.chat_page);
-        // Preserve viewport after older MAM pages; jump to newest on cold open.
         if (g.mam_pending_prepend > 0) {
             int n = std::min(g.mam_pending_prepend, (int)lines.size());
             int add_h = 0;
-            for (int i = 0; i < n; ++i) add_h += line_block_h(lines[size_t(i)], wrap_w);
+            for (int i = 0; i < n; ++i) add_h += line_block_h(i);
             g.chat_scroll += add_h;
             if (g.chat_sel >= 0) g.chat_sel += n;
             g.mam_pending_prepend = 0;
@@ -2152,38 +2203,92 @@ void paint() {
             CanvasClip clip(cv, body);
             int ty = body.y - g.chat_scroll;
             for (int li = 0; li < (int)lines.size(); ++li) {
-                auto &ln = lines[li];
-                int block_h = line_block_h(ln, wrap_w) - 2;
+                auto &ln = lines[size_t(li)];
+                bool headed = row_headed(li);
+                int bw = chat_body_wrap(body.w, pad, headed);
+                int block_h = chat_block_height(cv, ln, headed, bw);
+                int gap = headed ? kMsgGap : kMsgGapCont;
+                int content_block = block_h - gap;
+
                 if (li == g.chat_sel && !ln.system &&
-                    ty + block_h > body.y && ty < body.bottom()) {
-                    Rect hilite{body.x + 2, ty, body.w - 4, block_h};
+                    ty + content_block > body.y && ty < body.bottom()) {
+                    Rect hilite{body.x + 2, ty, body.w - 4, content_block};
                     cv.fill(hilite, g.ap.c("list.hilite_background"));
+                } else if (!ln.system && ln.mine &&
+                           ty + content_block > body.y && ty < body.bottom()) {
+                    // Soft band for your messages — not a card / bubble stack.
+                    Rect band{body.x + 2, ty, body.w - 4, content_block};
+                    Color bg = g.ap.c("list.background");
+                    Color hi = g.ap.c("list.hilite_background");
+                    Color soft{uint8_t((bg.r * 3 + hi.r) / 4),
+                               uint8_t((bg.g * 3 + hi.g) / 4),
+                               uint8_t((bg.b * 3 + hi.b) / 4)};
+                    cv.fill(band, soft);
                 }
+
+                int text_x = body.x + pad + kMsgAvatar + kMsgAvatarGap;
+                int row_y = ty;
+
+                if (ln.system) {
+                    Color ink = g.ap.c("menu.disable_label");
+                    auto vlines = layout_lines(cv, ln.body, wrap_full, true);
+                    for (const auto &vl : vlines) {
+                        if (row_y + lh > body.y && row_y < body.bottom())
+                            cv.text(body.x + pad, row_y,
+                                    ln.body.substr(vl.start, vl.len).c_str(), ink);
+                        row_y += lh;
+                    }
+                    ty += block_h;
+                    continue;
+                }
+
+                if (headed) {
+                    Rect av{body.x + pad, ty, kMsgAvatar, kMsgAvatar};
+                    if (ty + kMsgAvatar > body.y && ty < body.bottom()) {
+                        const SkinImage *img = nullptr;
+                        if (ln.mine && have_own) img = &own_av;
+                        else if (!ln.mine && !muc && have_peer) img = &peer_av;
+                        paint_avatar_tile(cv, g.ap, av, img,
+                                          chat_initials(chat_display_name(ln, muc)));
+                    }
+                    std::string who = chat_display_name(ln, muc);
+                    Color nick_ink = (li == g.chat_sel)
+                                         ? g.ap.c("list.hilite_foreground")
+                                         : (ln.mine ? g.ap.c("list.hilite_background")
+                                                    : g.ap.c("primary.label"));
+                    if (ty + lh > body.y && ty < body.bottom())
+                        cv.text(text_x, ty, who.c_str(), nick_ink);
+                    row_y = ty + lh + 2;
+                }
+
                 Color ink =
                     ln.mine ? g.ap.c("text.foreground") : g.ap.c("primary.label");
                 if (ln.file) ink = g.ap.c("menu.hilite_label");
-                if (ln.system) ink = g.ap.c("menu.disable_label");
-                if (li == g.chat_sel && !ln.system)
-                    ink = g.ap.c("list.hilite_foreground");
-                std::string text = format_line(ln);
-                auto vlines = layout_lines(cv, text, wrap_w, true);
+                if (li == g.chat_sel) ink = g.ap.c("list.hilite_foreground");
+                auto vlines = layout_lines(cv, ln.body, bw, true);
                 for (const auto &vl : vlines) {
-                    if (ty + lh > body.y && ty < body.bottom())
-                        cv.text(body.x + pad, ty,
-                                text.substr(vl.start, vl.len).c_str(), ink);
-                    ty += lh;
+                    if (row_y + lh > body.y && row_y < body.bottom())
+                        cv.text(text_x, row_y,
+                                ln.body.substr(vl.start, vl.len).c_str(), ink);
+                    row_y += lh;
                 }
                 if (!ln.reactions.empty()) {
-                    Color rink = (li == g.chat_sel && !ln.system)
-                                     ? g.ap.c("list.hilite_foreground")
-                                     : g.ap.c("menu.disable_label");
-                    if (ty + reaction_row_height(ln, lh) > body.y && ty < body.bottom())
-                        ty += paint_reaction_row(cv, body.x + pad, ty, wrap_w, ln,
-                                                 rink);
+                    Color rink = (li == g.chat_sel) ? g.ap.c("list.hilite_foreground")
+                                                    : g.ap.c("menu.disable_label");
+                    if (row_y + reaction_row_height(ln, lh) > body.y &&
+                        row_y < body.bottom())
+                        row_y += paint_reaction_row(cv, text_x, row_y, bw, ln, rink);
                     else
-                        ty += reaction_row_height(ln, lh);
+                        row_y += reaction_row_height(ln, lh);
                 }
-                ty += 2;
+                if (ln.mine && ln.delivered) {
+                    if (row_y + lh > body.y && row_y < body.bottom())
+                        cv.text(text_x, row_y, "Delivered",
+                                (li == g.chat_sel) ? g.ap.c("list.hilite_foreground")
+                                                   : g.ap.c("menu.disable_label"));
+                    row_y += lh;
+                }
+                ty += block_h;
             }
         }
     } else {

@@ -25,7 +25,10 @@ int main(int argc, char **argv) {
     constexpr int kAvatarSz = 40;
     constexpr int kBuddyRowH = 36;
     constexpr int kTabH = 22;
-    constexpr int kComposeH = 56;
+    constexpr int kComposeH = 64;
+    constexpr int kMsgAvatar = 28;
+    constexpr int kMsgPadX = 10;
+    constexpr int kMsgAvatarGap = 8;
     Canvas cv;
     cv.resize(W, H);
 
@@ -90,23 +93,60 @@ int main(int argc, char **argv) {
     cv.fill({tabs.x + 4, tabs.y + 2, 56, tabs.h - 3}, ap.c("list.hilite_background"));
     cv.text(tabs.x + 12, tabs.y + 3, "Alice", ap.c("list.hilite_foreground"));
 
+    // Modern transcript rows: avatar + nick header + body (not IRC "nick:").
     cv.fill(transcript, ap.c("text.background"));
     {
         CanvasClip clip(cv, transcript);
-        cv.text(transcript.x + 6, transcript.y + 4, "Alice: You've got mail!",
-                ap.c("primary.label"));
-        cv.text(transcript.x + 6, transcript.y + 4 + cv.line_height() + 2,
-                "You: Signed on — Sagrado Jabber", ap.c("text.foreground"));
+        const int pad = kMsgPadX;
+        const int lh = cv.line_height();
+        const int text_x = transcript.x + pad + kMsgAvatar + kMsgAvatarGap;
+        int ty = transcript.y + 6;
+
+        auto paint_av = [&](int y, const char *initials, Color fill) {
+            Rect av{transcript.x + pad, y, kMsgAvatar, kMsgAvatar};
+            cv.fill(av, fill);
+            cv.frame(av, ap.c("list.separator"));
+            int tw = cv.text_width(initials);
+            cv.text(av.x + (av.w - tw) / 2, av.y + (av.h - lh) / 2, initials,
+                    ap.c("primary.label"));
+        };
+
+        // Alice (headed)
+        paint_av(ty, "AL", ap.c("list.background"));
+        cv.text(text_x, ty, "Alice", ap.c("primary.label"));
+        cv.text(text_x, ty + lh + 2, "You've got mail!", ap.c("primary.label"));
+        ty += std::max(kMsgAvatar, lh + 2 + lh) + 8;
+
+        // You (headed) — soft band like the live app
+        {
+            int block_h = std::max(kMsgAvatar, lh + 2 + lh + lh);
+            Color bg = ap.c("list.background");
+            Color hi = ap.c("list.hilite_background");
+            Color soft{uint8_t((bg.r * 3 + hi.r) / 4), uint8_t((bg.g * 3 + hi.g) / 4),
+                       uint8_t((bg.b * 3 + hi.b) / 4)};
+            cv.fill({transcript.x + 2, ty, transcript.w - 4, block_h}, soft);
+            paint_av(ty, "YO", ap.c("list.hilite_background"));
+            cv.text(text_x, ty, "You", ap.c("list.hilite_background"));
+            cv.text(text_x, ty + lh + 2, "Signed on — Sagrado Jabber",
+                    ap.c("text.foreground"));
+            cv.text(text_x, ty + lh + 2 + lh, "Delivered",
+                    ap.c("menu.disable_label"));
+            ty += block_h + 3;
+        }
+
+        // Continuation from You (no avatar / nick)
+        cv.text(text_x, ty, "Shift+Enter for a new line in compose.",
+                ap.c("text.foreground"));
     }
 
     cv.fill(compose, ap.c("primary.background"));
-    Rect field{compose.x + 8, compose.y + 8, compose.w - 96, compose.h - 16};
+    Rect field{compose.x + 8, compose.y + 10, compose.w - 96, compose.h - 20};
     TextFieldState compose_st;
     compose_st.doc.text = "Type a message…\nShift+Enter for a new line";
     compose_st.doc.caret = compose_st.doc.anchor = compose_st.doc.text.size();
     compose_st.focused = true;
     paint_text_field(cv, ap, field, compose_st, true);
-    paint_button(cv, ap, {compose.right() - 72, compose.y + 8, 64, compose.h - 16},
+    paint_button(cv, ap, {compose.right() - 72, compose.y + 12, 64, compose.h - 24},
                  "Send", false, true);
 
     cv.fill(status, ap.c("primary.background"));
