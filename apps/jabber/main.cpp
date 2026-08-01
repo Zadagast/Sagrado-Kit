@@ -2357,10 +2357,11 @@ void paint() {
             for (int i = 0; i < (int)lines.size(); ++i) h += line_block_h(i);
             return h;
         };
-        // Snapshot avatars for this paint (roster / self).
+        // Snapshot avatars for this paint (self / 1:1 peer / MUC real JIDs).
         SkinImage own_av;
         SkinImage peer_av;
         bool have_own = false, have_peer = false;
+        std::map<std::string, SkinImage> muc_avs; // nick → photo
         {
             std::lock_guard<std::mutex> lock(g.client.mu);
             if (!g.client.own_avatar.empty()) {
@@ -2373,6 +2374,20 @@ void paint() {
                     peer_av = it->second.avatar;
                     have_peer = true;
                 }
+            } else {
+                auto oit = g.client.muc_occupants.find(key);
+                if (oit != g.client.muc_occupants.end()) {
+                    for (const auto &o : oit->second) {
+                        if (o.real_jid.empty()) continue;
+                        const SkinImage *img =
+                            g.client.avatar_for_bare_locked(o.real_jid);
+                        if (img && !img->empty()) muc_avs[o.nick] = *img;
+                    }
+                }
+                // Our nick in this room → own photo when present.
+                auto nit = g.client.muc_nicks.find(key);
+                if (have_own && nit != g.client.muc_nicks.end())
+                    muc_avs[nit->second] = own_av;
             }
         }
 
@@ -2487,8 +2502,14 @@ void paint() {
                     Rect av{body.x + pad, ty, kMsgAvatar, kMsgAvatar};
                     if (ty + kMsgAvatar > body.y && ty < body.bottom()) {
                         const SkinImage *img = nullptr;
-                        if (ln.mine && have_own) img = &own_av;
-                        else if (!ln.mine && !muc && have_peer) img = &peer_av;
+                        if (ln.mine && have_own) {
+                            img = &own_av;
+                        } else if (!muc && !ln.mine && have_peer) {
+                            img = &peer_av;
+                        } else if (muc) {
+                            auto ait = muc_avs.find(ln.from);
+                            if (ait != muc_avs.end()) img = &ait->second;
+                        }
                         paint_avatar_tile(cv, g.ap, av, img,
                                           chat_initials(chat_display_name(ln, muc)),
                                           img ? Color{} : nick_col);
@@ -2553,16 +2574,35 @@ void paint() {
         cv.fill(g.occ_r, g.ap.c("list.background"));
         cv.vline(g.occ_r.x, g.occ_r.y, g.occ_r.bottom(), g.ap.c("list.separator"));
         cv.text(g.occ_r.x + 6, g.occ_r.y + 4, "In room", g.ap.c("primary.label"));
-        std::vector<std::string> occ;
+        std::vector<jabber::MucOccupant> occ;
+        std::map<std::string, SkinImage> occ_avs;
+        Color tbg = g.ap.c("list.background");
         {
             std::lock_guard<std::mutex> lock(g.client.mu);
             occ = g.client.muc_occupants[g.tabs[g.active_tab].jid];
+            for (const auto &o : occ) {
+                if (o.real_jid.empty()) continue;
+                const SkinImage *img = g.client.avatar_for_bare_locked(o.real_jid);
+                if (img && !img->empty()) occ_avs[o.nick] = *img;
+            }
+            auto nit = g.client.muc_nicks.find(g.tabs[g.active_tab].jid);
+            if (nit != g.client.muc_nicks.end() && !g.client.own_avatar.empty())
+                occ_avs[nit->second] = g.client.own_avatar;
         }
+        constexpr int kOccAv = 20;
         int oy = g.occ_r.y + 22;
-        for (auto &n : occ) {
-            cv.text_elided(g.occ_r.x + 6, oy, n.c_str(), g.occ_r.w - 12,
+        for (auto &o : occ) {
+            Color ncol = xep0392_color(o.nick, tbg);
+            Rect av{g.occ_r.x + 4, oy + 1, kOccAv, kOccAv};
+            const SkinImage *img = nullptr;
+            auto ait = occ_avs.find(o.nick);
+            if (ait != occ_avs.end()) img = &ait->second;
+            paint_avatar_tile(cv, g.ap, av, img, chat_initials(o.nick),
+                              img ? Color{} : ncol);
+            cv.text_elided(av.right() + 4, oy + 2, o.nick.c_str(),
+                           g.occ_r.w - (av.right() + 4 - g.occ_r.x) - 4,
                            g.ap.c("list.label"));
-            oy += cv.line_height() + 4;
+            oy += std::max(kOccAv, cv.line_height()) + 6;
         }
     }
 

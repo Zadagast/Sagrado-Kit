@@ -110,6 +110,11 @@ Interoperable with Gajim/Conversations on the wire.
 XEP-0392 Consistent Color Generation (SHA-1 → hue; lightness adapted to the
 transcript background). Colors are client-local, not published over XMPP.
 
+**Room avatars** — when a MUC discloses occupant real JIDs (`muc#user` `item/@jid`),
+we fetch that bare JID’s vCard PHOTO (same path as roster icons) and show it on
+message rows and the In room list. Anonymous rooms stay on initials-only tiles;
+we never vCard-query `room/nick`.
+
 **Message history (MAM)** — cold-open pulls the newest ~40 lines for a 1:1 chat and
 scrolls to the bottom. Scroll up at the top of the transcript to page older archive
 lines (RSM `before`); the viewport stays put while older lines prepend. A quiet

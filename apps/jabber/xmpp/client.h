@@ -86,6 +86,12 @@ struct MucInvite {
     std::string reason;
 };
 
+// MUC occupant row — real_jid only when muc#user item/@jid is disclosed.
+struct MucOccupant {
+    std::string nick;
+    std::string real_jid; // bare; empty in anonymous rooms
+};
+
 struct UploadSlot {
     std::string put_url;
     std::string get_url;
@@ -355,6 +361,21 @@ inline time_t delay_stamp_from_stanza(const std::string &st) {
     return find_stamp("jabber:x:delay");
 }
 
+// muc#user <item jid='user@host'/> when the room discloses real JIDs.
+inline std::string muc_item_real_jid(const std::string &st) {
+    if (st.find("muc#user") == std::string::npos) return {};
+    size_t ip = st.find("<item");
+    while (ip != std::string::npos) {
+        size_t gt = st.find('>', ip);
+        if (gt == std::string::npos) break;
+        std::string tag = st.substr(ip, gt - ip + 1);
+        std::string j = attr(tag, "jid");
+        if (!j.empty()) return bare_jid(j);
+        ip = st.find("<item", gt + 1);
+    }
+    return {};
+}
+
 // XEP-0359 stanza-id assigned by `by` (bare JID).
 inline std::string stanza_id_by(const std::string &st, const std::string &by) {
     if (by.empty()) return {};
@@ -484,10 +505,12 @@ public:
     std::map<std::string,
              std::map<std::string, std::map<std::string, std::vector<std::string>>>>
         reaction_sets;
-    std::map<std::string, std::vector<std::string>> muc_occupants;
+    std::map<std::string, std::vector<MucOccupant>> muc_occupants;
     std::map<std::string, std::string> muc_nicks;     // room → our nick
     std::map<std::string, std::string> muc_subjects;  // room → subject
     std::set<std::string> muc_joined;                 // rooms we have joined
+    // vCard PHOTO cache for bare JIDs (roster + MUC real JIDs).
+    std::map<std::string, SkinImage> vcard_avatars;
     std::string conference_host;                      // e.g. conference.yax.im
     std::vector<MucRoomInfo> muc_rooms;               // public disco list
     std::vector<MucBookmark> muc_bookmarks;
@@ -532,6 +555,8 @@ public:
             pending_muc_invites.clear();
             chat_states.clear();
             reaction_sets.clear();
+            vcard_avatars.clear();
+            vcard_attempted_.clear();
             mam_available = false;
             mam_initial_done_.clear();
             mam_complete_.clear();
@@ -935,9 +960,10 @@ public:
     void request_vcard(const std::string &bare = {}) {
         std::string to = bare_jid(bare.empty() ? jid : bare);
         if (to.empty()) return;
-        bool self = bare.empty() || to == bare_jid(jid);
+        bool self = bare.empty() || jid_ieq(to, bare_jid(jid));
         {
             std::lock_guard<std::mutex> lock(mu);
+            if (!self && vcard_attempted_.count(to)) return; // already fetched
             if (vcard_inflight_.count(to)) return;
             if ((int)vcard_inflight_.size() >= 4) {
                 vcard_queue_.push(to);
@@ -950,6 +976,30 @@ public:
         if (!self) iq += " to='" + xml_escape(to) + "'";
         iq += "><vCard xmlns='vcard-temp'/></iq>";
         queue_send(iq);
+    }
+
+    // Bare real JID for a room nick (empty if anonymous / unknown). Caller holds mu.
+    std::string muc_real_jid_locked(const std::string &room, const std::string &nick) const {
+        auto it = muc_occupants.find(bare_jid(room));
+        if (it == muc_occupants.end()) return {};
+        for (const auto &o : it->second)
+            if (o.nick == nick) return o.real_jid;
+        return {};
+    }
+
+    // Best photo for a bare JID. Caller holds mu. Pointers valid until unlock.
+    const SkinImage *avatar_for_bare_locked(const std::string &bare_in) const {
+        std::string bare = bare_jid(bare_in);
+        if (bare.empty()) return nullptr;
+        if (jid_ieq(bare, bare_jid(jid)) && !own_avatar.empty()) return &own_avatar;
+        auto rit = roster.find(bare);
+        if (rit != roster.end() && !rit->second.avatar.empty()) return &rit->second.avatar;
+        // Case-insensitive lookup in vcard_avatars (keys stored as bare_jid).
+        auto vit = vcard_avatars.find(bare);
+        if (vit != vcard_avatars.end() && !vit->second.empty()) return &vit->second;
+        for (const auto &kv : vcard_avatars)
+            if (jid_ieq(kv.first, bare) && !kv.second.empty()) return &kv.second;
+        return nullptr;
     }
 
     // Publish own icon via XEP-0054 vCard PHOTO (AIM-shaped Set Picture).
@@ -974,6 +1024,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(mu);
             own_avatar = std::move(av);
+            vcard_avatars[bare_jid(jid)] = own_avatar;
             own_photo_hash_ = hash;
             pending_photo_bytes_ = bytes;
             pending_photo_mime_ = mime;
@@ -1128,6 +1179,7 @@ private:
     std::vector<uint8_t> pending_upload_data_;
     std::set<std::string> vcard_inflight_;
     std::queue<std::string> vcard_queue_;
+    std::set<std::string> vcard_attempted_; // bare JIDs we already IQ-got
     std::string own_vcard_xml_;   // last self vCard fragment for PHOTO merge
     std::string own_photo_hash_;  // SHA-1 hex of PHOTO BINVAL (XEP-0153)
     std::vector<uint8_t> pending_photo_bytes_;
@@ -1244,12 +1296,14 @@ private:
                 photo_hash = sha1_hex(bytes);
             }
         }
-        bool self = bare.empty() || bare_jid(bare) == bare_jid(jid);
+        bool self = bare.empty() || jid_ieq(bare_jid(bare), bare_jid(jid));
         {
             std::lock_guard<std::mutex> lock(mu);
             std::string key = self ? bare_jid(jid) : bare_jid(bare);
             vcard_inflight_.erase(key);
             if (self) vcard_inflight_.erase(jid);
+            vcard_attempted_.insert(key);
+            if (!avatar.empty()) vcard_avatars[key] = avatar; // shared roster + MUC cache
             if (self) {
                 size_t a = st.find("<vCard");
                 if (a == std::string::npos) a = st.find("<vcard");
@@ -1266,12 +1320,15 @@ private:
                 else if (!fn.empty() &&
                          (roster[key].name.empty() || roster[key].name == jid_node(key)))
                     roster[key].name = fn;
-                if (!avatar.empty()) roster[key].avatar = std::move(avatar);
+                if (!avatar.empty()) roster[key].avatar = avatar;
                 roster[key].vcard_fetched = true;
             }
         }
         emit(make_event(ClientEvent::Identity, {}, self ? bare_jid(jid) : bare_jid(bare)));
-        if (!self) emit(make_event(ClientEvent::Roster));
+        if (!self) {
+            emit(make_event(ClientEvent::Roster));
+            emit(make_event(ClientEvent::MucOccupants)); // refresh room avatar tiles
+        }
         pump_vcard_queue();
     }
 
@@ -1955,16 +2012,46 @@ private:
                 if (slash != std::string::npos && muc_joined.count(bare)) {
                     muc = true;
                     std::string nick = from.substr(slash + 1);
+                    std::string real = muc_item_real_jid(st);
                     auto &occ = muc_occupants[bare];
                     if (type == "unavailable") {
-                        occ.erase(std::remove(occ.begin(), occ.end(), nick), occ.end());
-                    } else if (std::find(occ.begin(), occ.end(), nick) == occ.end()) {
-                        occ.push_back(nick);
+                        occ.erase(std::remove_if(occ.begin(), occ.end(),
+                                                 [&](const MucOccupant &o) {
+                                                     return o.nick == nick;
+                                                 }),
+                                  occ.end());
+                    } else {
+                        auto oit = std::find_if(occ.begin(), occ.end(),
+                                                [&](const MucOccupant &o) {
+                                                    return o.nick == nick;
+                                                });
+                        if (oit != occ.end()) {
+                            if (!real.empty()) oit->real_jid = real;
+                        } else {
+                            occ.push_back(MucOccupant{nick, real});
+                        }
                     }
                 }
             }
             emit(make_event(ClientEvent::Presence, status_s, bare));
             if (muc) emit(make_event(ClientEvent::MucOccupants, {}, bare));
+            // Fetch vCard PHOTO only when a real bare JID is disclosed (privacy).
+            if (muc && type != "unavailable") {
+                std::string real = muc_item_real_jid(st);
+                bool need = false;
+                bool photo_update =
+                    st.find("vcard-temp:x:update") != std::string::npos;
+                if (!real.empty()) {
+                    std::lock_guard<std::mutex> lock(mu);
+                    if (photo_update) {
+                        vcard_attempted_.erase(real);
+                        if (roster.count(real)) roster[real].vcard_fetched = false;
+                    }
+                    need = !vcard_attempted_.count(real) &&
+                           !vcard_inflight_.count(real);
+                }
+                if (need) request_vcard(real);
+            }
             // Buddy published a new picture — refresh their vCard.
             if (!muc && st.find("vcard-temp:x:update") != std::string::npos) {
                 bool on_roster = false;
@@ -1972,6 +2059,7 @@ private:
                     std::lock_guard<std::mutex> lock(mu);
                     if (roster.count(bare)) {
                         roster[bare].vcard_fetched = false;
+                        vcard_attempted_.erase(bare);
                         on_roster = true;
                     }
                 }
