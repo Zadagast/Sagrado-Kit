@@ -3926,6 +3926,8 @@ private:
             (st.find("<list") != std::string::npos &&
              st.find(omemo::NS) != std::string::npos)) {
             if (iq_type == "error") return;
+            if (st.find("<list") == std::string::npos) return;
+            if (iq_type == "result" && st.find("<publish") != std::string::npos) return;
             auto ids = omemo::Manager::parse_device_list(st);
             if (ids.empty() && jid_ieq(from, bare_jid(jid))) {
                 // Empty own list — publish ours alone.

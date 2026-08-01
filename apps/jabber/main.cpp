@@ -1863,7 +1863,7 @@ int hit_transcript_line(int x, int y) {
     const int pad = kMsgPadX;
     const int lh = g.canvas.line_height();
     const int full_wrap = std::max(8, g.transcript_r.w - 2 * pad);
-    int top = g.transcript_r.y + 4 + chat_header_height(g.canvas) + 6;
+    int top = g.transcript_r.y + chat_header_height(g.canvas) + 6;
     if (muc && !subject.empty()) {
         std::string sub = "Topic: " + subject;
         top += text_content_height(layout_lines(g.canvas, sub, full_wrap, true), lh) +
@@ -1905,7 +1905,7 @@ int hit_reaction_pill(int x, int y, std::string *emoji_out) {
     const int pad = kMsgPadX;
     const int lh = g.canvas.line_height();
     const int full_wrap = std::max(8, g.transcript_r.w - 2 * pad);
-    int top = g.transcript_r.y + 4 + chat_header_height(g.canvas) + 6;
+    int top = g.transcript_r.y + chat_header_height(g.canvas) + 6;
     if (muc && !subject.empty()) {
         std::string sub = "Topic: " + subject;
         top += text_content_height(layout_lines(g.canvas, sub, full_wrap, true), lh) +
@@ -2948,7 +2948,7 @@ void paint() {
             }
         }
 
-        int top = g.transcript_r.y + 4;
+        int top = g.transcript_r.y;
         int header_h = chat_header_height(cv);
         paint_chat_header(cv, g.ap, {g.transcript_r.x, top, g.transcript_r.w, header_h},
                           chat_header_title(key, muc), chat_header_subtitle(key, muc));
