@@ -1932,6 +1932,7 @@ void ensure_emoji_host() {
     desc.min_h = 280;
     desc.owner = g.hwnd;
     desc.ap = &g.ap;
+    desc.close_on_deactivate = true;
     if (!sagrado::gel_host_create(g.emoji_host, g.hinst, desc)) return;
     sagrado::gel_host_set_handlers(g.emoji_host, emoji_host_paint,
                                    emoji_host_input, nullptr, emoji_host_close);

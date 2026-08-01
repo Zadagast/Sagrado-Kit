@@ -43,6 +43,8 @@ struct GelHostDesc {
     HWND owner = nullptr;
     Appearance *ap = nullptr;
     const Font *font = nullptr;
+    // Close automatically when the window loses activation (picker behavior).
+    bool close_on_deactivate = false;
 };
 
 struct GelHost {
@@ -58,6 +60,7 @@ struct GelHost {
     int min_h = 200;
     bool focused = true;
     bool visible = false;
+    bool close_on_deactivate = false;
     int pressed_box = 0; // 1=close
 
     GelHostPaintFn paint_fn = nullptr;
@@ -249,6 +252,14 @@ inline LRESULT CALLBACK gel_host_wnd_proc(HWND hwnd, UINT msg, WPARAM wp,
         h.pressed_box = 0;
         gel_host_invalidate(h);
         return 0;
+    case WM_ACTIVATE:
+        // Dismiss on click-away so the picker never gets "stuck" open when
+        // focus has moved to another window (Esc only reaches the focused one).
+        if (LOWORD(wp) == WA_INACTIVE && h.close_on_deactivate && h.visible) {
+            gel_host_request_close(h);
+            return 0;
+        }
+        return 0;
     case WM_NCHITTEST: {
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
@@ -352,6 +363,7 @@ inline bool gel_host_create(GelHost &h, HINSTANCE hinst, const GelHostDesc &desc
     h.kind = desc.kind;
     h.title = desc.title ? desc.title : "Sagrado";
     h.class_name = desc.class_name ? desc.class_name : "SagradoGelHost";
+    h.close_on_deactivate = desc.close_on_deactivate;
     h.min_w = std::max(80, desc.min_w);
     h.min_h = std::max(60, desc.min_h);
     int w = std::max(h.min_w, desc.w);
