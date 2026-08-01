@@ -15,6 +15,7 @@
 
 #include "../engine/appearance.h"
 #include "../engine/hfnt.h"
+#include "../engine/skin_catalog.h"
 
 namespace {
 
@@ -44,6 +45,7 @@ enum Drag : int {
     DragBtnLoad,
     DragBtnSave,
     DragBtnStock,
+    DragBtnThemes,
     DragBtnImportColors,
     DragBtnColorsOnly,
     DragBtnPaste,
@@ -103,8 +105,15 @@ struct App {
     Rect role_list{};
     Rect role_sbar{};
     Rect preview{};
-    Rect btn_load{}, btn_save{}, btn_stock{};
+    Rect btn_load{}, btn_save{}, btn_stock{}, btn_themes{};
     Rect btn_import_colors{}, btn_colors_only{};
+    MenuLayout themes_popup{};
+    bool themes_open = false;
+    int themes_hot = -1;
+    int themes_scroll = 0;
+    std::vector<sagrado::BundledSkin> bundled_skins;
+    std::vector<std::string> themes_labels;
+    std::vector<const char *> themes_ptrs;
     Rect panel_tabs[PanelCount]{};
     Rect slider_r{}, slider_g{}, slider_b{};
     Rect hex_field{};
@@ -148,32 +157,20 @@ std::string exe_dir() {
     return cut == std::string::npos ? "." : p.substr(0, cut);
 }
 
+void rebuild_themes_menu() {
+    g.bundled_skins = sagrado::list_bundled_skins(exe_dir());
+    g.themes_labels.clear();
+    for (const auto &s : g.bundled_skins)
+        g.themes_labels.push_back(s.name);
+    g.themes_ptrs.clear();
+    for (const auto &lab : g.themes_labels)
+        g.themes_ptrs.push_back(lab.c_str());
+    g.themes_scroll = 0;
+    g.themes_hot = -1;
+}
+
 std::string find_default_skin() {
-    std::string dir = exe_dir();
-    // Gamespot is the default appearance; Milk / stock are fallbacks.
-    const char *cands[] = {
-        "\\..\\research\\haps\\Gamespot-1100.hap",
-        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
-        "\\research\\haps\\Gamespot-1100.hap",
-        "\\format\\skins\\Gamespot-1100.hap",
-        "\\..\\format\\skins\\Gamespot-1100.hap",
-        "\\..\\research\\haps\\Milk Redux.hap",
-        "\\..\\..\\research\\haps\\Milk Redux.hap",
-        "\\research\\haps\\Milk Redux.hap",
-        "\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\format\\skins\\stock.sap",
-        "\\..\\format\\skins\\stock.sap",
-        "\\..\\..\\format\\skins\\stock.sap",
-        "\\skins\\stock.sap"};
-    for (const char *c : cands) {
-        std::string p = dir + c;
-        DWORD a = GetFileAttributesA(p.c_str());
-        if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY))
-            return p;
-    }
-    return {};
+    return sagrado::find_default_bundled_skin(exe_dir());
 }
 
 Color selected_color() {
@@ -840,7 +837,8 @@ void layout() {
     g.btn_load = {client.x + 12, by, kToolBtnW, kButtonH};
     g.btn_save = default_button_rect(g.btn_load.right() + kToolGap, by, kToolBtnW);
     g.btn_stock = {g.btn_save.right() + kToolGap, by, kToolBtnW, kButtonH};
-    g.btn_import_colors = {g.btn_stock.right() + kToolGap, by, 110, kButtonH};
+    g.btn_themes = {g.btn_stock.right() + kToolGap, by, kToolBtnW, kButtonH};
+    g.btn_import_colors = {g.btn_themes.right() + kToolGap, by, 110, kButtonH};
     g.btn_colors_only = {g.btn_import_colors.right() + kToolGap, by, 100, kButtonH};
 
     int split = client.x + 440;
@@ -937,6 +935,8 @@ void paint() {
     bool load_p = g.drag == DragBtnLoad && g.btn_load.contains(pt.x, pt.y);
     bool save_p = g.drag == DragBtnSave && g.btn_save.contains(pt.x, pt.y);
     bool stock_p = g.drag == DragBtnStock && g.btn_stock.contains(pt.x, pt.y);
+    bool themes_p =
+        g.drag == DragBtnThemes && g.btn_themes.contains(pt.x, pt.y);
     bool import_p =
         g.drag == DragBtnImportColors && g.btn_import_colors.contains(pt.x, pt.y);
     bool only_p =
@@ -944,6 +944,7 @@ void paint() {
     paint_button(cv, ap, g.btn_load, "Load", load_p, false);
     paint_button(cv, ap, g.btn_save, "Save", save_p, true);
     paint_button(cv, ap, g.btn_stock, "Stock", stock_p, false);
+    paint_button(cv, ap, g.btn_themes, "Themes", themes_p || g.themes_open, false);
     paint_button(cv, ap, g.btn_import_colors, "Import Colors", import_p, false);
     paint_button(cv, ap, g.btn_colors_only,
                  g.preview_st.colours_only ? "Full Preview" : "Colors Preview",
@@ -1227,6 +1228,33 @@ void paint() {
 
     // Grow box last — same order as Sagrado (paint_grip after content).
     paint_gel_grip(cv, ap, g.gel.grip, g.focused);
+
+    if (g.themes_open && !g.themes_ptrs.empty()) {
+        int total = (int)g.themes_ptrs.size();
+        int mw = 160;
+        for (int i = 0; i < total; ++i)
+            mw = std::max(mw, cv.text_width(g.themes_ptrs[i]) + 28);
+        Rect win{0, 0, cv.width(), cv.height()};
+        int max_h =
+            std::max(kMenuItemH + 8, win.bottom() - g.btn_themes.bottom() - 4);
+        int max_rows = std::max(1, (max_h - 4) / kMenuItemH);
+        int scroll = 0;
+        int vis = total;
+        const char *const *items = g.themes_ptrs.data();
+        int hot = g.themes_hot;
+        if (total > max_rows) {
+            scroll = std::clamp(g.themes_scroll, 0, total - max_rows);
+            g.themes_scroll = scroll;
+            vis = max_rows;
+            items = g.themes_ptrs.data() + scroll;
+            if (hot < 0 || hot >= vis) hot = -1;
+        } else {
+            g.themes_scroll = 0;
+        }
+        int mx = 0, my = 0;
+        menu_place(win, g.btn_themes, mw, menu_estimate_h(vis), &mx, &my);
+        g.themes_popup = paint_menu(cv, ap, mx, my, mw, items, vis, hot);
+    }
 }
 
 void blit(HWND hwnd) {
@@ -1288,6 +1316,34 @@ void mouse_down(int mx, int my) {
 
     SetCapture(g_hwnd);
 
+    if (g.themes_open) {
+        int row = menu_hit_row(g.themes_popup, mx, my);
+        if (row >= 0) {
+            row += g.themes_scroll;
+            if (row >= 0 && row < (int)g.bundled_skins.size()) {
+                const std::string &path = g.bundled_skins[row].path;
+                if (g.ap.load(path)) {
+                    g.path = path;
+                    g.dirty = false;
+                    set_status("Appearance: " + g.ap.skin.meta.name);
+                } else
+                    set_status("Failed to load appearance");
+            }
+            g.themes_open = false;
+            redraw();
+            return;
+        }
+        if (!g.btn_themes.contains(mx, my)) {
+            g.themes_open = false;
+            redraw();
+            // fall through so other controls still work
+        } else {
+            g.themes_open = false;
+            redraw();
+            return;
+        }
+    }
+
     if (g.gel.close_box.contains(mx, my)) {
         g.drag = DragCloseBox;
         g.pressed_box = 1;
@@ -1320,6 +1376,11 @@ void mouse_down(int mx, int my) {
     }
     if (g.btn_stock.contains(mx, my)) {
         g.drag = DragBtnStock;
+        redraw();
+        return;
+    }
+    if (g.btn_themes.contains(mx, my)) {
+        g.drag = DragBtnThemes;
         redraw();
         return;
     }
@@ -1762,8 +1823,15 @@ void mouse_move(int mx, int my) {
     } else if (g.drag == DragMinBox) {
         g.pressed_box = g.gel.min_box.contains(mx, my) ? 4 : 0;
         redraw();
+    } else if (g.themes_open) {
+        int row = menu_hit_row(g.themes_popup, mx, my);
+        if (row != g.themes_hot) {
+            g.themes_hot = row;
+            redraw();
+        }
     } else if (g.drag == DragBtnLoad || g.drag == DragBtnSave ||
-               g.drag == DragBtnStock || g.drag == DragBtnImportColors ||
+               g.drag == DragBtnStock || g.drag == DragBtnThemes ||
+               g.drag == DragBtnImportColors ||
                g.drag == DragBtnColorsOnly || g.drag == DragBtnPaste ||
                g.drag == DragBtnTrans || g.drag == DragImgNudge ||
                g.drag == DragPreviewBtn || g.drag == DragDropdown) {
@@ -1816,7 +1884,10 @@ void mouse_up(int mx, int my) {
     if (was == DragBtnLoad && g.btn_load.contains(mx, my)) do_load();
     else if (was == DragBtnSave && g.btn_save.contains(mx, my)) do_save();
     else if (was == DragBtnStock && g.btn_stock.contains(mx, my)) do_stock();
-    else if (was == DragBtnImportColors && g.btn_import_colors.contains(mx, my))
+    else if (was == DragBtnThemes && g.btn_themes.contains(mx, my)) {
+        rebuild_themes_menu();
+        g.themes_open = !g.themes_open;
+    } else if (was == DragBtnImportColors && g.btn_import_colors.contains(mx, my))
         do_import_colors();
     else if (was == DragBtnColorsOnly && g.btn_colors_only.contains(mx, my)) {
         g.preview_st.colours_only = !g.preview_st.colours_only;
@@ -1845,10 +1916,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CREATE:
         g.canvas.resize(kWinW, kWinH);
         {
+            rebuild_themes_menu();
             std::string p = find_default_skin();
             if (!p.empty() && g.ap.load(p)) {
                 g.path = p;
-                set_status("Loaded " + p);
+                set_status("Loaded " + g.ap.skin.meta.name);
             } else {
                 g.ap.set_skin(stock_skin());
             }
@@ -1903,6 +1975,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int mx = GET_X_LPARAM(lp), my = GET_Y_LPARAM(lp);
         if (wp & MK_LBUTTON) {
             mouse_move(mx, my);
+        } else if (g.themes_open) {
+            int row = menu_hit_row(g.themes_popup, mx, my);
+            if (row != g.themes_hot) {
+                g.themes_hot = row;
+                redraw();
+            }
         } else if (g.preview_st.dropdown_open) {
             layout();
             int row = menu_hit_row(g.preview_lay.menu_lay, mx, my);
@@ -1922,7 +2000,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         layout();
         int delta = GET_WHEEL_DELTA_WPARAM(wp);
         int step = delta > 0 ? -3 : 3;
-        if (g.preview.contains(pt.x, pt.y)) {
+        if (g.themes_open) {
+            int total = (int)g.themes_ptrs.size();
+            int max_rows =
+                std::max(1, (g.canvas.height() - 40) / kMenuItemH);
+            int max_scroll = std::max(0, total - max_rows);
+            g.themes_scroll =
+                std::clamp(g.themes_scroll + step, 0, max_scroll);
+        } else if (g.preview.contains(pt.x, pt.y)) {
             g.preview_scroll =
                 std::clamp(g.preview_scroll + step, 0, g.preview_max_scroll());
         } else {

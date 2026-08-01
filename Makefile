@@ -67,13 +67,14 @@ jabber-connect-smoke: $(JABBER_CONNECT_SMOKE)
 	if [ -z "$$WINE" ]; then echo "wine not found"; exit 127; fi; \
 	$$WINE $(JABBER_CONNECT_SMOKE) yax.im
 
-# Copy example skins next to the binary for Load dialog convenience.
+# Ship all appearances next to the binaries (Appearance menu + cold start).
+# Apps load from build/format/skins/ — no research/haps/ needed at runtime.
 skins: | $(BUILD)
 	mkdir -p $(BUILD)/format/skins
 	cp -f format/skins/*.sap $(BUILD)/format/skins/ 2>/dev/null || true
-	# Default appearance (Gamespot) next to the binaries for Load / cold start.
-	cp -f "research/haps/Gamespot-1100.hap" $(BUILD)/format/skins/Gamespot-1100.hap
-	# Art skins live in subfolders (images + .sap)
+	# Full Hap corpus (~3.3 MiB) — Gamespot, Ashen, Aluminum, Milk, …
+	cp -f research/haps/*.hap $(BUILD)/format/skins/
+	# Art skins live in subfolders (images + .sap): milk-redux, ooze, completion
 	for d in format/skins/*/; do \
 	  [ -d "$$d" ] || continue; \
 	  name=$$(basename "$$d"); \
@@ -136,6 +137,11 @@ smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp a
 	$(BUILD)/jabber_smoke "research/haps/Milk Redux.hap"
 	$(BUILD)/jabber_smoke "research/haps/Boilerplate-Rusty.hap"
 	$(BUILD)/jabber_smoke "research/haps/International2.hap"
+	# Bundled skins catalog (Gamespot default + Ooze pack + Hap corpus)
+	$(MAKE) skins
+	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/skin_catalog_test.cpp \
+	  -o $(BUILD)/skin_catalog_test
+	$(BUILD)/skin_catalog_test $(BUILD)
 
 clean:
 	rm -rf $(BUILD)
