@@ -25,6 +25,7 @@
 // image header shifts the palette and yields noise.
 #pragma once
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <string>

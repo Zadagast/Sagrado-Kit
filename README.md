@@ -47,6 +47,19 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 | Drawing | Software framebuffer → `SetDIBitsToDevice` |
 | Skin | Named `.sap` (schema in `format/schema.json`) |
 
+## Everyday loop (stay on main)
+
+```sh
+git checkout main
+git pull
+make
+make run           # Sagrado Jabber under Wine
+```
+
+Do **not** check out old draft feature branches for daily use — they diverge and
+feel like “an old/different version.” Review PRs only when reviewing. Roadmap:
+[`docs/roadmap.md`](docs/roadmap.md).
+
 ## Build
 
 ### Linux (cross-compile + Wine)
@@ -55,10 +68,11 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 # Debian/Ubuntu
 sudo apt install g++-mingw-w64-i686 wine
 
-make               # → Editor + TextEdit + Jabber + example skins
-make run           # kit editor under Wine (prefers `wine64`, then `wine`)
+make               # → Editor + TextEdit + Jabber + bundled skins
+make run           # Sagrado Jabber under Wine (prefers wine64)
+make run-jabber    # same as make run
 make run-textedit  # Sagrado TextEdit under Wine
-make run-jabber    # Sagrado Jabber under Wine
+make run-editor    # kit Appearance editor under Wine
 # without Wine: copy the .exe to Windows, or install WineHQ and use wine64
 ```
 
@@ -81,14 +95,19 @@ i686-w64-mingw32-g++ -std=c++17 -O2 -Iengine editor/main.cpp \
   -o build/SagradoKitEditor.exe -mwindows -lgdi32 -luser32 -lcomdlg32
 ```
 
-Run `build/SagradoKitEditor.exe`. Example skins are in
-`build/format/skins/` (and `format/skins/` in the repo). The editor prefers
-`milk-redux/milk-redux.sap` when that folder was copied by `make skins`.
+Run `build/SagradoKitEditor.exe`. `make skins` ships **all** appearances next to
+the binaries under `build/format/skins/` (every `research/haps/*.hap`, plus SAP
+packs such as `milk-redux/`, `ooze/`, `completion/`). Apps do not need
+`research/haps/` at runtime. Cold start prefers **Gamespot-1100**; pick others from
+**Appearance** (Jabber / TextEdit) or the editor **Themes** button.
+It also ships `ooze/ooze.sap` — aluminum gel, pinstripes, and traffic lights
+(`python3 research/build_ooze_theme.py` to regenerate) — load via Appearance.
 
 ## Editor
 
 - **Load / Save** — `.sap` files (same format apps load); **Load** also accepts `.hap`.
   Save after a Hap load writes a full `.sap` + `.skimg` art (Hap→Sap parity).
+- **Themes** — menu of bundled skins from `format/skins/` (wheel to scroll)
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
 - **Kit Preview** — live gel + controls (icon buttons, menu bar, Find, File
@@ -107,7 +126,7 @@ later apps follow).
 - Menu bar: File, Edit, Find, Appearance, Help
 - Soft-wrapped text view + scrollbars, selection, clipboard, undo
 - Find & Replace dialog (separate gel, TextEdit-measured 442×176)
-- **Appearance → Load Appearance** — any `.hap` / `.sap` live
+- **Appearance** — bundled skins from `format/skins/`; Load… for extras
 
 ```sh
 make run-textedit
@@ -121,7 +140,8 @@ chats, HTTP Upload files, and **Get an Account** with CAPTCHA painted in gel
 (no browser signup). See [`docs/jabber.md`](docs/jabber.md).
 
 ```sh
-make run-jabber
+make run
+# or: make run-jabber
 # or: build/SagradoJabber.exe
 ```
 

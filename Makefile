@@ -13,19 +13,35 @@ EDITOR   := $(BUILD)/SagradoKitEditor.exe
 TEXTEDIT := $(BUILD)/SagradoTextEdit.exe
 JABBER   := $(BUILD)/SagradoJabber.exe
 JABBER_CONNECT_SMOKE := $(BUILD)/jabber_connect_smoke.exe
-JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32 -lshell32
+JABBER_OMEMO_SMOKE := $(BUILD)/jabber_omemo_smoke.exe
 include apps/jabber/mbedtls_sources.mk
+include apps/jabber/omemo_sources.mk
 MBEDTLS_LIB := $(BUILD)/libmbedtls_jabber.a
+OMEMO_LIB := $(BUILD)/libomemo_jabber.a
 MBEDTLS_CFLAGS := -O2 -Wall \
 	-Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/mbedtls/include \
 	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
+OMEMO_CFLAGS := -O2 -Wall -Wno-unused-variable -Wno-unused-function \
+	-Wno-sign-compare -Wno-missing-field-initializers \
+	-Iapps/jabber/third_party/libomemo-c/src \
+	-Iapps/jabber/third_party/libomemo-c/src/curve25519 \
+	-Iapps/jabber/third_party/libomemo-c/src/curve25519/ed25519 \
+	-Iapps/jabber/third_party/libomemo-c/src/curve25519/ed25519/nacl_includes \
+	-Iapps/jabber/third_party/libomemo-c/src/curve25519/ed25519/additions \
+	-Iapps/jabber/third_party/libomemo-c/src/curve25519/ed25519/additions/generalized \
+	-Iapps/jabber/third_party/protobuf-c \
+	-Iapps/jabber/third_party/protobuf-c/protobuf-c
 CC_MINGW := $(shell command -v i686-w64-mingw32-gcc-posix 2>/dev/null || echo i686-w64-mingw32-gcc)
 JABBER_CXXFLAGS := $(CXXFLAGS) -Iapps/jabber -Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/mbedtls/include \
-	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
+	-Iapps/jabber/third_party/libomemo-c/src \
+	-Iapps/jabber/third_party/protobuf-c \
+	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>' \
+	-DJABBER_OMEMO=1
+JABBER_LDFLAGS := $(LDFLAGS) -lws2_32 -lwinhttp -lcrypt32 -lshell32
 
-.PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke emoji-pack
+.PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke jabber-omemo-smoke emoji-pack
 
 all: $(EDITOR) $(TEXTEDIT) $(JABBER) skins
 
@@ -52,16 +68,29 @@ $(MBEDTLS_LIB): $(MBEDTLS_SRCS) apps/jabber/xmpp/jabber_mbedtls_config.h | $(BUI
 	done
 	i686-w64-mingw32-ar rcs $@ $(BUILD)/mbedtls/*.o
 
+$(OMEMO_LIB): $(OMEMO_SRCS) | $(BUILD)
+	@mkdir -p $(BUILD)/omemo
+	@for f in $(OMEMO_SRCS); do \
+	  obj=$(BUILD)/omemo/$$(basename $$f .c).o; \
+	  echo "CC $$f"; \
+	  $(CC_MINGW) $(OMEMO_CFLAGS) -c $$f -o $$obj || exit 1; \
+	done
+	i686-w64-mingw32-ar rcs $@ $(BUILD)/omemo/*.o
+
 $(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h \
-           apps/jabber/third_party/stb_image.h $(MBEDTLS_LIB) engine/*.h | $(BUILD)
-	$(CXX) $(JABBER_CXXFLAGS) apps/jabber/main.cpp $(MBEDTLS_LIB) -o $@ $(JABBER_LDFLAGS)
+           apps/jabber/third_party/stb_image.h $(MBEDTLS_LIB) $(OMEMO_LIB) engine/*.h | $(BUILD)
+	$(CXX) $(JABBER_CXXFLAGS) apps/jabber/main.cpp $(MBEDTLS_LIB) $(OMEMO_LIB) -o $@ $(JABBER_LDFLAGS)
 	cp -f apps/jabber/providers.txt $(BUILD)/providers.txt
 	@if [ ! -f $(BUILD)/emoji_pack/catalog.txt ]; then \
 	  $(MAKE) emoji-pack; \
 	fi
 
-$(JABBER_CONNECT_SMOKE): apps/jabber/connect_smoke.cpp apps/jabber/xmpp/*.h $(MBEDTLS_LIB) | $(BUILD)
-	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/connect_smoke.cpp $(MBEDTLS_LIB) \
+$(JABBER_CONNECT_SMOKE): apps/jabber/connect_smoke.cpp apps/jabber/xmpp/*.h $(MBEDTLS_LIB) $(OMEMO_LIB) | $(BUILD)
+	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/connect_smoke.cpp $(MBEDTLS_LIB) $(OMEMO_LIB) \
+	  -o $@ -lws2_32 -lcrypt32
+
+$(JABBER_OMEMO_SMOKE): apps/jabber/omemo_smoke.cpp apps/jabber/xmpp/omemo.h $(MBEDTLS_LIB) $(OMEMO_LIB) | $(BUILD)
+	$(CXX) $(JABBER_CXXFLAGS) -mconsole apps/jabber/omemo_smoke.cpp $(MBEDTLS_LIB) $(OMEMO_LIB) \
 	  -o $@ -lws2_32 -lcrypt32
 
 jabber-connect-smoke: $(JABBER_CONNECT_SMOKE)
@@ -69,11 +98,22 @@ jabber-connect-smoke: $(JABBER_CONNECT_SMOKE)
 	if [ -z "$$WINE" ]; then echo "wine not found"; exit 127; fi; \
 	$$WINE $(JABBER_CONNECT_SMOKE) yax.im
 
+# Ship all appearances next to the binaries (Appearance menu + cold start).
+# Apps load from build/format/skins/ — no research/haps/ needed at runtime.
+jabber-omemo-smoke: $(JABBER_OMEMO_SMOKE)
+	@WINE=$$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null); \
+	if [ -z "$$WINE" ]; then echo "wine not found"; exit 127; fi; \
+	cd $(BUILD) && $$WINE ../$(JABBER_OMEMO_SMOKE)
+
 # Copy example skins next to the binary for Load dialog convenience.
 skins: | $(BUILD)
 	mkdir -p $(BUILD)/format/skins
 	cp -f format/skins/*.sap $(BUILD)/format/skins/ 2>/dev/null || true
-	# Art skins live in subfolders (images + .sap)
+	# Default appearance (Gamespot) next to the binaries for Load / cold start.
+	cp -f "research/haps/Gamespot-1100.hap" $(BUILD)/format/skins/Gamespot-1100.hap
+	# Full Hap corpus (~3.3 MiB) — Gamespot, Ashen, Aluminum, Milk, …
+	cp -f research/haps/*.hap $(BUILD)/format/skins/
+	# Art skins live in subfolders (images + .sap): milk-redux, ooze, completion
 	for d in format/skins/*/; do \
 	  [ -d "$$d" ] || continue; \
 	  name=$$(basename "$$d"); \
@@ -136,6 +176,11 @@ smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp a
 	$(BUILD)/jabber_smoke "research/haps/Milk Redux.hap"
 	$(BUILD)/jabber_smoke "research/haps/Boilerplate-Rusty.hap"
 	$(BUILD)/jabber_smoke "research/haps/International2.hap"
+	# Bundled skins catalog (Gamespot default + Ooze pack + Hap corpus)
+	$(MAKE) skins
+	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/skin_catalog_test.cpp \
+	  -o $(BUILD)/skin_catalog_test
+	$(BUILD)/skin_catalog_test $(BUILD)
 
 clean:
 	rm -rf $(BUILD)

@@ -2,6 +2,7 @@
 #pragma once
 #include "http_win.h"
 #include "image_dec.h"
+#include "omemo.h"
 #include "socket_tls.h"
 
 #include <mbedtls/sha1.h>
@@ -11,6 +12,7 @@
 #include <cctype>
 #include <condition_variable>
 #include <cstdio>
+#include <ctime>
 #include <cstring>
 #include <functional>
 #include <iterator>
@@ -58,10 +60,12 @@ struct ChatLine {
     bool mine = false;
     bool file = false;
     bool system = false; // subject / join notices
+    bool omemo = false;  // decrypted / sent via OMEMO 0.3
     std::string id;      // message @id (XEP-0184)
     bool delivered = false;
     std::string react_id; // XEP-0444 target: 1:1 @id, MUC stanza-id
     std::vector<ReactionMark> reactions;
+    time_t when = 0; // wall clock; 0 = unknown (omit in UI)
 };
 
 struct MucRoomInfo {
@@ -82,6 +86,12 @@ struct MucInvite {
     std::string room;
     std::string from; // inviter bare JID
     std::string reason;
+};
+
+// MUC occupant row — real_jid only when muc#user item/@jid is disclosed.
+struct MucOccupant {
+    std::string nick;
+    std::string real_jid; // bare; empty in anonymous rooms
 };
 
 struct UploadSlot {
@@ -196,6 +206,11 @@ inline std::string sha1_hex(const std::vector<uint8_t> &data) {
     return sha1_hex(data.data(), data.size());
 }
 
+// Raw SHA-1 digest (20 bytes). Used by XEP-0392 angle generation.
+inline bool sha1_digest(const uint8_t *data, size_t len, unsigned char out[20]) {
+    return mbedtls_sha1(data, len, out) == 0;
+}
+
 // Remove <PHOTO>…</PHOTO> / self-closing PHOTO from a vCard fragment.
 inline std::string vcard_strip_photo(std::string vcard) {
     for (;;) {
@@ -300,6 +315,67 @@ inline std::string attr(const std::string &tag, const std::string &key) {
     size_t b = tag.find(q, a);
     if (b == std::string::npos) return {};
     return tag.substr(a, b - a);
+}
+
+// Parse XEP-0082 / delay stamp → time_t (UTC). Empty / bad → 0.
+inline time_t parse_iso8601_stamp(const std::string &stamp) {
+    if (stamp.size() < 19) return 0;
+    int Y = 0, M = 0, D = 0, h = 0, m = 0, s = 0;
+    if (std::sscanf(stamp.c_str(), "%d-%d-%dT%d:%d:%d", &Y, &M, &D, &h, &m, &s) < 6)
+        return 0;
+    std::tm t{};
+    t.tm_year = Y - 1900;
+    t.tm_mon = M - 1;
+    t.tm_mday = D;
+    t.tm_hour = h;
+    t.tm_min = m;
+    t.tm_sec = s;
+#ifdef _WIN32
+    return _mkgmtime(&t);
+#else
+    return timegm(&t);
+#endif
+}
+
+// XEP-0203 / jabber:x:delay stamp from a stanza (first match).
+inline time_t delay_stamp_from_stanza(const std::string &st) {
+    auto find_stamp = [&](const char *marker) -> time_t {
+        size_t p = 0;
+        while ((p = st.find(marker, p)) != std::string::npos) {
+            size_t tag_start = st.rfind('<', p);
+            size_t gt = st.find('>', p);
+            if (tag_start == std::string::npos || gt == std::string::npos) {
+                p += 1;
+                continue;
+            }
+            std::string tag = st.substr(tag_start, gt - tag_start + 1);
+            std::string stamp = attr(tag, "stamp");
+            if (!stamp.empty()) {
+                time_t tt = parse_iso8601_stamp(stamp);
+                if (tt) return tt;
+            }
+            p = gt + 1;
+        }
+        return 0;
+    };
+    time_t t = find_stamp("urn:xmpp:delay");
+    if (t) return t;
+    return find_stamp("jabber:x:delay");
+}
+
+// muc#user <item jid='user@host'/> when the room discloses real JIDs.
+inline std::string muc_item_real_jid(const std::string &st) {
+    if (st.find("muc#user") == std::string::npos) return {};
+    size_t ip = st.find("<item");
+    while (ip != std::string::npos) {
+        size_t gt = st.find('>', ip);
+        if (gt == std::string::npos) break;
+        std::string tag = st.substr(ip, gt - ip + 1);
+        std::string j = attr(tag, "jid");
+        if (!j.empty()) return bare_jid(j);
+        ip = st.find("<item", gt + 1);
+    }
+    return {};
 }
 
 // XEP-0359 stanza-id assigned by `by` (bare JID).
@@ -431,10 +507,12 @@ public:
     std::map<std::string,
              std::map<std::string, std::map<std::string, std::vector<std::string>>>>
         reaction_sets;
-    std::map<std::string, std::vector<std::string>> muc_occupants;
+    std::map<std::string, std::vector<MucOccupant>> muc_occupants;
     std::map<std::string, std::string> muc_nicks;     // room → our nick
     std::map<std::string, std::string> muc_subjects;  // room → subject
     std::set<std::string> muc_joined;                 // rooms we have joined
+    // vCard PHOTO cache for bare JIDs (roster + MUC real JIDs).
+    std::map<std::string, SkinImage> vcard_avatars;
     std::string conference_host;                      // e.g. conference.yax.im
     std::vector<MucRoomInfo> muc_rooms;               // public disco list
     std::vector<MucBookmark> muc_bookmarks;
@@ -447,13 +525,19 @@ public:
     std::string http_upload_host;
     bool upload_available = false;
     bool mam_available = false; // urn:xmpp:mam:2 advertised
+    bool omemo_ready = false;   // local device keys loaded / published
 
     // Own identity (Yahoo-shaped strip): presence + status + vCard.
     Show own_show = Show::Unavailable;
     std::string own_status;
     std::string own_nick;
     SkinImage own_avatar;
+    // Published vCard PHOTO ceiling (after resize/compress). Source files may be larger.
     static constexpr size_t kMaxPhotoBytes = 96 * 1024;
+    static constexpr size_t kMaxPhotoSourceBytes = 12 * 1024 * 1024;
+
+    // Directory for omemo/ beside the exe (set from UI before sign-on).
+    std::string store_root;
 
     using EventFn = std::function<void(const ClientEvent &)>;
     EventFn on_event;
@@ -466,6 +550,7 @@ public:
         if (thread_.joinable()) thread_.join();
         sock_.close();
         stop_ = false;
+        omemo_.close();
         {
             std::lock_guard<std::mutex> lock(mu);
             own_show = Show::Unavailable;
@@ -479,12 +564,16 @@ public:
             pending_muc_invites.clear();
             chat_states.clear();
             reaction_sets.clear();
+            vcard_avatars.clear();
+            vcard_attempted_.clear();
             mam_available = false;
+            omemo_ready = false;
             mam_initial_done_.clear();
             mam_complete_.clear();
             mam_oldest_.clear();
             mam_pending_.clear();
             mam_inflight_.clear();
+            omemo_bundle_inflight_.clear();
             own_vcard_xml_.clear();
             own_photo_hash_.clear();
             pending_photo_bytes_.clear();
@@ -505,6 +594,14 @@ public:
         user_ = jid_node(jid);
         stop_ = false;
         thread_ = std::thread([this] { run(); });
+    }
+
+    // Fetch contact device list + missing bundles (1:1). Safe to call often.
+    void ensure_omemo_peer(const std::string &with_bare) {
+        std::string with = bare_jid(with_bare);
+        if (with.empty() || !omemo_.ready()) return;
+        std::string iq = omemo_.iq_request_device_list(with);
+        if (!iq.empty()) queue_send(iq);
     }
 
     void begin_register(const std::string &host, const std::string &user,
@@ -595,20 +692,39 @@ public:
 
     void send_message(const std::string &to, const std::string &body) {
         std::string mid = "m" + std::to_string(msg_seq_++);
-        std::string stanza =
-            "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
-            "'><body>" + xml_escape(body) +
-            "</body><request xmlns='urn:xmpp:receipts'/>"
-            "<active xmlns='http://jabber.org/protocol/chatstates'/>"
-            "</message>";
+        std::string peer = bare_jid(to);
+        std::string enc_xml, enc_err;
+        bool use_omemo =
+            omemo_.ready() && omemo_.encrypt_message(peer, body, &enc_xml, &enc_err);
+        std::string stanza;
+        if (use_omemo) {
+            // Fallback body for non-OMEMO clients; real text is in <encrypted>.
+            stanza = "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
+                     "'><body>I sent you an OMEMO encrypted message but your client "
+                     "doesn't seem to support that.</body>" +
+                     enc_xml +
+                     "<request xmlns='urn:xmpp:receipts'/>"
+                     "<active xmlns='http://jabber.org/protocol/chatstates'/>"
+                     "<store xmlns='urn:xmpp:hints'/>"
+                     "</message>";
+        } else {
+            if (omemo_.ready()) ensure_omemo_peer(peer);
+            stanza = "<message to='" + xml_escape(to) + "' type='chat' id='" + mid +
+                     "'><body>" + xml_escape(body) +
+                     "</body><request xmlns='urn:xmpp:receipts'/>"
+                     "<active xmlns='http://jabber.org/protocol/chatstates'/>"
+                     "</message>";
+        }
         {
             std::lock_guard<std::mutex> lock(mu);
             ChatLine ln;
             ln.from = jid;
             ln.body = body;
             ln.mine = true;
+            ln.omemo = use_omemo;
             ln.id = mid;
             ln.react_id = mid;
+            ln.when = std::time(nullptr);
             chats[bare_jid(to)].push_back(std::move(ln));
         }
         queue_send(stanza);
@@ -626,13 +742,14 @@ public:
             ln.body = body;
             ln.mine = true;
             ln.id = mid;
+            ln.when = std::time(nullptr);
             // react_id filled from room stanza-id when our echo arrives.
             chats[bare_jid(room)].push_back(std::move(ln));
         }
         queue_send(stanza);
     }
 
-    // XEP-0444 — toggle one emoji on a message (single reaction per us).
+    // XEP-0444 — add/toggle one emoji in our reaction set (multi-react).
     // Empty emoji clears our reactions. muc=true → type=groupchat.
     void send_reaction(const std::string &to_in, const std::string &react_id,
                        const std::string &emoji_in, bool muc) {
@@ -652,16 +769,12 @@ public:
             if (emoji.empty()) {
                 mine.clear();
             } else {
-                bool had = false;
-                for (const auto &e : cur)
-                    if (e == emoji) {
-                        had = true;
-                        break;
-                    }
-                if (had)
-                    mine.clear(); // toggle off
+                mine = cur;
+                auto it = std::find(mine.begin(), mine.end(), emoji);
+                if (it != mine.end())
+                    mine.erase(it); // toggle off that emoji only
                 else
-                    mine = {emoji}; // one at a time
+                    mine.push_back(emoji);
             }
             apply_reaction_locked(to, react_id, from_key, mine);
         }
@@ -719,6 +832,7 @@ public:
             ChatLine ln;
             ln.body = "Topic: " + subject;
             ln.system = true;
+            ln.when = std::time(nullptr);
             chats[room].push_back(std::move(ln));
         }
         emit(make_event(ClientEvent::MucSubject, subject, room));
@@ -883,9 +997,10 @@ public:
     void request_vcard(const std::string &bare = {}) {
         std::string to = bare_jid(bare.empty() ? jid : bare);
         if (to.empty()) return;
-        bool self = bare.empty() || to == bare_jid(jid);
+        bool self = bare.empty() || jid_ieq(to, bare_jid(jid));
         {
             std::lock_guard<std::mutex> lock(mu);
+            if (!self && vcard_attempted_.count(to)) return; // already fetched
             if (vcard_inflight_.count(to)) return;
             if ((int)vcard_inflight_.size() >= 4) {
                 vcard_queue_.push(to);
@@ -900,30 +1015,58 @@ public:
         queue_send(iq);
     }
 
+    // Bare real JID for a room nick (empty if anonymous / unknown). Caller holds mu.
+    std::string muc_real_jid_locked(const std::string &room, const std::string &nick) const {
+        auto it = muc_occupants.find(bare_jid(room));
+        if (it == muc_occupants.end()) return {};
+        for (const auto &o : it->second)
+            if (o.nick == nick) return o.real_jid;
+        return {};
+    }
+
+    // Best photo for a bare JID. Caller holds mu. Pointers valid until unlock.
+    const SkinImage *avatar_for_bare_locked(const std::string &bare_in) const {
+        std::string bare = bare_jid(bare_in);
+        if (bare.empty()) return nullptr;
+        if (jid_ieq(bare, bare_jid(jid)) && !own_avatar.empty()) return &own_avatar;
+        auto rit = roster.find(bare);
+        if (rit != roster.end() && !rit->second.avatar.empty()) return &rit->second.avatar;
+        // Case-insensitive lookup in vcard_avatars (keys stored as bare_jid).
+        auto vit = vcard_avatars.find(bare);
+        if (vit != vcard_avatars.end() && !vit->second.empty()) return &vit->second;
+        for (const auto &kv : vcard_avatars)
+            if (jid_ieq(kv.first, bare) && !kv.second.empty()) return &kv.second;
+        return nullptr;
+    }
+
     // Publish own icon via XEP-0054 vCard PHOTO (AIM-shaped Set Picture).
-    bool set_own_photo(const std::vector<uint8_t> &bytes, const std::string &mime_in) {
+    // Large camera photos are cropped/scaled/compressed like Gajim/Conversations.
+    bool set_own_photo(const std::vector<uint8_t> &bytes, const std::string & /*mime_in*/) {
         if (bytes.empty()) {
             emit(make_event(ClientEvent::StatusText, "No image selected"));
             return false;
         }
-        if (bytes.size() > kMaxPhotoBytes) {
-            emit(make_event(ClientEvent::StatusText, "Picture too large (max 96 KB)"));
+        if (bytes.size() > kMaxPhotoSourceBytes) {
+            emit(make_event(ClientEvent::StatusText, "Picture file too large to open"));
             return false;
         }
         SkinImage av;
-        if (!decode_image_vec(bytes, av)) {
-            emit(make_event(ClientEvent::StatusText, "Could not read that image"));
+        std::vector<uint8_t> pub;
+        std::string mime;
+        if (!prepare_vcard_avatar(bytes, kMaxPhotoBytes, &av, &pub, &mime)) {
+            emit(make_event(ClientEvent::StatusText,
+                            "Could not read or shrink that image"));
             return false;
         }
-        std::string mime = mime_in.empty() ? "image/png" : mime_in;
-        std::string hash = sha1_hex(bytes);
+        std::string hash = sha1_hex(pub);
         std::string nick;
         std::string cached;
         {
             std::lock_guard<std::mutex> lock(mu);
             own_avatar = std::move(av);
+            vcard_avatars[bare_jid(jid)] = own_avatar;
             own_photo_hash_ = hash;
-            pending_photo_bytes_ = bytes;
+            pending_photo_bytes_ = pub;
             pending_photo_mime_ = mime;
             nick = own_nick.empty() ? jid_node(jid) : own_nick;
             cached = own_vcard_xml_;
@@ -933,7 +1076,7 @@ public:
 
         std::string photo =
             "<PHOTO><TYPE>" + xml_escape(mime) + "</TYPE><BINVAL>" +
-            b64(std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size())) +
+            b64(std::string(reinterpret_cast<const char *>(pub.data()), pub.size())) +
             "</BINVAL></PHOTO>";
         std::string vcard;
         if (!cached.empty()) {
@@ -1076,10 +1219,13 @@ private:
     std::vector<uint8_t> pending_upload_data_;
     std::set<std::string> vcard_inflight_;
     std::queue<std::string> vcard_queue_;
+    std::set<std::string> vcard_attempted_; // bare JIDs we already IQ-got
     std::string own_vcard_xml_;   // last self vCard fragment for PHOTO merge
     std::string own_photo_hash_;  // SHA-1 hex of PHOTO BINVAL (XEP-0153)
     std::vector<uint8_t> pending_photo_bytes_;
     std::string pending_photo_mime_;
+    omemo::Manager omemo_;
+    std::set<std::string> omemo_bundle_inflight_; // "bare#deviceId"
 
     void emit(const ClientEvent &e) {
         EventFn fn;
@@ -1137,6 +1283,10 @@ private:
             else
                 stanza += "<photo/>";
             stanza += "</x>";
+            // Advertise OMEMO 0.3 (axolotl) for Conversations/Gajim discovery.
+            stanza += "<c xmlns='http://jabber.org/protocol/caps' "
+                      "hash='sha-1' node='https://github.com/Zadagast/Sagrado-Kit' "
+                      "ver='omemo-axolotl'/>";
             stanza += "</presence>";
         }
         queue_send(stanza);
@@ -1192,12 +1342,14 @@ private:
                 photo_hash = sha1_hex(bytes);
             }
         }
-        bool self = bare.empty() || bare_jid(bare) == bare_jid(jid);
+        bool self = bare.empty() || jid_ieq(bare_jid(bare), bare_jid(jid));
         {
             std::lock_guard<std::mutex> lock(mu);
             std::string key = self ? bare_jid(jid) : bare_jid(bare);
             vcard_inflight_.erase(key);
             if (self) vcard_inflight_.erase(jid);
+            vcard_attempted_.insert(key);
+            if (!avatar.empty()) vcard_avatars[key] = avatar; // shared roster + MUC cache
             if (self) {
                 size_t a = st.find("<vCard");
                 if (a == std::string::npos) a = st.find("<vcard");
@@ -1214,12 +1366,15 @@ private:
                 else if (!fn.empty() &&
                          (roster[key].name.empty() || roster[key].name == jid_node(key)))
                     roster[key].name = fn;
-                if (!avatar.empty()) roster[key].avatar = std::move(avatar);
+                if (!avatar.empty()) roster[key].avatar = avatar;
                 roster[key].vcard_fetched = true;
             }
         }
         emit(make_event(ClientEvent::Identity, {}, self ? bare_jid(jid) : bare_jid(bare)));
-        if (!self) emit(make_event(ClientEvent::Roster));
+        if (!self) {
+            emit(make_event(ClientEvent::Roster));
+            emit(make_event(ClientEvent::MucOccupants)); // refresh room avatar tiles
+        }
         pump_vcard_queue();
     }
 
@@ -1394,6 +1549,22 @@ private:
         std::string body;
         extract_tag(st, "body", &body);
         body = xml_unescape(body);
+        bool omemo_line = false;
+        if (st.find(omemo::NS) != std::string::npos &&
+            st.find("<encrypted") != std::string::npos) {
+            bool mine_guess = sent_carbon || jid_ieq(bare_jid(from), bare_jid(jid));
+            std::string sender = mine_guess ? bare_jid(jid) : bare_jid(from);
+            std::string plain;
+            bool was = false;
+            std::string err;
+            if (omemo_.decrypt_message(sender, st, &plain, &was, &err) && was) {
+                body = plain;
+                omemo_line = true;
+            } else if (was) {
+                body = "[Unable to decrypt OMEMO message]";
+                omemo_line = true;
+            }
+        }
         if (body.empty()) return false;
 
         bool mine = sent_carbon;
@@ -1420,8 +1591,11 @@ private:
         ln.from = who;
         ln.body = body;
         ln.mine = mine;
+        ln.omemo = omemo_line;
         ln.id = mid;
         ln.react_id = react_id;
+        ln.when = delay_stamp_from_stanza(st);
+        if (!ln.when) ln.when = std::time(nullptr);
         *key_out = key;
         *ln_out = std::move(ln);
         return true;
@@ -1614,6 +1788,29 @@ private:
         extract_tag(st, "subject", &subject);
         body = xml_unescape(body);
         subject = xml_unescape(subject);
+        bool omemo_line = false;
+        if (type != "groupchat" && st.find("<encrypted") != std::string::npos &&
+            st.find(omemo::NS) != std::string::npos) {
+            std::string sender =
+                carbon_sent || jid_ieq(bare_jid(from), bare_jid(jid)) ? bare_jid(jid)
+                                                                     : bare_jid(from);
+            std::string plain;
+            bool was = false;
+            std::string err;
+            if (omemo_.decrypt_message(sender, st, &plain, &was, &err) && was) {
+                body = plain;
+                omemo_line = true;
+            } else if (was) {
+                // Same-device carbon of our outbound may lack a key for us — keep
+                // empty so dedupe/local echo wins; otherwise show a placeholder.
+                if (!(carbon_sent && jid_ieq(bare_jid(from), bare_jid(jid)))) {
+                    body = "[Unable to decrypt OMEMO message]";
+                    omemo_line = true;
+                } else {
+                    body.clear();
+                }
+            }
+        }
 
         // XEP-0444 reactions (often body-less).
         if (try_apply_reactions(st, carbon_sent)) return;
@@ -1662,6 +1859,8 @@ private:
                 ChatLine ln;
                 ln.body = "Topic: " + subject;
                 ln.system = true;
+                ln.when = delay_stamp_from_stanza(st);
+                if (!ln.when) ln.when = std::time(nullptr);
                 chats[key].push_back(std::move(ln));
             }
             emit(make_event(ClientEvent::MucSubject, subject, key));
@@ -1720,8 +1919,11 @@ private:
             ln.from = who;
             ln.body = body;
             ln.mine = mine;
+            ln.omemo = omemo_line;
             ln.id = mid;
             ln.react_id = react_id;
+            ln.when = delay_stamp_from_stanza(st);
+            if (!ln.when) ln.when = std::time(nullptr);
             chats[key].push_back(std::move(ln));
             if (!mine && !from_archive) chat_states.erase(key);
             // Attach any reactions that arrived before the message (rare).
@@ -1897,16 +2099,46 @@ private:
                 if (slash != std::string::npos && muc_joined.count(bare)) {
                     muc = true;
                     std::string nick = from.substr(slash + 1);
+                    std::string real = muc_item_real_jid(st);
                     auto &occ = muc_occupants[bare];
                     if (type == "unavailable") {
-                        occ.erase(std::remove(occ.begin(), occ.end(), nick), occ.end());
-                    } else if (std::find(occ.begin(), occ.end(), nick) == occ.end()) {
-                        occ.push_back(nick);
+                        occ.erase(std::remove_if(occ.begin(), occ.end(),
+                                                 [&](const MucOccupant &o) {
+                                                     return o.nick == nick;
+                                                 }),
+                                  occ.end());
+                    } else {
+                        auto oit = std::find_if(occ.begin(), occ.end(),
+                                                [&](const MucOccupant &o) {
+                                                    return o.nick == nick;
+                                                });
+                        if (oit != occ.end()) {
+                            if (!real.empty()) oit->real_jid = real;
+                        } else {
+                            occ.push_back(MucOccupant{nick, real});
+                        }
                     }
                 }
             }
             emit(make_event(ClientEvent::Presence, status_s, bare));
             if (muc) emit(make_event(ClientEvent::MucOccupants, {}, bare));
+            // Fetch vCard PHOTO only when a real bare JID is disclosed (privacy).
+            if (muc && type != "unavailable") {
+                std::string real = muc_item_real_jid(st);
+                bool need = false;
+                bool photo_update =
+                    st.find("vcard-temp:x:update") != std::string::npos;
+                if (!real.empty()) {
+                    std::lock_guard<std::mutex> lock(mu);
+                    if (photo_update) {
+                        vcard_attempted_.erase(real);
+                        if (roster.count(real)) roster[real].vcard_fetched = false;
+                    }
+                    need = !vcard_attempted_.count(real) &&
+                           !vcard_inflight_.count(real);
+                }
+                if (need) request_vcard(real);
+            }
             // Buddy published a new picture — refresh their vCard.
             if (!muc && st.find("vcard-temp:x:update") != std::string::npos) {
                 bool on_roster = false;
@@ -1914,6 +2146,7 @@ private:
                     std::lock_guard<std::mutex> lock(mu);
                     if (roster.count(bare)) {
                         roster[bare].vcard_fetched = false;
+                        vcard_attempted_.erase(bare);
                         on_roster = true;
                     }
                 }
@@ -1959,6 +2192,9 @@ private:
             if (st.find("urn:xmpp:bookmarks:1") != std::string::npos ||
                 st.find("storage:bookmarks") != std::string::npos)
                 handle_bookmarks_iq(st);
+            if (st.find(omemo::NS) != std::string::npos ||
+                iq_id.rfind("om", 0) == 0)
+                handle_omemo_iq(st);
             if (iq_id.rfind("mam", 0) == 0) {
                 MamPending pend;
                 bool have = false;
@@ -2546,9 +2782,109 @@ private:
         // XEP-0280 Message Carbons — mirror other resources into this session.
         sock_.send_all(
             "<iq type='set' id='carb1'><enable xmlns='urn:xmpp:carbons:2'/></iq>");
+        bootstrap_omemo();
         set_state(ConnState::Online, "Signed on as " + jid);
         emit(make_event(ClientEvent::Identity));
         return true;
+    }
+
+    void bootstrap_omemo() {
+        std::string root = store_root.empty() ? "." : store_root;
+        if (!omemo_.open(root, bare_jid(jid))) {
+            std::lock_guard<std::mutex> lock(mu);
+            omemo_ready = false;
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            omemo_ready = true;
+        }
+        // Merge our device into the published list, publish bundle, then refresh
+        // our PEP device list (may include other of our clients).
+        std::string pub_list = omemo_.iq_publish_device_list();
+        if (!pub_list.empty()) queue_send(pub_list);
+        std::string pub_bundle = omemo_.iq_publish_bundle();
+        if (!pub_bundle.empty()) queue_send(pub_bundle);
+        std::string get_own = omemo_.iq_request_device_list(bare_jid(jid));
+        if (!get_own.empty()) queue_send(get_own);
+        emit(make_event(ClientEvent::StatusText,
+                        "OMEMO device " + std::to_string(omemo_.device_id())));
+    }
+
+    void request_omemo_bundles(const std::string &bare,
+                               const std::vector<uint32_t> &ids) {
+        for (uint32_t id : ids) {
+            if (jid_ieq(bare, bare_jid(jid)) && id == omemo_.device_id()) continue;
+            std::string key = bare + "#" + std::to_string(id);
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                if (omemo_bundle_inflight_.count(key)) continue;
+                omemo_bundle_inflight_.insert(key);
+            }
+            std::string iq = omemo_.iq_request_bundle(bare, id);
+            if (!iq.empty()) queue_send(iq);
+        }
+    }
+
+    void handle_omemo_iq(const std::string &st) {
+        std::string iq_type = attr(st, "type");
+        std::string from = bare_jid(attr(st, "from"));
+        if (from.empty()) from = bare_jid(jid);
+
+        // Device list items
+        if (st.find(omemo::NS_DEVICELIST) != std::string::npos ||
+            (st.find("<list") != std::string::npos &&
+             st.find(omemo::NS) != std::string::npos)) {
+            if (iq_type == "error") return;
+            auto ids = omemo::Manager::parse_device_list(st);
+            if (ids.empty() && jid_ieq(from, bare_jid(jid))) {
+                // Empty own list — publish ours alone.
+                std::string pub = omemo_.iq_publish_device_list();
+                if (!pub.empty()) queue_send(pub);
+                return;
+            }
+            omemo_.set_devices(from, ids);
+            if (jid_ieq(from, bare_jid(jid))) {
+                // Ensure we are listed; republish if our id was missing.
+                bool have_us = false;
+                uint32_t our = omemo_.device_id();
+                for (uint32_t id : ids)
+                    if (id == our) have_us = true;
+                if (!have_us) {
+                    std::string pub = omemo_.iq_publish_device_list(ids);
+                    if (!pub.empty()) queue_send(pub);
+                }
+                // Fetch bundles for our other devices (carbon decrypt / multi-client).
+                request_omemo_bundles(from, ids);
+            } else {
+                request_omemo_bundles(from, ids);
+            }
+            return;
+        }
+
+        // Bundle response
+        if (st.find(".bundles:") != std::string::npos ||
+            st.find("<bundle") != std::string::npos) {
+            std::string iq_id = attr(st, "id");
+            (void)iq_id;
+            // Node may be on <items node='…bundles:ID'>
+            uint32_t device_id = 0;
+            size_t np = st.find(".bundles:");
+            if (np != std::string::npos) {
+                device_id = (uint32_t)strtoul(st.c_str() + np + 9, nullptr, 10);
+            }
+            if (!device_id) return;
+            std::string key = from + "#" + std::to_string(device_id);
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                omemo_bundle_inflight_.erase(key);
+            }
+            if (iq_type == "error") return;
+            if (omemo_.ingest_bundle(from, device_id, st)) {
+                emit(make_event(ClientEvent::StatusText,
+                                "OMEMO session ready with " + from));
+            }
+        }
     }
 
     void run() {
