@@ -4,6 +4,9 @@ Target: **XMPP Compliance Suites 2023 (XEP-0479)** — Core + IM categories,
 Advanced Client level. Audit of `apps/jabber/` against the required providers.
 This is the living checklist; tick items as they land on main.
 
+**Status: all required Core + IM providers (Advanced level) are implemented.**
+Remaining ❌ entries below are non-required "of note" specs.
+
 ## Core Compliance Suite (Client)
 
 | Feature | Provider | Status |
@@ -63,10 +66,10 @@ XEP-0444 Reactions, OMEMO (axolotl) 1:1, XEP-0158 CAPTCHA forms.
 1. **Wave A — required client-level, small (✅ done):** XEP-0245 /me; XEP-0030
    answering disco#info; XEP-0115 caps (ver hash); XEP-0199 pong; XEP-0249
    direct invites (send + receive); XEP-0066 OOB on HTTP uploads.
-2. **Wave B — advanced, medium:** XEP-0308 last-message correction (UI: ↑ edit,
+2. **Wave B — advanced, medium (✅ done):** XEP-0308 last-message correction (UI: ↑ edit,
    "(edited)" mark); XEP-0191 blocking (Buddy → Block); XEP-0084 avatars with
    0153 fallback; XEP-0410 MUC self-ping keepalive;
    XEP-0393 styling (*bold* _italic_ ~strike~ `mono`).
-3. **Wave C — advanced, big:** XEP-0198 stream management (acks + resume);
+3. **Wave C — advanced, big (✅ done):** XEP-0198 stream management (acks + resume);
    MUC MAM; XEP-0234 + XEP-0261 Jingle file transfer (IBB transport);
    XEP-0368 direct TLS.
