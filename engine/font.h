@@ -234,8 +234,12 @@ inline unsigned next_cp(const char *&s) {
         return cp;
     }
     if ((c & 0xf8) == 0xf0 && cont(3)) {
+        unsigned cp = (unsigned(c & 0x07) << 18) |
+                      (unsigned(uint8_t(s[0]) & 0x3f) << 12) |
+                      (unsigned(uint8_t(s[1]) & 0x3f) << 6) |
+                      (uint8_t(s[2]) & 0x3f);
         s += 3;
-        return 0xfffd;
+        return cp;
     }
     return c; // lone high byte: treat as Latin-1
 }

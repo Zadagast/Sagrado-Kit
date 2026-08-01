@@ -62,6 +62,12 @@ int main(int argc, char **argv) {
     check(cv.unit_len(kFamily) == 11, "unit_len spans a ZWJ sequence");
     check(cv.unit_len("ab") == 1, "unit_len is 1 for ASCII");
 
+    // 1b. Astral planes decode to their real codepoint — a probe that keys off
+    //     the codepoint (the app's does) never matches U+FFFD.
+    const char *p = kGrin;
+    check(fontutil::next_cp(p) == 0x1F600 && p == kGrin + 4,
+          "next_cp decodes a 4-byte codepoint");
+
     // 2. Measuring: an emoji is one square, and text() must agree with
     //    text_width() or the caret drifts away from the glyphs.
     std::string line = std::string("a") + kGrin + "b";
