@@ -1,19 +1,19 @@
-# SagradoKit skin — Ooze look (original art; aluminum gel + traffic lights)
+# SagradoKit skin — Ooze (original art; gel + dense pinstripes)
 format = "sap"
 version = 1
 
 [meta]
 name = "Ooze"
 creator = "SagradoKit"
-description = "Aqua-inspired aluminum gel, pinstripes, and traffic lights"
-version = "1.0"
+description = "Aqua-inspired aluminum gel, dense pinstripes, and traffic lights"
+version = "1.1"
 
 [colors.primary]
-background = "#ffffff"
-dark = "#a8a8a8"
-disable_frame = "#bbbbbb"
+background = "#f7f7f8"
+dark = "#9a9a9a"
+disable_frame = "#b8b8b8"
 disable_label = "#999999"
-frame = "#a8a8a8"
+frame = "#9a9a9a"
 label = "#222222"
 light = "#ffffff"
 
@@ -21,36 +21,36 @@ light = "#ffffff"
 box = "#2868c8"
 
 [colors.text]
-background = "#ffffff"
+background = "#f7f7f8"
 foreground = "#222222"
 hilite_background = "#2868c8"
 hilite_foreground = "#ffffff"
 insertion_point = "#2868c8"
 
 [colors.list]
-background = "#ffffff"
+background = "#f7f7f8"
 label = "#222222"
 hilite_background = "#2868c8"
 hilite_foreground = "#ffffff"
-sort_column_background = "#f6f6f6"
-separator = "#d8d8d8"
+sort_column_background = "#eeeef0"
+separator = "#9a9a9a"
 
 [colors.button]
 light2 = "#ffffff"
 light1 = "#f0f0f0"
-face = "#d8d8d8"
-dark1 = "#a8a8a8"
-dark2 = "#888888"
-frame = "#a8a8a8"
+face = "#d0d0d0"
+dark1 = "#9a9a9a"
+dark2 = "#737373"
+frame = "#9a9a9a"
 label = "#222222"
 
 [colors.button_disable]
-light2 = "#f0f0f0"
-light1 = "#e0e0e0"
-face = "#d8d8d8"
-dark1 = "#c0c0c0"
-dark2 = "#b0b0b0"
-frame = "#bbbbbb"
+light2 = "#e8e8e8"
+light1 = "#dedede"
+face = "#c8c8c8"
+dark1 = "#b5b5b5"
+dark2 = "#9a9a9a"
+frame = "#9a9a9a"
 label = "#999999"
 
 [colors.button_hilite]
@@ -72,9 +72,9 @@ frame = "#183e78"
 light2 = "#ffffff"
 light1 = "#f0f0f0"
 face = "#f0f0f0"
-dark1 = "#d8d8d8"
-dark2 = "#a8a8a8"
-frame = "#a8a8a8"
+dark1 = "#d0d0d0"
+dark2 = "#9a9a9a"
+frame = "#9a9a9a"
 label = "#222222"
 transition = [
   "#e8e8e8",
@@ -101,9 +101,9 @@ transition = [
 light2 = "#ffffff"
 light1 = "#f0f0f0"
 face = "#f0f0f0"
-dark1 = "#d8d8d8"
-dark2 = "#a8a8a8"
-frame = "#a8a8a8"
+dark1 = "#d0d0d0"
+dark2 = "#9a9a9a"
+frame = "#9a9a9a"
 label = "#222222"
 transition = [
   "#e0e5ec",
@@ -127,10 +127,10 @@ transition = [
 ]
 
 [colors.scrollbar]
-frame = "#a8a8a8"
+frame = "#9a9a9a"
 light = "#ffffff"
 face = "#f0f0f0"
-dark = "#a8a8a8"
+dark = "#9a9a9a"
 label = "#222222"
 hilite_light = "#6895d8"
 hilite = "#2868c8"
@@ -138,18 +138,18 @@ hilite_dark = "#1e4e96"
 hilite_label = "#ffffff"
 indicator_light = "#ffffff"
 indicator = "#f0f0f0"
-indicator_dark = "#d8d8d8"
+indicator_dark = "#d0d0d0"
 track_light2 = "#ececec"
-track_light1 = "#e4e4e4"
+track_light1 = "#e6e6e6"
 track = "#e0e0e0"
 track_dark1 = "#d0d0d0"
 track_dark2 = "#c0c0c0"
 
 [colors.column_header]
-frame = "#a8a8a8"
+frame = "#9a9a9a"
 light = "#ffffff"
 face = "#f0f0f0"
-dark = "#d8d8d8"
+dark = "#d0d0d0"
 label = "#222222"
 hilite_light = "#6895d8"
 hilite = "#2868c8"
@@ -162,14 +162,14 @@ label = "#222222"
 disabled_label = "#999999"
 hilite_background = "#2868c8"
 hilite_label = "#ffffff"
-frame = "#a8a8a8"
-separator = "#d8d8d8"
+frame = "#9a9a9a"
+separator = "#9a9a9a"
 
 [colors.progress]
-bkgnd = "#e8e8e8"
-bkgnd_dark = "#d0d0d0"
-bkgnd_light = "#f5f5f5"
-frame = "#a8a8a8"
+bkgnd = "#ececec"
+bkgnd_dark = "#e0e0e0"
+bkgnd_light = "#f3f3f3"
+frame = "#9a9a9a"
 label = "#2868c8"
 transition = [
   "#7ea4de",
@@ -185,17 +185,17 @@ transition = [
 ]
 
 [colors.slider]
-bar = "#d0d0d0"
-bar_frame = "#a8a8a8"
+bar = "#e0e0e0"
+bar_frame = "#9a9a9a"
 bar_hilite = "#2868c8"
 bar_hilite_frame = "#1c488c"
-disable = "#e0e0e0"
-disable_dark = "#d0d0d0"
-disable_frame = "#bbbbbb"
-disable_light = "#f0f0f0"
+disable = "#c8c8c8"
+disable_dark = "#bababa"
+disable_frame = "#9a9a9a"
+disable_light = "#e8e8e8"
 indicator = "#f0f0f0"
-indicator_dark = "#d8d8d8"
-indicator_frame = "#a8a8a8"
+indicator_dark = "#d0d0d0"
+indicator_frame = "#9a9a9a"
 indicator_hilite = "#2868c8"
 indicator_hilite_dark = "#2053a0"
 indicator_hilite_frame = "#1a4382"
@@ -312,6 +312,21 @@ file = "icon_button_normal.skimg"
 caps = [10, 10, 10, 10]
 positions = [0, 0, 0, 0]
 
+[art."menu.background_pattern"]
+file = "menu_background_pattern.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."menu_bar.background"]
+file = "menu_bar_background.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
+[art."menu_bar.pattern"]
+file = "menu_bar_pattern.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."mutex.blank.disabled"]
 file = "mutex_blank_disabled.skimg"
 caps = [0, 0, 0, 0]
@@ -410,6 +425,11 @@ positions = [0, 0, 0, 0]
 [art."popup_frame.normal"]
 file = "popup_frame_normal.skimg"
 caps = [1, 1, 1, 1]
+positions = [0, 0, 0, 0]
+
+[art."primary.background_pattern"]
+file = "primary_background_pattern.skimg"
+caps = [0, 0, 0, 0]
 positions = [0, 0, 0, 0]
 
 [art."progress.bar"]
