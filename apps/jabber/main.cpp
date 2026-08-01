@@ -326,6 +326,27 @@ bool file_exists(const std::string &p) {
     return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+// Smooth (anti-aliased) system text vs. the bundled bitmap face. Kept next to
+// the skin choice because it is the same kind of decision, and remembered so
+// the app doesn't argue with the user's taste on every launch.
+std::string smooth_text_path() { return exe_dir() + "\\smooth-text.txt"; }
+
+bool &smooth_text_on() {
+    static bool on = true;
+    return on;
+}
+
+void load_smooth_text_pref() {
+    std::ifstream in(smooth_text_path());
+    std::string v;
+    if (in && std::getline(in, v)) smooth_text_on() = (v != "0");
+}
+
+void save_smooth_text_pref() {
+    std::ofstream out(smooth_text_path());
+    if (out) out << (smooth_text_on() ? "1" : "0") << "\n";
+}
+
 void rebuild_appearance_menu() {
     // Bundled skins don't change while running; scanning ~100 files under
     // Wine on every menu open (and hover-switch) makes the menu bar laggy.
@@ -338,6 +359,8 @@ void rebuild_appearance_menu() {
     if (!g.bundled_skins.empty()) g.appearance_labels.push_back("-");
     g.appearance_labels.push_back("Load Appearance...");
     g.appearance_labels.push_back("Stock Appearance");
+    g.appearance_labels.push_back(smooth_text_on() ? "Smooth Text (on)"
+                                                   : "Smooth Text (off)");
     g.appearance_ptrs.clear();
     g.appearance_ptrs.reserve(g.appearance_labels.size());
     for (const auto &lab : g.appearance_labels)
@@ -3652,6 +3675,19 @@ void run_menu(int menu, int row) {
             set_status("Stock appearance");
             if (sagrado::gel_host_is_visible(g.emoji_host))
                 sagrado::gel_host_invalidate(g.emoji_host);
+        } else if (row == stock_row + 1) {
+            smooth_text_on() = !smooth_text_on();
+            if (smooth_text_on())
+                sagrado::use_native_text(16);
+            else
+                clear_kit_aa_face();
+            save_smooth_text_pref();
+            g.appearance_labels.clear();
+            g.bundled_skins.clear(); // force the menu labels to be rebuilt
+            rebuild_appearance_menu();
+            set_status(smooth_text_on() ? "Smooth text on" : "Smooth text off");
+            if (sagrado::gel_host_is_visible(g.emoji_host))
+                sagrado::gel_host_invalidate(g.emoji_host);
         }
     } else if (menu == MenuHelp) {
         g.about_open = true;
@@ -4935,8 +4971,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int show) {
     g.hinst = hinst;
     // Smooth system text for the whole UI; falls back to the bundled bitmap
-    // face if the host has nothing usable.
-    sagrado::use_native_text(15);
+    // face if the host has nothing usable, and off entirely if asked.
+    load_smooth_text_pref();
+    if (smooth_text_on()) sagrado::use_native_text(16);
     // Unicode class: WM_CHAR then carries UTF-16 units, so emoji and accented
     // text can be typed / pasted into the compose field.
     WNDCLASSW wc{};

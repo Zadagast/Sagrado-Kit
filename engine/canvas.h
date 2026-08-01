@@ -1,5 +1,6 @@
 // Software framebuffer — every pixel is ours. Host blits with one GDI call.
 #pragma once
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -270,8 +271,8 @@ struct Canvas {
                 for (int row = 0; row < ag->h; ++row)
                     for (int col = 0; col < ag->w; ++col) {
                         unsigned a = ag->cov[size_t(row) * ag->w + col];
-                        if (a) blend_put(x + ag->left + col, base - ag->top + row,
-                                         (a << 24) | (p & 0x00ffffffu));
+                        if (a) blend_cov(x + ag->left + col, base - ag->top + row,
+                                         p, a);
                     }
                 x += ag->advance;
                 continue;
@@ -454,6 +455,48 @@ struct Canvas {
     }
 
   private:
+    // Text coverage, blended in linear light. Compositing glyph coverage
+    // directly in sRGB is what makes light-on-dark antialiased text look thin
+    // and washed out; going through linear keeps the stems their real weight.
+    void blend_cov(int x, int y, uint32_t rgb, unsigned cov) {
+        if (cov == 0) return;
+        if (cov == 255) {
+            put(x, y, rgb & 0x00ffffffu);
+            return;
+        }
+        if (x < clip_.x || y < clip_.y || x >= clip_.right() || y >= clip_.bottom())
+            return;
+        static const auto tables = [] {
+            struct T {
+                uint16_t to_lin[256]; // sRGB byte → linear, 0..4095
+                uint8_t to_srgb[4096];
+            };
+            static T t;
+            for (int i = 0; i < 256; ++i) {
+                double c = i / 255.0;
+                double l = c <= 0.04045 ? c / 12.92
+                                        : std::pow((c + 0.055) / 1.055, 2.4);
+                t.to_lin[i] = uint16_t(l * 4095.0 + 0.5);
+            }
+            for (int i = 0; i < 4096; ++i) {
+                double l = i / 4095.0;
+                double c = l <= 0.0031308 ? l * 12.92
+                                          : 1.055 * std::pow(l, 1.0 / 2.4) - 0.055;
+                t.to_srgb[i] = uint8_t(c * 255.0 + 0.5);
+            }
+            return &t;
+        }();
+        uint32_t &dst = pixels_[size_t(y) * width_ + x];
+        unsigned out = 0;
+        for (int sh = 16; sh >= 0; sh -= 8) {
+            unsigned s = tables->to_lin[(rgb >> sh) & 0xff];
+            unsigned d = tables->to_lin[(dst >> sh) & 0xff];
+            unsigned v = (s * cov + d * (255 - cov)) / 255;
+            out |= unsigned(tables->to_srgb[v > 4095 ? 4095 : v]) << sh;
+        }
+        dst = out;
+    }
+
     // Src-over into the framebuffer (dst is opaque RGB; src A in high byte).
     void blend_put(int x, int y, uint32_t src) {
         const unsigned a = src >> 24;

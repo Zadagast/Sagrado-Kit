@@ -40,7 +40,9 @@ int main() {
     // left=1, top=2 with ascent 16 → rows 14..15, cols 5..6, at 50% coverage.
     uint32_t px = cv.data()[14 * 32 + 5];
     check(px != 0, "coverage blends ink into the framebuffer");
-    check((px & 0xff) > 100 && (px & 0xff) < 155, "half coverage blends halfway");
+    // Blended in linear light, so half coverage of white on black lands well
+    // above sRGB 128 — that is what keeps light-on-dark text from going thin.
+    check((px & 0xff) > 170 && (px & 0xff) < 205, "coverage blends in linear light");
     check(cv.data()[13 * 32 + 5] == 0, "glyph does not paint above its ink");
 
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
