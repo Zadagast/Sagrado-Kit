@@ -1126,9 +1126,12 @@ public:
         emit(make_event(ClientEvent::MucOccupants, {}, room));
     }
 
-    void refresh_muc_rooms() {
-        std::string conf;
-        {
+    // `service` lists rooms on any MUC domain (e.g. conference.movim.eu);
+    // empty means this server's own conference host.
+    void refresh_muc_rooms(const std::string &service = std::string()) {
+        std::string conf = service;
+        while (!conf.empty() && conf.back() == ' ') conf.pop_back();
+        if (conf.empty()) {
             std::lock_guard<std::mutex> lock(mu);
             conf = conference_host;
         }
@@ -1139,7 +1142,7 @@ public:
         }
         queue_send("<iq type='get' id='mucrooms1' to='" + xml_escape(conf) +
                    "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
-        emit(make_event(ClientEvent::StatusText, "Fetching chat rooms…"));
+        emit(make_event(ClientEvent::StatusText, "Fetching rooms on " + conf + "…"));
     }
 
     // XEP-0433 — full-text room search against a channel-search service, which

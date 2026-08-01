@@ -28,6 +28,7 @@
 #include "../../engine/emoji_picker.h"
 #include "../../engine/gel_host.h"
 #include "../../engine/hfnt.h"
+#include "../../engine/list_view.h"
 #include "../../engine/skin_catalog.h"
 #include "../../engine/text_field.h"
 #include "../../engine/utf8_win.h"
@@ -216,6 +217,7 @@ struct App {
     std::string field_nick;
     std::string field_room_pass;
     std::string field_room_search; // XEP-0433 query
+    std::string field_room_service; // MUC domain to list (blank = own server)
     std::string field_topic;
     std::string field_invite;
     std::string field_invite_reason;
@@ -2484,6 +2486,7 @@ void open_browse_muc() {
     g.dialog = DlgBrowseMuc;
     g.focus_field = 1;
     g.field_room_search.clear();
+    g.field_room_service.clear();
     g.browse_sel = -1;
     g.browse_scroll = 0;
     g.field_room_pass.clear();
@@ -2497,7 +2500,7 @@ void ding() { MessageBeep(MB_OK); }
 
 void browse_dialog_size(int *dw, int *dh) {
     *dw = 440;
-    *dh = 420;
+    *dh = 470; // search + service + list + nick + password
 }
 
 void join_dialog_size(int *dw, int *dh) {
@@ -2682,7 +2685,10 @@ void paint_dialog(Canvas &cv) {
     } else if (g.dialog == DlgBrowseMuc) {
         // XEP-0433 search, then list + nick + optional password above OK/Cancel.
         field("Search rooms (Enter to search)", g.field_room_search, 0, false);
-        int list_h = cl.h - 8 - 30 - 40 - lh - 8 - 30 - lh - 8 - (lh + 2 + 30);
+        field("Service (blank = your server, Enter to list)",
+              g.field_room_service, 3, false);
+        int list_h = cl.h - 8 - 30 - 40 - lh - 8 - 30 - lh - 8 - (lh + 2 + 30) -
+                     (lh + 2 + 30);
         if (list_h < 80) list_h = 80;
         int box_w = cl.w - 24;
         g.browse_list_r = {cl.x + 12, y, box_w, list_h};
@@ -2695,8 +2701,11 @@ void paint_dialog(Canvas &cv) {
         cv.fill(g.browse_list_r, g.ap.c("list.background"));
         {
             CanvasClip clip(cv, g.browse_list_r);
-            int yy = g.browse_list_r.y + 2 - g.browse_scroll;
-            for (int i = 0; i < (int)g.browse_rows.size(); ++i) {
+            // Kit row maths: only touch rows that intersect the viewport.
+            sagrado::RowRange vis = sagrado::visible_rows(
+                g.browse_list_r, g.browse_scroll, row_h, (int)g.browse_rows.size());
+            int yy = vis.y;
+            for (int i = vis.first; i < vis.last; ++i) {
                 const auto &row = g.browse_rows[i];
                 Rect rr{g.browse_list_r.x + 2, yy, g.browse_list_r.w - 4, row_h};
                 if (row.section) {
@@ -3880,9 +3889,9 @@ void mouse_down(int x, int y) {
         }
         if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(x, y)) {
             int row_h = g.canvas.line_height() + 4;
-            int idx = (y - (g.browse_list_r.y + 2 - g.browse_scroll)) / row_h;
-            if (idx >= 0 && idx < (int)g.browse_rows.size() &&
-                !g.browse_rows[idx].section) {
+            int idx = sagrado::row_at(g.browse_list_r, g.browse_scroll, row_h,
+                                      (int)g.browse_rows.size(), y);
+            if (idx >= 0 && !g.browse_rows[idx].section) {
                 g.browse_sel = idx;
                 g.field_room = g.browse_rows[idx].jid;
                 // Picking a room means Enter should join it, not re-search.
@@ -3910,7 +3919,7 @@ void mouse_down(int x, int y) {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
             else if (g.dialog == DlgJoinMuc) n = 3;
-            else if (g.dialog == DlgBrowseMuc) n = 3;
+            else if (g.dialog == DlgBrowseMuc) n = 4;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
             else if (g.dialog == DlgSetTopic) n = 1;
@@ -4353,6 +4362,7 @@ void handle_char(WPARAM wp) {
         } else if (g.dialog == DlgBrowseMuc) {
             if (g.focus_field == 0) f = &g.field_room_search;
             else if (g.focus_field == 1) f = &g.field_nick;
+            else if (g.focus_field == 3) f = &g.field_room_service;
             else f = &g.field_room_pass;
         }
         else if (g.dialog == DlgSetTopic) f = &g.field_topic;
@@ -4367,7 +4377,7 @@ void handle_char(WPARAM wp) {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
             else if (g.dialog == DlgJoinMuc) n = 3;
-            else if (g.dialog == DlgBrowseMuc) n = 3;
+            else if (g.dialog == DlgBrowseMuc) n = 4;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
             else if (g.dialog == DlgSetTopic) n = 1;
@@ -4649,9 +4659,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
         if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(x, y)) {
             int row_h = g.canvas.line_height() + 4;
-            int idx = (y - (g.browse_list_r.y + 2 - g.browse_scroll)) / row_h;
-            if (idx >= 0 && idx < (int)g.browse_rows.size() &&
-                !g.browse_rows[idx].section) {
+            int idx = sagrado::row_at(g.browse_list_r, g.browse_scroll, row_h,
+                                      (int)g.browse_rows.size(), y);
+            if (idx >= 0 && !g.browse_rows[idx].section) {
                 g.browse_sel = idx;
                 g.field_room = g.browse_rows[idx].jid;
                 // Picking a room means Enter should join it, not re-search.

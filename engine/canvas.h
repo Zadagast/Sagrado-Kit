@@ -180,7 +180,22 @@ struct Canvas {
         return any;
     }
 
+    // True when nothing inside r can land in the clip, so callers (and the
+    // draw calls below) can skip the work entirely. Long scrolling lists
+    // otherwise pay full glyph/blit cost for every off-screen row.
+    bool culled(Rect r) const {
+        return clip_.w <= 0 || clip_.h <= 0 || r.right() <= clip_.x ||
+               r.bottom() <= clip_.y || r.x >= clip_.right() ||
+               r.y >= clip_.bottom();
+    }
+
     int text(int x, int y, const char *s, Color c) {
+        // Whole line above/below the clip: nothing to rasterise.
+        // Pad by a line so tall glyphs/emoji squares are never cut short.
+        const int pad = line_height();
+        if (y + 2 * pad <= clip_.y || y - pad >= clip_.bottom() ||
+            clip_.w <= 0 || x >= clip_.right())
+            return x + text_width(s);
         uint32_t p = pack(c);
         while (*s) {
             if (auto probe = kit_emoji_probe()) {
@@ -234,6 +249,7 @@ struct Canvas {
     // Blit art 1:1 with src-over alpha (A=0 skips, A=255 replace, else blend).
     void blit_image(const SkinImage &img, int dx, int dy) {
         if (img.empty()) return;
+        if (culled({dx, dy, img.w, img.h})) return;
         for (int y = 0; y < img.h; ++y)
             for (int x = 0; x < img.w; ++x)
                 blend_put(dx + x, dy + y, img.at(x, y));
@@ -242,6 +258,7 @@ struct Canvas {
     // Nearest-neighbour scale with src-over (nav marks, etc.).
     void blit_image_scaled(const SkinImage &img, int dx, int dy, int dw, int dh) {
         if (img.empty() || dw <= 0 || dh <= 0) return;
+        if (culled({dx, dy, dw, dh})) return;
         if (dw == img.w && dh == img.h) {
             blit_image(img, dx, dy);
             return;
@@ -260,6 +277,9 @@ struct Canvas {
 
     // Draw a label into r's width, eliding it if it does not fit.
     int text_elided(int x, int y, const char *s, int max_w, Color c) {
+        // Eliding measures the string glyph by glyph; skip it when clipped out.
+        const int pad = line_height();
+        if (culled({x, y - pad, max_w, 3 * pad})) return x;
         std::string t = text_elide(s, max_w);
         return text(x, y, t.c_str(), c);
     }

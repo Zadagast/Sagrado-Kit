@@ -7,6 +7,19 @@ Linux with **MinGW-w64 (i686)** and run under **Wine**. It is not a
 web/Electron/npm/pip project — there is no JS/Python package manager step for the
 app itself (Python is only used to generate the optional emoji pack).
 
+### Kit first (required)
+
+Anything reusable belongs in the Kit (`engine/`), not in an app. Before writing
+UI, layout, text, list, scroll, input, or drawing code inside `apps/` or
+`editor/`, check whether `engine/` already provides it — and if it does not, add
+it there and have the app call it. Apps hold only their own domain logic (XMPP
+for Jabber, document state for TextEdit, skin authoring for the Editor).
+
+This applies to fixes too: when a bug or performance problem is in shared
+behaviour (painting, clipping, row maths, hit-testing, fonts, scrollbars), fix it
+in `engine/` so every app benefits, rather than patching one app's copy. Cover
+new Kit code with a host-native test wired into `make smoke`.
+
 ### Services / apps
 
 Three Win32 GUI apps are produced under `build/` by the top-level `Makefile`:
