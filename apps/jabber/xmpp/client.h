@@ -627,6 +627,7 @@ public:
             muc_occupants.clear();
             muc_subjects.clear();
             muc_rooms.clear();
+            agg_mode_ = false;
             conference_host.clear();
             channel_search_host.clear();
             pending_subscribe.clear();
@@ -1144,11 +1145,55 @@ public:
             // Drop the previous service's rooms so the list can't show one
             // server's rooms under another server's heading.
             std::lock_guard<std::mutex> lock(mu);
+            agg_mode_ = false;
             muc_rooms.clear();
         }
-        queue_send("<iq type='get' id='mucrooms1' to='" + xml_escape(conf) +
+        queue_send("<iq type='get' id='mucrooms" + std::to_string(iq_seq_++) +
+                   "' to='" + xml_escape(conf) +
                    "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
         emit(make_event(ClientEvent::StatusText, "Fetching rooms on " + conf + "…"));
+    }
+
+    bool muc_aggregation_active() {
+        std::lock_guard<std::mutex> lock(mu);
+        return agg_mode_;
+    }
+
+    void browse_services_combined(const std::vector<std::string> &hosts) {
+        std::vector<std::string> unique_hosts;
+        for (const auto &raw : hosts) {
+            std::string host = raw;
+            while (!host.empty() && host.back() == ' ') host.pop_back();
+            if (host.empty()) continue;
+            bool duplicate = false;
+            for (const auto &existing : unique_hosts) {
+                if (jid_ieq(existing, host)) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) unique_hosts.push_back(host);
+        }
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            agg_mode_ = true;
+            muc_rooms.clear();
+        }
+        emit(make_event(ClientEvent::MucRooms));
+        if (unique_hosts.empty()) {
+            emit(make_event(ClientEvent::StatusText, "No chat services configured"));
+            return;
+        }
+        for (const auto &host : unique_hosts) {
+            std::string id = "mucrooms" + std::to_string(iq_seq_++);
+            queue_send("<iq type='get' id='" + id + "' to='" +
+                       xml_escape(host) +
+                       "'><query xmlns='http://jabber.org/protocol/disco#items'/>"
+                       "</iq>");
+        }
+        emit(make_event(ClientEvent::StatusText,
+                        "Fetching rooms from " +
+                            std::to_string(unique_hosts.size()) + " chat services…"));
     }
 
     // XEP-0433 — full-text room search against a channel-search service, which
@@ -1513,6 +1558,7 @@ private:
     std::string stream_buf_;
     int iq_seq_ = 1;
     int msg_seq_ = 1;
+    bool agg_mode_ = false;
     struct MamPending {
         std::string with;
         bool older = false;
@@ -3025,14 +3071,20 @@ private:
             // so; otherwise the room list just sits there looking broken.
             if (iq_id.rfind("mucrooms", 0) == 0 && iq_type == "error") {
                 std::string who = attr(st, "from");
+                bool aggregating = false;
                 {
                     std::lock_guard<std::mutex> lock(mu);
-                    muc_rooms.clear();
+                    aggregating = agg_mode_;
+                    if (!aggregating) muc_rooms.clear();
                 }
-                emit(make_event(ClientEvent::MucRooms));
+                if (!aggregating) emit(make_event(ClientEvent::MucRooms));
                 emit(make_event(ClientEvent::StatusText,
-                                "No room list from " +
-                                    (who.empty() ? "that service" : who)));
+                                aggregating
+                                    ? "No room list from " +
+                                          (who.empty() ? "one service" : who) +
+                                          " (combined search continuing)"
+                                    : "No room list from " +
+                                          (who.empty() ? "that service" : who)));
                 return;
             }
             if (st.find("disco#items") != std::string::npos)
@@ -3189,6 +3241,11 @@ private:
         bool room_list = (id.rfind("mucrooms", 0) == 0) ||
                          (!conf.empty() && !from.empty() && jid_ieq(from, conf));
         if (room_list) {
+            bool aggregating = false;
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                aggregating = agg_mode_;
+            }
             std::vector<MucRoomInfo> rooms;
             size_t pos = 0;
             while ((pos = st.find("<item", pos)) != std::string::npos) {
@@ -3198,10 +3255,63 @@ private:
                 MucRoomInfo r;
                 r.jid = attr(tag, "jid");
                 r.name = attr(tag, "name");
+                std::string count = attr(tag, "nusers");
+                if (!count.empty()) r.occupants = std::atoi(count.c_str());
                 if (r.name.empty()) r.name = jid_node(r.jid);
                 if (!r.jid.empty() && r.jid.find('@') != std::string::npos)
                     rooms.push_back(r);
                 pos = end + 1;
+            }
+            if (aggregating) {
+                auto folded = [](const std::string &value) {
+                    std::string out = value;
+                    for (char &c : out)
+                        c = static_cast<char>(
+                            std::tolower(static_cast<unsigned char>(c)));
+                    return out;
+                };
+                size_t total = 0;
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    if (!agg_mode_) return;
+                    for (const auto &room : rooms) {
+                        auto it = std::find_if(
+                            muc_rooms.begin(), muc_rooms.end(),
+                            [&](const MucRoomInfo &existing) {
+                                return jid_ieq(existing.jid, room.jid);
+                            });
+                        if (it == muc_rooms.end()) {
+                            muc_rooms.push_back(room);
+                        } else {
+                            if (it->name.empty() && !room.name.empty())
+                                it->name = room.name;
+                            if (room.occupants >= 0)
+                                it->occupants = room.occupants;
+                        }
+                    }
+                    std::sort(
+                        muc_rooms.begin(), muc_rooms.end(),
+                        [&](const MucRoomInfo &a, const MucRoomInfo &b) {
+                            if (a.occupants >= 0 || b.occupants >= 0) {
+                                if (a.occupants >= 0 && b.occupants < 0)
+                                    return true;
+                                if (a.occupants < 0 && b.occupants >= 0)
+                                    return false;
+                                if (a.occupants != b.occupants)
+                                    return a.occupants > b.occupants;
+                            }
+                            std::string an = folded(a.name);
+                            std::string bn = folded(b.name);
+                            if (an != bn) return an < bn;
+                            return folded(a.jid) < folded(b.jid);
+                        });
+                    total = muc_rooms.size();
+                }
+                emit(make_event(ClientEvent::MucRooms));
+                emit(make_event(ClientEvent::StatusText,
+                                "Found " + std::to_string(total) +
+                                    " rooms so far"));
+                return;
             }
             // A bare domain (movim.eu) answers with its services, not rooms.
             // Follow the one that looks like the MUC host once, so users can

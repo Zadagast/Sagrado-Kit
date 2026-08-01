@@ -219,7 +219,7 @@ struct App {
     std::string field_room;
     std::string field_nick;
     std::string field_room_pass;
-    std::string field_room_search; // XEP-0433 query
+    std::string field_room_search; // local filter over loaded room rows
     std::string field_room_service; // MUC domain to list (blank = own server)
     std::string field_topic;
     std::string field_invite;
@@ -272,6 +272,9 @@ struct App {
         bool autojoin = false;
         bool section = false; // non-selectable header
         bool service = false; // a chat service to list, not a room to join
+        std::string room_name;
+        int occupants = -1;
+        bool combined = false; // all configured chat services
     };
     std::vector<BrowseRow> browse_rows;
     // After picking a service, scroll past the picker to its rooms.
@@ -2507,6 +2510,17 @@ void load_muc_services() {
         g.muc_services.push_back({"conference.movim.eu", "Movim"});
 }
 
+bool contains_case_insensitive(const std::string &value, const std::string &query) {
+    if (query.empty()) return true;
+    std::string folded_value = value;
+    std::string folded_query = query;
+    for (char &c : folded_value)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (char &c : folded_query)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return folded_value.find(folded_query) != std::string::npos;
+}
+
 void rebuild_browse_rows() {
     g.browse_rows.clear();
     std::vector<jabber::MucBookmark> bms;
@@ -2517,11 +2531,13 @@ void rebuild_browse_rows() {
         rooms = g.client.muc_rooms;
     }
     if (!bms.empty()) {
-        g.browse_rows.push_back({"", "Bookmarks", false, false, true});
+        g.browse_rows.push_back(
+            {"", "Bookmarks", false, false, true, false, {}, -1, false});
         for (const auto &b : bms) {
             std::string lab = b.name.empty() ? b.jid : b.name;
             if (b.autojoin) lab += "  (autojoin)";
-            g.browse_rows.push_back({b.jid, lab, true, b.autojoin, false});
+            g.browse_rows.push_back(
+                {b.jid, lab, true, b.autojoin, false, false, {}, -1, false});
         }
     }
     bool searched = !g.field_room_search.empty();
@@ -2536,13 +2552,16 @@ void rebuild_browse_rows() {
         if (g.muc_services.empty()) load_muc_services();
         g.browse_rows.push_back(
             {"", "Chat services (click to list its rooms)", false, false, true,
-             false});
+             false, {}, -1, false});
+        g.browse_rows.push_back(
+            {"", "All services (combined)  —  browse rooms from every server",
+             false, false, false, true, {}, -1, true});
         for (const auto &s : g.muc_services) {
             bool cur = !conf.empty() && jabber::jid_ieq(s.first, conf);
             g.browse_rows.push_back({s.first,
                                      s.second + "  —  " + s.first +
                                          (cur ? "  (listed below)" : ""),
-                                     false, false, false, true});
+                                     false, false, false, true, {}, -1, false});
         }
     }
     std::string head = searched      ? std::string("Search results")
@@ -2551,26 +2570,41 @@ void rebuild_browse_rows() {
     if (g.browse_jump_rooms) {
         g.browse_jump_rooms = false;
         g.browse_scroll =
-            (int)g.browse_rows.size() * (g.canvas.line_height() + 4);
+            (int)g.browse_rows.size() * (g.canvas.line_height() * 2 + 6);
     }
-    g.browse_rows.push_back({"", head, false, false, true, false});
-    if (rooms.empty()) {
+    g.browse_rows.push_back({"", head, false, false, true, false, {}, -1, false});
+    std::vector<jabber::MucRoomInfo> visible_rooms;
+    for (const auto &r : rooms) {
+        if (searched &&
+            !contains_case_insensitive(r.name, g.field_room_search) &&
+            !contains_case_insensitive(r.jid, g.field_room_search))
+            continue;
+        visible_rooms.push_back(r);
+    }
+    if (rooms.empty() || (searched && visible_rooms.empty())) {
         if (g.browse_listing)
             g.browse_rows.push_back(
-                {"", "(asking " + conf + " for its rooms\u2026)", false, false, true});
+                {"", "(asking " + conf + " for its rooms\u2026)", false, false, true,
+                 false, {}, -1, false});
         else if (searched)
-            g.browse_rows.push_back({"", "(no rooms matched)", false, false, true});
+            g.browse_rows.push_back(
+                {"", "(no rooms matched)", false, false, true, false, {}, -1, false});
         else if (conf.empty())
             g.browse_rows.push_back(
-                {"", "(no chat service on this server yet)", false, false, true});
+                {"", "(no chat service on this server yet)", false, false, true, false,
+                 {}, -1, false});
         else
-            g.browse_rows.push_back({"", "(no public rooms listed)", false, false, true});
+            g.browse_rows.push_back(
+                {"", "(no public rooms listed)", false, false, true, false, {}, -1,
+                 false});
     } else {
-        for (const auto &r : rooms) {
-            std::string lab = r.name.empty() ? r.jid : (r.name + "  —  " + r.jid);
-            // XEP-0433 results carry an occupant count worth showing.
-            if (r.occupants > 0) lab += "  (" + std::to_string(r.occupants) + ")";
-            g.browse_rows.push_back({r.jid, lab, false, false, false});
+        for (const auto &r : visible_rooms) {
+            App::BrowseRow row;
+            row.jid = r.jid;
+            row.label = r.name.empty() ? r.jid : r.name;
+            row.room_name = r.name.empty() ? r.jid : r.name;
+            row.occupants = r.occupants;
+            g.browse_rows.push_back(std::move(row));
         }
     }
     if (g.browse_sel >= (int)g.browse_rows.size()) g.browse_sel = -1;
@@ -2593,8 +2627,8 @@ void open_browse_muc() {
 void ding() { MessageBeep(MB_OK); }
 
 void browse_dialog_size(int *dw, int *dh) {
-    *dw = 440;
-    *dh = 470; // search + service + list + nick + password
+    *dw = 600;
+    *dh = 540; // search + service + expanded directory + nick + password
 }
 
 void join_dialog_size(int *dw, int *dh) {
@@ -2777,8 +2811,8 @@ void paint_dialog(Canvas &cv) {
         field("Nickname", g.field_nick, 1, false);
         field("Password (optional)", g.field_room_pass, 2, true);
     } else if (g.dialog == DlgBrowseMuc) {
-        // XEP-0433 search, then list + nick + optional password above OK/Cancel.
-        field("Search rooms (Enter to search)", g.field_room_search, 0, false);
+        // Local room filter, then list + nick + optional password above OK/Cancel.
+        field("Filter rooms (type to filter loaded list)", g.field_room_search, 0, false);
         field("Service (blank = your server, Enter to list)",
               g.field_room_service, 3, false);
         int list_h = cl.h - 8 - 30 - 40 - lh - 8 - 30 - lh - 8 - (lh + 2 + 30) -
@@ -2786,7 +2820,7 @@ void paint_dialog(Canvas &cv) {
         if (list_h < 80) list_h = 80;
         int box_w = cl.w - 24;
         g.browse_list_r = {cl.x + 12, y, box_w, list_h};
-        int row_h = lh + 4;
+        int row_h = lh * 2 + 6;
         int content_h = (int)g.browse_rows.size() * row_h;
         g.browse_page = std::max(1, list_h - 4);
         g.browse_max = std::max(0, content_h - g.browse_page);
@@ -2810,8 +2844,18 @@ void paint_dialog(Canvas &cv) {
                         cv.fill(rr, g.ap.c("list.hilite_background"));
                     Color ink = i == g.browse_sel ? g.ap.c("list.hilite_foreground")
                                                   : g.ap.c("list.label");
-                    cv.text_elided(rr.x + 6, rr.y + 2, row.label.c_str(), rr.w - 12,
-                                   ink);
+                    if (!row.room_name.empty() && !row.bookmark && !row.service) {
+                        cv.text_elided(rr.x + 6, rr.y + 2, row.room_name.c_str(),
+                                       rr.w - 12, ink);
+                        std::string meta = row.jid;
+                        if (row.occupants >= 0)
+                            meta += "  (" + std::to_string(row.occupants) + ")";
+                        cv.text_elided(rr.x + 6, rr.y + 2 + lh, meta.c_str(),
+                                       rr.w - 12, ink);
+                    } else {
+                        cv.text_elided(rr.x + 6, rr.y + 2, row.label.c_str(),
+                                       rr.w - 12, ink);
+                    }
                 }
                 yy += row_h;
             }
@@ -3734,11 +3778,12 @@ void dialog_ok() {
         g.dialog = DlgNone;
         maybe_show_next_muc_invite();
     } else if (g.dialog == DlgBrowseMuc) {
-        // XEP-0433 — Enter in the search field looks rooms up instead of joining.
+        // The search field is a live filter over the rooms already loaded.
         if (g.focus_field == 0) {
             g.browse_sel = -1;
             g.browse_scroll = 0;
-            g.client.search_channels(g.field_room_search);
+            rebuild_browse_rows();
+            redraw();
             return;
         }
         // Enter in the service field lists that MUC domain's rooms, so rooms
@@ -3986,7 +4031,8 @@ void mouse_down(int x, int y) {
             return;
         if (g.dialog == DlgBrowseMuc &&
             sbar_mouse_down(g.browse_sbar, x, y, g.browse_scroll, g.browse_max,
-                            g.browse_page, step, DragThumbBrowse, DragArrowBrowse))
+                            g.browse_page, g.canvas.line_height() * 2 + 6,
+                            DragThumbBrowse, DragArrowBrowse))
             return;
         if (g.dialog == DlgRegister && g.provider_list_r.contains(x, y)) {
             int row_h = g.canvas.line_height() + 4;
@@ -4007,18 +4053,28 @@ void mouse_down(int x, int y) {
             return;
         }
         if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(x, y)) {
-            int row_h = g.canvas.line_height() + 4;
+            int row_h = g.canvas.line_height() * 2 + 6;
             int idx = sagrado::row_at(g.browse_list_r, g.browse_scroll, row_h,
                                       (int)g.browse_rows.size(), y);
             if (idx >= 0 && !g.browse_rows[idx].section) {
                 // A service row browses that host instead of selecting a room.
                 if (g.browse_rows[idx].service) {
-                    g.field_room_service = g.browse_rows[idx].jid;
+                    g.field_room_service =
+                        g.browse_rows[idx].combined ? std::string()
+                                                     : g.browse_rows[idx].jid;
                     g.field_room_search.clear();
                     g.browse_sel = -1;
                     g.browse_jump_rooms = true;
                     g.browse_listing = true;
-                    g.client.refresh_muc_rooms(g.field_room_service);
+                    if (g.browse_rows[idx].combined) {
+                        if (g.muc_services.empty()) load_muc_services();
+                        std::vector<std::string> hosts;
+                        for (const auto &service : g.muc_services)
+                            hosts.push_back(service.first);
+                        g.client.browse_services_combined(hosts);
+                    } else {
+                        g.client.refresh_muc_rooms(g.field_room_service);
+                    }
                     SetTimer(g.hwnd, kRoomListTimerId, 20000, nullptr);
                     rebuild_browse_rows();
                     redraw();
@@ -4518,6 +4574,12 @@ void handle_char(WPARAM wp) {
         } else if (wp >= 32 && wp != 127) {
             *f += sagrado::utf8_from_wm_char(unsigned(wp));
         }
+        if (g.dialog == DlgBrowseMuc && g.focus_field == 0 &&
+            (wp == 8 || (wp >= 32 && wp != 127))) {
+            g.browse_sel = -1;
+            g.browse_scroll = 0;
+            rebuild_browse_rows();
+        }
         redraw();
         return;
     }
@@ -4682,7 +4744,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (e->type == jabber::ClientEvent::MucRooms ||
             e->type == jabber::ClientEvent::Bookmarks) {
-            if (e->type == jabber::ClientEvent::MucRooms) g.browse_listing = false;
+            if (e->type == jabber::ClientEvent::MucRooms &&
+                !g.client.muc_aggregation_active())
+                g.browse_listing = false;
             if (g.dialog == DlgBrowseMuc) rebuild_browse_rows();
         }
         if (e->type == jabber::ClientEvent::RegisterOk)
@@ -4791,7 +4855,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_LBUTTONDBLCLK: {
         int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
         if (g.dialog == DlgBrowseMuc && g.browse_list_r.contains(x, y)) {
-            int row_h = g.canvas.line_height() + 4;
+            int row_h = g.canvas.line_height() * 2 + 6;
             int idx = sagrado::row_at(g.browse_list_r, g.browse_scroll, row_h,
                                       (int)g.browse_rows.size(), y);
             if (idx >= 0 && !g.browse_rows[idx].section &&
@@ -4878,7 +4942,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             KillTimer(hwnd, kRoomListTimerId);
             if (g.browse_listing) {
                 g.browse_listing = false;
-                set_status("No answer from " + g.field_room_service);
+                if (g.client.muc_aggregation_active())
+                    set_status("Combined directory timed out; showing partial results");
+                else
+                    set_status("No answer from " + g.field_room_service);
                 if (g.dialog == DlgBrowseMuc) rebuild_browse_rows();
                 redraw();
             }
