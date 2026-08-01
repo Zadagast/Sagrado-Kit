@@ -331,8 +331,10 @@ bool file_exists(const std::string &p) {
 // the app doesn't argue with the user's taste on every launch.
 std::string smooth_text_path() { return exe_dir() + "\\smooth-text.txt"; }
 
+// Off by default: the bitmap face is the house look, and system antialiasing
+// at these sizes fights the gel chrome it sits in.
 bool &smooth_text_on() {
-    static bool on = true;
+    static bool on = false;
     return on;
 }
 
