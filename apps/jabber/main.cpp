@@ -215,6 +215,7 @@ struct App {
     std::string field_room;
     std::string field_nick;
     std::string field_room_pass;
+    std::string field_room_search; // XEP-0433 query
     std::string field_topic;
     std::string field_invite;
     std::string field_invite_reason;
@@ -2344,14 +2345,18 @@ void rebuild_browse_rows() {
             g.browse_rows.push_back({b.jid, lab, true, b.autojoin, false});
         }
     }
-    g.browse_rows.push_back({"", "Public rooms", false, false, true});
+    bool searched = !g.field_room_search.empty();
+    g.browse_rows.push_back(
+        {"", searched ? "Search results" : "Public rooms", false, false, true});
     if (rooms.empty()) {
         std::string conf;
         {
             std::lock_guard<std::mutex> lock(g.client.mu);
             conf = g.client.conference_host;
         }
-        if (conf.empty())
+        if (searched)
+            g.browse_rows.push_back({"", "(no rooms matched)", false, false, true});
+        else if (conf.empty())
             g.browse_rows.push_back(
                 {"", "(no chat service on this server yet)", false, false, true});
         else
@@ -2359,6 +2364,8 @@ void rebuild_browse_rows() {
     } else {
         for (const auto &r : rooms) {
             std::string lab = r.name.empty() ? r.jid : (r.name + "  —  " + r.jid);
+            // XEP-0433 results carry an occupant count worth showing.
+            if (r.occupants > 0) lab += "  (" + std::to_string(r.occupants) + ")";
             g.browse_rows.push_back({r.jid, lab, false, false, false});
         }
     }
@@ -2367,7 +2374,8 @@ void rebuild_browse_rows() {
 
 void open_browse_muc() {
     g.dialog = DlgBrowseMuc;
-    g.focus_field = 0;
+    g.focus_field = 1;
+    g.field_room_search.clear();
     g.browse_sel = -1;
     g.browse_scroll = 0;
     g.field_room_pass.clear();
@@ -2559,8 +2567,9 @@ void paint_dialog(Canvas &cv) {
         field("Nickname", g.field_nick, 1, false);
         field("Password (optional)", g.field_room_pass, 2, true);
     } else if (g.dialog == DlgBrowseMuc) {
-        // List + nick + optional password above OK/Cancel.
-        int list_h = cl.h - 8 - 30 - 40 - lh - 8 - 30 - lh - 8;
+        // XEP-0433 search, then list + nick + optional password above OK/Cancel.
+        field("Search rooms (Enter to search)", g.field_room_search, 0, false);
+        int list_h = cl.h - 8 - 30 - 40 - lh - 8 - 30 - lh - 8 - (lh + 2 + 30);
         if (list_h < 80) list_h = 80;
         int box_w = cl.w - 24;
         g.browse_list_r = {cl.x + 12, y, box_w, list_h};
@@ -2594,8 +2603,8 @@ void paint_dialog(Canvas &cv) {
         paint_v_sbar(cv, g.browse_sbar, g.browse_scroll, g.browse_max, g.browse_page,
                      DragThumbBrowse, DragArrowBrowse);
         y = std::max(g.browse_list_r.bottom(), g.browse_sbar.bottom()) + 8;
-        field("Nickname", g.field_nick, 0, false);
-        field("Password (optional)", g.field_room_pass, 1, true);
+        field("Nickname", g.field_nick, 1, false);
+        field("Password (optional)", g.field_room_pass, 2, true);
     } else if (g.dialog == DlgSetTopic) {
         field("Topic", g.field_topic, 0, false);
     } else if (g.dialog == DlgInvite) {
@@ -3477,6 +3486,13 @@ void dialog_ok() {
         g.dialog = DlgNone;
         maybe_show_next_muc_invite();
     } else if (g.dialog == DlgBrowseMuc) {
+        // XEP-0433 — Enter in the search field looks rooms up instead of joining.
+        if (g.focus_field == 0) {
+            g.browse_sel = -1;
+            g.browse_scroll = 0;
+            g.client.search_channels(g.field_room_search);
+            return;
+        }
         std::string room;
         std::string nick = g.field_nick;
         if (g.browse_sel >= 0 && g.browse_sel < (int)g.browse_rows.size() &&
@@ -3737,6 +3753,8 @@ void mouse_down(int x, int y) {
                 !g.browse_rows[idx].section) {
                 g.browse_sel = idx;
                 g.field_room = g.browse_rows[idx].jid;
+                // Picking a room means Enter should join it, not re-search.
+                if (g.focus_field == 0) g.focus_field = 1;
                 if (g.browse_rows[idx].bookmark) {
                     std::lock_guard<std::mutex> lock(g.client.mu);
                     for (const auto &b : g.client.muc_bookmarks) {
@@ -3754,7 +3772,7 @@ void mouse_down(int x, int y) {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
             else if (g.dialog == DlgJoinMuc) n = 3;
-            else if (g.dialog == DlgBrowseMuc) n = 2;
+            else if (g.dialog == DlgBrowseMuc) n = 3;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
             else if (g.dialog == DlgSetTopic) n = 1;
@@ -4194,8 +4212,11 @@ void handle_char(WPARAM wp) {
             if (g.focus_field == 0) f = &g.field_room;
             else if (g.focus_field == 1) f = &g.field_nick;
             else f = &g.field_room_pass;
-        } else if (g.dialog == DlgBrowseMuc)
-            f = g.focus_field == 0 ? &g.field_nick : &g.field_room_pass;
+        } else if (g.dialog == DlgBrowseMuc) {
+            if (g.focus_field == 0) f = &g.field_room_search;
+            else if (g.focus_field == 1) f = &g.field_nick;
+            else f = &g.field_room_pass;
+        }
         else if (g.dialog == DlgSetTopic) f = &g.field_topic;
         else if (g.dialog == DlgInvite)
             f = g.focus_field == 0 ? &g.field_invite : &g.field_invite_reason;
@@ -4208,7 +4229,7 @@ void handle_char(WPARAM wp) {
             int n = 2;
             if (g.dialog == DlgRegister) n = g.captcha_visible ? 3 : 2;
             else if (g.dialog == DlgJoinMuc) n = 3;
-            else if (g.dialog == DlgBrowseMuc) n = 2;
+            else if (g.dialog == DlgBrowseMuc) n = 3;
             else if (g.dialog == DlgAddBuddy) n = 1;
             else if (g.dialog == DlgSignOn) n = 2;
             else if (g.dialog == DlgSetTopic) n = 1;
@@ -4495,6 +4516,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 !g.browse_rows[idx].section) {
                 g.browse_sel = idx;
                 g.field_room = g.browse_rows[idx].jid;
+                // Picking a room means Enter should join it, not re-search.
+                if (g.focus_field == 0) g.focus_field = 1;
                 dialog_ok();
             }
             return 0;

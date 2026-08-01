@@ -573,6 +573,8 @@ public:
     // vCard PHOTO cache for bare JIDs (roster + MUC real JIDs).
     std::map<std::string, SkinImage> vcard_avatars;
     std::string conference_host;                      // e.g. conference.yax.im
+    // XEP-0433 search service, when one is reachable from this server.
+    std::string channel_search_host;
     std::vector<MucRoomInfo> muc_rooms;               // public disco list
     std::vector<MucBookmark> muc_bookmarks;
     std::vector<MucInvite> pending_muc_invites;
@@ -599,6 +601,9 @@ public:
     // Directory for omemo/ beside the exe (set from UI before sign-on).
     std::string store_root;
 
+    // Public XEP-0433 index, used when the account's server offers none.
+    static constexpr const char *kDefaultChannelSearch = "search.jabber.network";
+
     using EventFn = std::function<void(const ClientEvent &)>;
     EventFn on_event;
 
@@ -620,6 +625,7 @@ public:
             muc_subjects.clear();
             muc_rooms.clear();
             conference_host.clear();
+            channel_search_host.clear();
             pending_subscribe.clear();
             pending_muc_invites.clear();
             blocked.clear();
@@ -1129,6 +1135,36 @@ public:
         queue_send("<iq type='get' id='mucrooms1' to='" + xml_escape(conf) +
                    "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
         emit(make_event(ClientEvent::StatusText, "Fetching chat rooms…"));
+    }
+
+    // XEP-0433 — full-text room search against a channel-search service, which
+    // indexes rooms across servers rather than only this one's conference host.
+    void search_channels(const std::string &query) {
+        std::string q = query;
+        while (!q.empty() && q.back() == ' ') q.pop_back();
+        if (q.empty()) {
+            refresh_muc_rooms();
+            return;
+        }
+        std::string host;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            host = channel_search_host;
+        }
+        if (host.empty()) host = kDefaultChannelSearch;
+        queue_send(
+            "<iq type='get' id='chsearch" + std::to_string(iq_seq_++) + "' to='" +
+            xml_escape(host) +
+            "'><search xmlns='urn:xmpp:channel-search:0:search'>"
+            "<x xmlns='jabber:x:data' type='submit'>"
+            "<field var='FORM_TYPE'><value>"
+            "urn:xmpp:channel-search:0:search-params</value></field>"
+            "<field var='q'><value>" +
+            xml_escape(q) +
+            "</value></field></x>"
+            "<set xmlns='http://jabber.org/protocol/rsm'><max>50</max></set>"
+            "</search></iq>");
+        emit(make_event(ClientEvent::StatusText, "Searching rooms for \"" + q + "\"…"));
     }
 
     void request_bookmarks() {
@@ -2936,6 +2972,10 @@ private:
             }
             if (st.find("disco#items") != std::string::npos)
                 handle_disco_items(st);
+            // XEP-0433 — channel search results (or the service saying no).
+            if (st.find("urn:xmpp:channel-search:0") != std::string::npos ||
+                iq_id.rfind("chsearch", 0) == 0)
+                handle_channel_search(st);
             if (st.find("urn:xmpp:http:upload:0") != std::string::npos) {
                 if (st.find("<slot") != std::string::npos) {
                     std::string put, get;
@@ -3034,6 +3074,45 @@ private:
         }
     }
 
+    // XEP-0433 result: <item address='room@muc'><name/><description/><nusers/>
+    void handle_channel_search(const std::string &st) {
+        if (attr(st, "type") == "error") {
+            emit(make_event(ClientEvent::StatusText,
+                            "Room search is unavailable from this server"));
+            return;
+        }
+        if (st.find("urn:xmpp:channel-search:0:result") == std::string::npos) return;
+        std::vector<MucRoomInfo> rooms;
+        size_t pos = 0;
+        while ((pos = st.find("<item", pos)) != std::string::npos) {
+            size_t gt = st.find('>', pos);
+            if (gt == std::string::npos) break;
+            std::string tag = st.substr(pos, gt - pos + 1);
+            size_t close = st.find("</item>", gt);
+            std::string inner =
+                close == std::string::npos ? std::string() : st.substr(gt + 1, close - gt - 1);
+            MucRoomInfo r;
+            r.jid = attr(tag, "address");
+            std::string v;
+            if (extract_tag(inner, "name", &v)) r.name = xml_unescape(v);
+            if (extract_tag(inner, "description", &v)) r.description = xml_unescape(v);
+            if (extract_tag(inner, "nusers", &v)) r.occupants = std::atoi(v.c_str());
+            if (r.name.empty()) r.name = jid_node(r.jid);
+            if (!r.jid.empty() && r.jid.find('@') != std::string::npos)
+                rooms.push_back(r);
+            pos = close == std::string::npos ? gt + 1 : close + 7;
+        }
+        size_t n = rooms.size();
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            muc_rooms = std::move(rooms);
+        }
+        emit(make_event(ClientEvent::MucRooms));
+        emit(make_event(ClientEvent::StatusText,
+                        n ? "Found " + std::to_string(n) + " matching rooms"
+                          : "No rooms matched that search"));
+    }
+
     void handle_disco_items(const std::string &st) {
         std::string from = attr(st, "from");
         std::string id = attr(st, "id");
@@ -3097,6 +3176,12 @@ private:
         if (st.find("urn:xmpp:mam:2") != std::string::npos) {
             std::lock_guard<std::mutex> lock(mu);
             mam_available = true;
+        }
+        // XEP-0433 — a component that indexes public channels.
+        if (st.find("urn:xmpp:channel-search:0:search") != std::string::npos &&
+            !from.empty()) {
+            std::lock_guard<std::mutex> lock(mu);
+            channel_search_host = from;
         }
         bool is_conf =
             st.find("category='conference'") != std::string::npos ||
