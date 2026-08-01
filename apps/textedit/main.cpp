@@ -227,12 +227,17 @@ bool file_exists(const std::string &p) {
 
 std::string find_default_skin() {
     std::string base = exe_dir();
+    // Prefer Gamespot, then Milk / Ooze .sap, then stock.
     const char *cands[] = {
+        "\\format\\skins\\Gamespot-1100.hap",
+        "\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\research\\haps\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
-        "\\..\\research\\haps\\Gamespot-1100.hap",
-        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
+        "\\format\\skins\\ooze\\ooze.sap",
+        "\\..\\format\\skins\\ooze\\ooze.sap",
         "\\format\\skins\\milk-redux\\milk-redux.sap",
         "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
         "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",

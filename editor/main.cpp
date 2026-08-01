@@ -150,14 +150,18 @@ std::string exe_dir() {
 
 std::string find_default_skin() {
     std::string dir = exe_dir();
-    // Prefer a chrome-rich Hap (Gamespot), then Milk, then extracted .sap / stock.
+    // Prefer Gamespot (copied next to the exe by `make skins`), then Milk / Ooze.
     const char *cands[] = {
+        "\\format\\skins\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Gamespot-1100.hap",
         "\\..\\..\\research\\haps\\Gamespot-1100.hap",
         "\\research\\haps\\Gamespot-1100.hap",
         "\\..\\research\\haps\\Milk Redux.hap",
         "\\..\\..\\research\\haps\\Milk Redux.hap",
         "\\research\\haps\\Milk Redux.hap",
+        "\\format\\skins\\ooze\\ooze.sap",
+        "\\..\\format\\skins\\ooze\\ooze.sap",
+        "\\..\\..\\format\\skins\\ooze\\ooze.sap",
         "\\format\\skins\\milk-redux\\milk-redux.sap",
         "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
         "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",
