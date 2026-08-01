@@ -15,6 +15,7 @@
 #include "../../engine/appearance.h"
 #include "../../engine/clipboard.h"
 #include "../../engine/hfnt.h"
+#include "../../engine/skin_catalog.h"
 #include "../../engine/text_doc.h"
 #include "../../engine/window_zoom.h"
 
@@ -52,9 +53,6 @@ static const char *kEditItems[] = {
 static const char *kFindItems[] = {
     "Find...", "Find Again", "Replace...", "-", "Count Occurrences...",
 };
-static const char *kAppearanceItems[] = {
-    "Load Appearance...", "Stock Appearance", "-", "Soft Wrap",
-};
 static const char *kHelpItems[] = {
     "About Sagrado TextEdit",
 };
@@ -67,11 +65,12 @@ struct MenuDef {
     const char *const *items;
     int count;
 };
-static const MenuDef kMenus[MenuCount] = {
+// Appearance rebuilt from bundled skins (see rebuild_appearance_menu).
+static MenuDef kMenus[MenuCount] = {
     {kFileItems, 7},
     {kEditItems, 9},
     {kFindItems, 5},
-    {kAppearanceItems, 4},
+    {nullptr, 0},
     {kHelpItems, 1},
 };
 static const MenuDef kWindowMenu = {kWindowItems, 4};
@@ -208,6 +207,12 @@ struct App {
 
     std::string status = "Sagrado TextEdit — first SagradoKit app";
     sagrado::WindowZoomState zoom{};
+
+    std::vector<sagrado::BundledSkin> bundled_skins;
+    std::vector<std::string> appearance_labels;
+    std::vector<const char *> appearance_ptrs;
+    int appearance_scroll = 0;
+    int appearance_soft_wrap_row = -1;
 };
 
 App g;
@@ -220,31 +225,30 @@ std::string exe_dir() {
     return slash == std::string::npos ? std::string(".") : p.substr(0, slash);
 }
 
-bool file_exists(const std::string &p) {
-    DWORD a = GetFileAttributesA(p.c_str());
-    return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+void rebuild_appearance_menu() {
+    g.bundled_skins = sagrado::list_bundled_skins(exe_dir());
+    g.appearance_labels.clear();
+    for (const auto &s : g.bundled_skins)
+        g.appearance_labels.push_back(s.name);
+    if (!g.bundled_skins.empty()) g.appearance_labels.push_back("-");
+    g.appearance_labels.push_back("Load Appearance...");
+    g.appearance_labels.push_back("Stock Appearance");
+    g.appearance_labels.push_back("-");
+    char wrap_lab[32];
+    std::snprintf(wrap_lab, sizeof(wrap_lab), "%s Soft Wrap",
+                  g.soft_wrap ? "[x]" : "[ ]");
+    g.appearance_labels.push_back(wrap_lab);
+    g.appearance_soft_wrap_row = (int)g.appearance_labels.size() - 1;
+    g.appearance_ptrs.clear();
+    for (const auto &lab : g.appearance_labels)
+        g.appearance_ptrs.push_back(lab.c_str());
+    kMenus[MenuAppearance] = {g.appearance_ptrs.data(),
+                              (int)g.appearance_ptrs.size()};
+    g.appearance_scroll = 0;
 }
 
 std::string find_default_skin() {
-    std::string base = exe_dir();
-    const char *cands[] = {
-        "\\..\\research\\haps\\Milk Redux.hap",
-        "\\..\\..\\research\\haps\\Milk Redux.hap",
-        "\\research\\haps\\Milk Redux.hap",
-        "\\..\\research\\haps\\Gamespot-1100.hap",
-        "\\..\\..\\research\\haps\\Gamespot-1100.hap",
-        "\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\..\\..\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\format\\skins\\stock.sap",
-        "\\..\\format\\skins\\stock.sap",
-        "\\..\\..\\format\\skins\\stock.sap",
-    };
-    for (const char *rel : cands) {
-        std::string p = base + rel;
-        if (file_exists(p)) return p;
-    }
-    return {};
+    return sagrado::find_default_bundled_skin(exe_dir());
 }
 
 std::string window_title() {
@@ -413,22 +417,39 @@ void paint_main() {
         g.popup = paint_menu(cv, ap, mx, my, mw, md.items, md.count, g.menu_item_hot);
     } else if (g.menu_open >= 0 && g.menu_open < MenuCount) {
         Rect item = g.menu_bar.item_rects[g.menu_open];
-        const MenuDef &md = kMenus[g.menu_open];
+        MenuDef md = kMenus[g.menu_open];
+        int hot = g.menu_item_hot;
+        if (g.menu_open == MenuAppearance && md.count > 0 && md.items) {
+            // Refresh Soft Wrap checkmark label each paint.
+            if (g.appearance_soft_wrap_row >= 0 &&
+                g.appearance_soft_wrap_row < (int)g.appearance_labels.size()) {
+                char wrap_lab[32];
+                std::snprintf(wrap_lab, sizeof(wrap_lab), "%s Soft Wrap",
+                              g.soft_wrap ? "[x]" : "[ ]");
+                g.appearance_labels[g.appearance_soft_wrap_row] = wrap_lab;
+                g.appearance_ptrs[g.appearance_soft_wrap_row] =
+                    g.appearance_labels[g.appearance_soft_wrap_row].c_str();
+                md.items = g.appearance_ptrs.data();
+            }
+            int max_h =
+                std::max(kMenuItemH + 8, win.bottom() - item.bottom() - 4);
+            int max_rows = std::max(1, (max_h - 4) / kMenuItemH);
+            if (md.count > max_rows) {
+                int scroll =
+                    std::clamp(g.appearance_scroll, 0, md.count - max_rows);
+                g.appearance_scroll = scroll;
+                md = MenuDef{md.items + scroll, max_rows};
+                if (hot < 0 || hot >= max_rows) hot = -1;
+            } else {
+                g.appearance_scroll = 0;
+            }
+        }
         int mw = 72;
         for (int i = 0; i < md.count; ++i)
             mw = std::max(mw, cv.text_width(md.items[i]) + 28);
-        // Soft Wrap checkmark via prefix
-        const char *items_buf[12];
-        char wrap_lab[32];
-        for (int i = 0; i < md.count; ++i) items_buf[i] = md.items[i];
-        if (g.menu_open == MenuAppearance) {
-            std::snprintf(wrap_lab, sizeof(wrap_lab), "%s Soft Wrap",
-                          g.soft_wrap ? "[x]" : "[ ]");
-            items_buf[3] = wrap_lab;
-        }
         int mx = 0, my = 0;
         menu_place(win, item, mw, menu_estimate_h(md.count), &mx, &my);
-        g.popup = paint_menu(cv, ap, mx, my, mw, items_buf, md.count, g.menu_item_hot);
+        g.popup = paint_menu(cv, ap, mx, my, mw, md.items, md.count, hot);
     }
 
     paint_gel_grip(cv, ap, g.gel.grip, g.focused);
@@ -794,9 +815,23 @@ void run_menu_command(int menu, int item) {
             else do_count();
         }
     } else if (menu == MenuAppearance) {
-        if (item == 0) do_load_appearance();
-        else if (item == 1) do_stock_appearance();
-        else if (item == 3) {
+        const int n_skins = (int)g.bundled_skins.size();
+        const int load_row = n_skins + (n_skins > 0 ? 1 : 0);
+        const int stock_row = load_row + 1;
+        if (item >= 0 && item < n_skins) {
+            if (g.ap.load(g.bundled_skins[item].path)) {
+                set_status(std::string("Appearance: ") + g.ap.skin.meta.name);
+                sync_find_font();
+                sync_about_font();
+                redraw_find();
+                redraw_about();
+            } else
+                set_status("Failed to load appearance");
+        } else if (item == load_row) {
+            do_load_appearance();
+        } else if (item == stock_row) {
+            do_stock_appearance();
+        } else if (item == g.appearance_soft_wrap_row) {
             g.soft_wrap = !g.soft_wrap;
             g.scroll_x = 0;
             set_status(g.soft_wrap ? "Soft Wrap on" : "Hard Wrap on");
@@ -897,10 +932,14 @@ void mouse_down(int x, int y) {
     if (g.menu_open >= 0) {
         int row = menu_hit_row(g.popup, x, y);
         if (row >= 0) {
+            if (g.menu_open == MenuAppearance) row += g.appearance_scroll;
             const char *const *items =
                 g.menu_open == MenuWindow ? kWindowItems
                                           : kMenus[g.menu_open].items;
-            const char *lab = items[row];
+            int count =
+                g.menu_open == MenuWindow ? 4 : kMenus[g.menu_open].count;
+            const char *lab =
+                (row >= 0 && row < count && items) ? items[row] : nullptr;
             if (lab && std::strcmp(lab, "-") != 0)
                 run_menu_command(g.menu_open, row);
             else {
@@ -921,6 +960,7 @@ void mouse_down(int x, int y) {
         if (title >= 0) {
             g.menu_open = title;
             g.menu_item_hot = -1;
+            if (title == MenuAppearance) rebuild_appearance_menu();
             redraw();
             return;
         }
@@ -962,6 +1002,7 @@ void mouse_down(int x, int y) {
         g.menu_open = title;
         g.menu_hot = title;
         g.menu_item_hot = -1;
+        if (title == MenuAppearance) rebuild_appearance_menu();
         g.drag = DragMenuBar;
         redraw();
         return;
@@ -1056,6 +1097,7 @@ void mouse_move(int x, int y) {
             (GetKeyState(VK_LBUTTON) & 0x8000)) {
             g.menu_open = title;
             g.menu_item_hot = -1;
+            if (title == MenuAppearance) rebuild_appearance_menu();
             need = true;
         }
         if (need) redraw();
@@ -1494,6 +1536,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CREATE: {
         g.hwnd = hwnd;
         g.canvas.resize(kWinW, kWinH);
+        rebuild_appearance_menu();
         std::string skin = find_default_skin();
         if (!skin.empty() && g.ap.load(skin))
             set_status("Appearance: " + g.ap.skin.meta.name);
@@ -1504,9 +1547,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             "================\n\n"
             "First app on SagradoKit — Haxial TextEdit-shaped, painted entirely\n"
             "through the Appearance Engine (gel, menus, fields, scrollbars).\n\n"
-            "File menu opens and saves plain text. Appearance menu loads any\n"
-            ".hap or .sap skin. Find opens the classic Find & Replace gel.\n\n"
-            "Try Soft Wrap under Appearance, or Load Appearance → Milk Redux.\n";
+            "File menu opens and saves plain text. Appearance lists bundled\n"
+            "skins under format/skins/ (Load… for extras). Find opens the classic\n"
+            "Find & Replace gel. Soft Wrap is under Appearance.\n";
         g.doc.caret = g.doc.anchor = 0;
         g.doc.dirty = false;
         SetTimer(hwnd, 1, 500, nullptr);
@@ -1595,6 +1638,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_MOUSEWHEEL: {
         int delta = GET_WHEEL_DELTA_WPARAM(wp);
         int step = delta > 0 ? -3 : 3;
+        if (g.menu_open == MenuAppearance) {
+            int total = (int)g.appearance_ptrs.size();
+            int max_rows =
+                std::max(1, (g.canvas.height() - 40) / kMenuItemH);
+            int max_scroll = std::max(0, total - max_rows);
+            g.appearance_scroll =
+                std::clamp(g.appearance_scroll + step, 0, max_scroll);
+            redraw();
+            return 0;
+        }
         int page = std::max(1, (g.text_rect.h - 2 * kTextPad) / g.canvas.line_height());
         int max_y = std::max(0, (int)g.lines.size() - page);
         g.scroll_y = std::clamp(g.scroll_y + step, 0, max_y);

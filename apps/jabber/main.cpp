@@ -22,6 +22,7 @@
 #include "../../engine/emoji_picker.h"
 #include "../../engine/gel_host.h"
 #include "../../engine/hfnt.h"
+#include "../../engine/skin_catalog.h"
 #include "../../engine/text_field.h"
 #include "../../engine/window_zoom.h"
 #include "xmpp/client.h"
@@ -85,9 +86,6 @@ static const char *kChatItems[] = {
     "Bookmark Room",
     "Autojoin Room",
 };
-static const char *kAppearanceItems[] = {
-    "Load Appearance...", "Stock Appearance",
-};
 static const char *kHelpItems[] = {
     "About Sagrado Jabber",
 };
@@ -97,9 +95,10 @@ struct MenuDef {
     const char *const *items;
     int count;
 };
-static const MenuDef kMenus[MenuCount] = {
+// Appearance is rebuilt from bundled skins (see rebuild_appearance_menu).
+static MenuDef kMenus[MenuCount] = {
     {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 10},
-    {kAppearanceItems, 2}, {kHelpItems, 1},
+    {nullptr, 0}, {kHelpItems, 1},
 };
 
 enum Drag : int {
@@ -270,6 +269,12 @@ struct App {
     bool tray_added = false;
     bool in_tray = false; // window hidden; live in the notification area
     sagrado::WindowZoomState zoom{};
+
+    // Appearance menu: bundled skins + Load… / Stock (scroll when tall).
+    std::vector<sagrado::BundledSkin> bundled_skins;
+    std::vector<std::string> appearance_labels;
+    std::vector<const char *> appearance_ptrs;
+    int appearance_scroll = 0; // first visible row when menu is clipped
 };
 
 App g;
@@ -290,20 +295,26 @@ bool file_exists(const std::string &p) {
     return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+void rebuild_appearance_menu() {
+    g.bundled_skins = sagrado::list_bundled_skins(exe_dir());
+    g.appearance_labels.clear();
+    g.appearance_labels.reserve(g.bundled_skins.size() + 4);
+    for (const auto &s : g.bundled_skins)
+        g.appearance_labels.push_back(s.name);
+    if (!g.bundled_skins.empty()) g.appearance_labels.push_back("-");
+    g.appearance_labels.push_back("Load Appearance...");
+    g.appearance_labels.push_back("Stock Appearance");
+    g.appearance_ptrs.clear();
+    g.appearance_ptrs.reserve(g.appearance_labels.size());
+    for (const auto &lab : g.appearance_labels)
+        g.appearance_ptrs.push_back(lab.c_str());
+    kMenus[MenuAppearance] = {g.appearance_ptrs.data(),
+                              (int)g.appearance_ptrs.size()};
+    g.appearance_scroll = 0;
+}
+
 std::string find_default_skin() {
-    std::string base = exe_dir();
-    const char *cands[] = {
-        "\\..\\research\\haps\\Milk Redux.hap",
-        "\\research\\haps\\Milk Redux.hap",
-        "\\..\\..\\research\\haps\\Milk Redux.hap",
-        "\\format\\skins\\milk-redux\\milk-redux.sap",
-        "\\..\\format\\skins\\milk-redux\\milk-redux.sap",
-    };
-    for (const char *c : cands) {
-        std::string p = base + c;
-        if (file_exists(p)) return p;
-    }
-    return {};
+    return sagrado::find_default_bundled_skin(exe_dir());
 }
 
 void tray_update_tip();
@@ -2251,11 +2262,31 @@ void paint() {
 
     if (g.menu_open >= 0) {
         // Presence popup from identity strip: Available / Away / Busy / Invisible.
-        const MenuDef md =
+        MenuDef md =
             g.presence_menu
                 ? MenuDef{kPresenceItems, 4}
                 : (g.menu_open == MenuWindow ? MenuDef{kWindowItems, 4}
                                              : kMenus[g.menu_open]);
+        int scroll = 0;
+        int vis_count = md.count;
+        int hot = g.menu_item_hot;
+        if (!g.presence_menu && g.menu_open == MenuAppearance && md.count > 0 &&
+            md.items) {
+            Rect win{0, 0, cv.width(), cv.height()};
+            Rect anchor = g.menu_bar.item_rects[MenuAppearance];
+            int max_h = std::max(kMenuItemH + 8, win.bottom() - anchor.bottom() - 4);
+            int max_rows = std::max(1, (max_h - 4) / kMenuItemH);
+            if (md.count > max_rows) {
+                scroll = std::clamp(g.appearance_scroll, 0, md.count - max_rows);
+                g.appearance_scroll = scroll;
+                vis_count = max_rows;
+                md = MenuDef{md.items + scroll, vis_count};
+                // menu_item_hot is visible-row while Appearance is scrolled.
+                if (hot < 0 || hot >= vis_count) hot = -1;
+            } else {
+                g.appearance_scroll = 0;
+            }
+        }
         int mw = 120;
         for (int i = 0; i < md.count; ++i)
             if (md.items[i][0] != '-')
@@ -2271,7 +2302,8 @@ void paint() {
             Rect anchor = g.menu_bar.item_rects[g.menu_open];
             menu_place(win, anchor, mw, menu_estimate_h(md.count), &mx, &my);
         }
-        g.popup = paint_menu(cv, g.ap, mx, my, mw, md.items, md.count, g.menu_item_hot);
+        // menu_item_hot is in visible-row space while Appearance is scrolled.
+        g.popup = paint_menu(cv, g.ap, mx, my, mw, md.items, md.count, hot);
         if (g.presence_menu) paint_presence_menu_marks(cv, g.popup);
     }
 
@@ -2526,7 +2558,17 @@ void run_menu(int menu, int row) {
             }
         }
     } else if (menu == MenuAppearance) {
-        if (row == 0) {
+        // `row` is an absolute index into appearance_labels (caller adds scroll).
+        const int n_skins = (int)g.bundled_skins.size();
+        const int load_row = n_skins + (n_skins > 0 ? 1 : 0);
+        const int stock_row = load_row + 1;
+        if (row >= 0 && row < n_skins) {
+            if (g.ap.load(g.bundled_skins[row].path)) {
+                set_status(std::string("Appearance: ") + g.ap.skin.meta.name);
+                if (sagrado::gel_host_is_visible(g.emoji_host))
+                    sagrado::gel_host_invalidate(g.emoji_host);
+            }
+        } else if (row == load_row) {
             OPENFILENAMEA ofn{};
             char file[MAX_PATH] = {};
             ofn.lStructSize = sizeof(ofn);
@@ -2540,7 +2582,7 @@ void run_menu(int menu, int row) {
                 if (sagrado::gel_host_is_visible(g.emoji_host))
                     sagrado::gel_host_invalidate(g.emoji_host);
             }
-        } else if (row == 1) {
+        } else if (row == stock_row) {
             g.ap.set_skin(stock_skin());
             set_status("Stock appearance");
             if (sagrado::gel_host_is_visible(g.emoji_host))
@@ -2894,6 +2936,8 @@ void mouse_down(int x, int y) {
     if (g.menu_open >= 0) {
         int row = menu_hit_row(g.popup, x, y);
         if (row >= 0) {
+            if (!g.presence_menu && g.menu_open == MenuAppearance)
+                row += g.appearance_scroll;
             run_menu(g.menu_open, row);
             return;
         }
@@ -2908,6 +2952,10 @@ void mouse_down(int x, int y) {
             g.menu_open = title;
             g.menu_hot = title;
             g.menu_item_hot = -1;
+            if (title == MenuAppearance) {
+                rebuild_appearance_menu();
+                g.appearance_scroll = 0;
+            }
             redraw();
             return;
         }
@@ -2937,6 +2985,10 @@ void mouse_down(int x, int y) {
     int title = menu_bar_hit(x, y);
     if (title >= 0) {
         g.menu_open = title;
+        if (title == MenuAppearance) {
+            rebuild_appearance_menu();
+            g.appearance_scroll = 0;
+        }
         g.menu_hot = title;
         g.menu_item_hot = -1;
         g.drag = DragMenuBar;
@@ -3180,6 +3232,10 @@ void mouse_move(int x, int y) {
             g.menu_open = title;
             g.menu_hot = title;
             g.menu_item_hot = -1;
+            if (title == MenuAppearance) {
+                rebuild_appearance_menu();
+                g.appearance_scroll = 0;
+            }
             need = true;
         }
         if (need) redraw();
@@ -3314,6 +3370,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CREATE: {
         g.hwnd = hwnd;
         g.canvas.resize(kWinW, kWinH);
+        rebuild_appearance_menu();
         std::string skin = find_default_skin();
         if (!skin.empty() && g.ap.load(skin))
             set_status("Appearance: " + g.ap.skin.meta.name + " — Signed off");
@@ -3550,6 +3607,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         int d = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -24 : 24;
         POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
         ScreenToClient(hwnd, &pt);
+        if (!g.presence_menu && g.menu_open == MenuAppearance) {
+            int step = GET_WHEEL_DELTA_WPARAM(wp) > 0 ? -3 : 3;
+            int total = (int)g.appearance_ptrs.size();
+            int max_rows =
+                std::max(1, (g.canvas.height() - 40) / kMenuItemH);
+            int max_scroll = std::max(0, total - max_rows);
+            g.appearance_scroll =
+                std::clamp(g.appearance_scroll + step, 0, max_scroll);
+            redraw();
+            return 0;
+        }
         auto in_list = [&](const Rect &list, const Rect &sbar) {
             return list.contains(pt.x, pt.y) ||
                    (sbar.w > 0 && sbar.contains(pt.x, pt.y));
