@@ -41,13 +41,17 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
 1. **Left identity strip** — avatar, display name, presence mark, status message field.
    When signed off but a JID is remembered, the strip still shows you (`Signed off`;
    click → Sign On). When online, click your avatar (or Buddy → Set Picture…) to
-   change your icon — published as your vCard photo (max ~96 KB).
+   change your icon — cropped/scaled to a square ~96px and compressed (PNG/JPEG)
+   like other XMPP clients, then published as your vCard PHOTO (under ~96 KB).
 2. **Left Buddies** — roster groups (default **Buddies**); online-first within each group;
    buddy icon + presence mark + name + status text
-3. **Center** — IM tabs (close with **x**), soft-wrapped transcript (kit `layout_lines`),
-   kit multiline compose (`paint_text_field`) + Send; peer typing line when composing.
-   **Enter** sends; **Shift+Enter** inserts a newline. Click a line to select it; reactions
-   show as Noto PNG marks under the line (`paint_emoji_marks` — kit font is Latin-1).
+3. **Center** — IM tabs (close with **x**), then Gajim-shaped transcript rows: avatar,
+   [XEP-0392](https://xmpp.org/extensions/xep-0392.html) colored nick + `HH:MM` time,
+   body (not IRC `nick:`). Same-sender lines collapse the nick/avatar. Soft-wrap via kit
+   `layout_lines`. Receipts show as a **Delivered** meta line. Reaction **pills** under
+   the body (Noto PNG marks + count; click a pill to toggle that emoji). Compose toolbar:
+   `:)` emoji (insert into field), multiline field, `+` attach (HTTP Upload), Send.
+   Peer typing line sits above compose. **Enter** sends; **Shift+Enter** newline.
    Right-click compose → Copy / Paste; right-click a message → Copy / Paste / React…
    (kit `context_menu` + clipboard; React opens the floating emoji host)
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
@@ -93,12 +97,24 @@ AIM-shaped chat rooms in gel — not a Discord server rail. Wire is XEP-0045.
 
 **React…** — select a line (or the last reactable one), then Chat → React… **or**
 right-click the line → React… opens a **floating gel window** (`gel_host` + emoji
-picker client): drag the title to move, grip/edges to resize, search/categories/
-recents/grid as usual. Choosing a cell sends the reaction (XEP-0444); pick the same
-emoji again to clear yours. Recent picks persist in `emoji_recent.txt` beside the
-exe. The Noto pack must sit at `emoji_pack/` next to `SagradoJabber.exe`. Rooms use
-the MUC `stanza-id` when the server provides one. Interoperable with
-Gajim/Conversations on the wire.
+picker): drag the title to move, grip/edges to resize, search/categories/recents/grid
+as usual. Choosing a cell **adds** that emoji to your reaction set (XEP-0444
+full-replace); pick the same emoji again (or click its pill under the message) to
+remove just that one — multiple concurrent reactions are allowed, matching Gajim.
+The picker stays open after a react pick (Esc closes) so you can add more. Compose
+`:)` inserts into the text field instead. Recent picks persist in
+`emoji_recent.txt` beside the exe. The Noto pack must sit at `emoji_pack/` next to
+`SagradoJabber.exe`. Rooms use the MUC `stanza-id` when the server provides one.
+Interoperable with Gajim/Conversations on the wire.
+
+**Nick colors** — transcript nicks (and initials avatar fills when no photo) use
+XEP-0392 Consistent Color Generation (SHA-1 → hue; lightness adapted to the
+transcript background). Colors are client-local, not published over XMPP.
+
+**Room avatars** — when a MUC discloses occupant real JIDs (`muc#user` `item/@jid`),
+we fetch that bare JID’s vCard PHOTO (same path as roster icons) and show it on
+message rows and the In room list. Anonymous rooms stay on initials-only tiles;
+we never vCard-query `room/nick`.
 
 **Message history (MAM)** — cold-open pulls the newest ~40 lines for a 1:1 chat and
 scrolls to the bottom. Scroll up at the top of the transcript to page older archive
