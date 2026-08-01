@@ -8,6 +8,16 @@
 #include "font.h"
 #include "skin_image.h"
 
+using EmojiProbeFn =
+    bool (*)(const char *s, int px, int *out_len, const SkinImage **out_img);
+
+inline EmojiProbeFn &kit_emoji_probe() {
+    static EmojiProbeFn f = nullptr;
+    return f;
+}
+
+inline void set_kit_emoji_probe(EmojiProbeFn f) { kit_emoji_probe() = f; }
+
 struct Color {
     uint8_t r = 0, g = 0, b = 0;
 };
@@ -109,7 +119,19 @@ struct Canvas {
 
     int text_width(const char *s) const {
         int w = 0;
-        while (*s) w += font_->advance(map_cp(s));
+        while (*s) {
+            if (auto probe = kit_emoji_probe()) {
+                int len = 0;
+                const SkinImage *ic = nullptr;
+                int em = line_height();
+                if (probe(s, em <= 32 ? 32 : 48, &len, &ic) && len > 0) {
+                    w += em;
+                    s += len;
+                    continue;
+                }
+            }
+            w += font_->advance(map_cp(s));
+        }
         return w;
     }
 
@@ -144,6 +166,17 @@ struct Canvas {
     int text(int x, int y, const char *s, Color c) {
         uint32_t p = pack(c);
         while (*s) {
+            if (auto probe = kit_emoji_probe()) {
+                int len = 0;
+                const SkinImage *ic = nullptr;
+                int em = line_height();
+                if (probe(s, em <= 32 ? 32 : 48, &len, &ic) && len > 0) {
+                    if (ic && !ic->empty()) blit_image_scaled(*ic, x, y, em, em);
+                    x += em;
+                    s += len;
+                    continue;
+                }
+            }
             const FontGlyph &g = font_->glyphs[map_cp(s)];
             for (int row = 0; row < g.h; ++row)
                 for (int col = 0; col < g.w; ++col)

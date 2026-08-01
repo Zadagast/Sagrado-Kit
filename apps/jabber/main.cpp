@@ -336,6 +336,62 @@ void open_sign_on();
 
 std::string emoji_recent_path() { return exe_dir() + "\\emoji_recent.txt"; }
 
+bool is_emoji_lead(unsigned cp) {
+    return (cp >= 0x1f000 && cp <= 0x1faff) ||
+           (cp >= 0x1f1e6 && cp <= 0x1f1ff) ||
+           (cp >= 0x2600 && cp <= 0x27bf) ||
+           (cp >= 0x2b00 && cp <= 0x2bff) ||
+           (cp >= 0x2190 && cp <= 0x21ff) ||
+           (cp >= 0x2300 && cp <= 0x23ff) || cp == 0x24c2 ||
+           (cp >= 0x25aa && cp <= 0x25ff) ||
+           (cp >= 0x2934 && cp <= 0x2935) || cp == 0x3030 ||
+           cp == 0x303d || cp == 0x3297 || cp == 0x3299 || cp == 0x203c ||
+           cp == 0x2049 || cp == 0x2122 || cp == 0x2139 || cp == 0x20e3 ||
+           cp == 0x2764 || cp == 0xfe0f;
+}
+
+bool jabber_emoji_probe(const char *s, int px, int *out_len,
+                        const SkinImage **out_img) {
+    if (!sagrado::emoji_pack_ready() || !s || !*s) return false;
+    const char *first_end = s;
+    unsigned first = fontutil::next_cp(first_end);
+    if (first < 0x80 || !is_emoji_lead(first)) return false;
+
+    const char *end = first_end;
+    while (*end) {
+        const char *next = end;
+        unsigned cp = fontutil::next_cp(next);
+        if (cp == 0xfe0f || cp == 0x1f3fb || cp == 0x1f3fc ||
+            cp == 0x1f3fd || cp == 0x1f3fe || cp == 0x1f3ff ||
+            cp == 0x20e3 || (cp >= 0x1f1e6 && cp <= 0x1f1ff)) {
+            end = next;
+            continue;
+        }
+        if (cp == 0x200d) {
+            end = next;
+            if (*end) {
+                const char *joined = end;
+                fontutil::next_cp(joined);
+                end = joined;
+            }
+            continue;
+        }
+        break;
+    }
+
+    int matched_len = int(end - s);
+    const SkinImage *icon =
+        sagrado::emoji_icon(std::string(s, size_t(matched_len)), px);
+    if (!icon) {
+        matched_len = int(first_end - s);
+        icon = sagrado::emoji_icon(std::string(s, size_t(matched_len)), px);
+    }
+    if (!icon) return false;
+    if (out_len) *out_len = matched_len;
+    if (out_img) *out_img = icon;
+    return true;
+}
+
 void load_emoji_recent() {
     g.emoji_st.recent.clear();
     std::ifstream in(emoji_recent_path());
@@ -367,6 +423,7 @@ void load_emoji_pack() {
             break;
         }
     }
+    set_kit_emoji_probe(&jabber_emoji_probe);
     load_emoji_recent();
 }
 
@@ -3666,6 +3723,12 @@ void mouse_down(int x, int y) {
         }
         int title = menu_bar_hit(x, y);
         if (title >= 0) {
+            // Clicking the already-open menu's title closes it (toggle).
+            if (!g.presence_menu && title == g.menu_open) {
+                close_menu();
+                redraw();
+                return;
+            }
             g.presence_menu = false;
             g.menu_open = title;
             g.menu_hot = title;
