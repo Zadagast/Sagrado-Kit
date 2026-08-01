@@ -312,6 +312,11 @@ file = "icon_button_normal.skimg"
 caps = [10, 10, 10, 10]
 positions = [0, 0, 0, 0]
 
+[art."menu.background_pattern"]
+file = "menu_background_pattern.skimg"
+caps = [0, 0, 0, 0]
+positions = [0, 0, 0, 0]
+
 [art."menu_bar.background"]
 file = "menu_bar_background.skimg"
 caps = [0, 0, 0, 0]
