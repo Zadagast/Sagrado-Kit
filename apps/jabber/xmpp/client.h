@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <ctime>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -1336,6 +1337,15 @@ private:
     // XEP-0410 — in-flight self-pings: iq id → (room, sent-at).
     std::map<std::string, std::pair<std::string, time_t>> selfping_pending_;
     time_t selfping_last_ = 0;
+    // XEP-0198 stream management (run-thread only).
+    bool sm_offered_ = false;    // server advertised urn:xmpp:sm:3
+    bool sm_enabled_ = false;
+    bool sm_can_resume_ = false;
+    std::string sm_id_;          // <enabled id=…> resume token
+    uint32_t sm_in_ = 0;         // stanzas we handled
+    uint32_t sm_sent_ = 0;       // counted stanzas we sent
+    uint32_t sm_acked_ = 0;      // server-confirmed portion of sm_sent_
+    std::deque<std::string> sm_unacked_;
 
     void emit(const ClientEvent &e) {
         EventFn fn;
@@ -1489,6 +1499,7 @@ private:
     }
 
     void flush_send() {
+        bool counted = false;
         for (;;) {
             std::string s;
             {
@@ -1498,7 +1509,16 @@ private:
                 send_q_.pop();
             }
             sock_.send_all(s);
+            // XEP-0198 — count stanzas (not nonzas) and keep them until acked.
+            if (sm_enabled_ &&
+                (s.rfind("<message", 0) == 0 || s.rfind("<presence", 0) == 0 ||
+                 s.rfind("<iq", 0) == 0)) {
+                ++sm_sent_;
+                sm_unacked_.push_back(s);
+                counted = true;
+            }
         }
+        if (counted) sock_.send_all("<r xmlns='urn:xmpp:sm:3'/>");
     }
 
     bool open_stream(bool after_tls) {
@@ -1508,7 +1528,10 @@ private:
             "version='1.0'>";
         if (!sock_.send_all(s)) return false;
         (void)after_tls;
-        return read_until("stream:features");
+        bool ok = read_until("stream:features");
+        if (ok && stream_buf_.find("urn:xmpp:sm:3") != std::string::npos)
+            sm_offered_ = true;
+        return ok;
     }
 
     // Handshake helper: accumulate bytes until `needle` appears.
@@ -1561,6 +1584,13 @@ private:
             size_t msg = stream_buf_.find("<message");
             size_t pres = stream_buf_.find("<presence");
             size_t iq = stream_buf_.find("<iq");
+            if (sm_enabled_) {
+                size_t first = std::min(std::min(msg, pres), iq);
+                sm_pump_nonzas(first);
+                msg = stream_buf_.find("<message");
+                pres = stream_buf_.find("<presence");
+                iq = stream_buf_.find("<iq");
+            }
             size_t start = std::string::npos;
             const char *kind = nullptr;
             if (msg != std::string::npos) {
@@ -1596,6 +1626,30 @@ private:
             std::string stanza = stream_buf_.substr(0, end);
             stream_buf_.erase(0, end);
             handle_stanza(stanza);
+            if (sm_enabled_) ++sm_in_; // XEP-0198 inbound counter
+        }
+    }
+
+    // XEP-0198 — answer <r/> and apply <a/> nonzas that arrive between
+    // stanzas. Only tags before the next stanza are top-level nonzas.
+    void sm_pump_nonzas(size_t next_stanza) {
+        size_t p = stream_buf_.find("urn:xmpp:sm:3");
+        while (p != std::string::npos && p < next_stanza) {
+            size_t open = stream_buf_.rfind('<', p);
+            size_t close = stream_buf_.find('>', p);
+            if (open == std::string::npos || close == std::string::npos) return;
+            std::string tag = stream_buf_.substr(open, close - open + 1);
+            size_t removed = close - open + 1;
+            stream_buf_.erase(open, removed);
+            if (next_stanza != std::string::npos) next_stanza -= removed;
+            if (tag.rfind("<r", 0) == 0) {
+                sock_.send_all("<a xmlns='urn:xmpp:sm:3' h='" +
+                               std::to_string(sm_in_) + "'/>");
+            } else if (tag.rfind("<a", 0) == 0) {
+                sm_apply_ack(
+                    (uint32_t)strtoul(attr(tag, "h").c_str(), nullptr, 10));
+            }
+            p = stream_buf_.find("urn:xmpp:sm:3");
         }
     }
 
@@ -3104,9 +3158,103 @@ private:
         sock_.send_all(
             "<iq type='get' id='blklist1'><blocklist xmlns='urn:xmpp:blocking'/></iq>");
         bootstrap_omemo();
+        sm_try_enable(); // XEP-0198 — counting starts here
         set_state(ConnState::Online, "Signed on as " + jid);
         emit(make_event(ClientEvent::Identity));
         return true;
+    }
+
+    // XEP-0198 — ask the server to manage this stream (with resumption).
+    void sm_try_enable() {
+        sm_enabled_ = sm_can_resume_ = false;
+        sm_id_.clear();
+        sm_in_ = sm_sent_ = sm_acked_ = 0;
+        sm_unacked_.clear();
+        if (!sm_offered_) return;
+        size_t base = stream_buf_.size();
+        if (!sock_.send_all("<enable xmlns='urn:xmpp:sm:3' resume='true'/>"))
+            return;
+        char buf[4096];
+        for (int i = 0; i < 100; ++i) {
+            size_t p = stream_buf_.find("<enabled", base);
+            if (p != std::string::npos) {
+                size_t gt = stream_buf_.find('>', p);
+                if (gt != std::string::npos) {
+                    std::string tag = stream_buf_.substr(p, gt - p + 1);
+                    sm_enabled_ = true;
+                    sm_id_ = attr(tag, "id");
+                    std::string res = attr(tag, "resume");
+                    sm_can_resume_ =
+                        !sm_id_.empty() && (res == "true" || res == "1");
+                    stream_buf_.erase(p, gt - p + 1);
+                    return;
+                }
+            }
+            if (stream_buf_.find("<failed", base) != std::string::npos) return;
+            int n = sock_.recv_some(buf, sizeof(buf));
+            if (n <= 0) return;
+            stream_buf_.append(buf, buf + n);
+        }
+    }
+
+    // XEP-0198 — server ack: drop confirmed stanzas from the resend buffer.
+    void sm_apply_ack(uint32_t h) {
+        while (sm_acked_ < h && !sm_unacked_.empty()) {
+            sm_unacked_.pop_front();
+            ++sm_acked_;
+        }
+    }
+
+    // XEP-0198 — the connection dropped; try to resume the managed stream.
+    bool sm_try_resume() {
+        if (!sm_can_resume_ || sm_id_.empty()) return false;
+        set_state(ConnState::Connecting, "Connection lost — resuming…");
+        sock_.close();
+        stream_buf_.clear();
+        if (!sock_.connect_tcp(host_, 5222)) return false;
+        if (!open_stream(false)) return false;
+        if (stream_buf_.find("starttls") != std::string::npos) {
+            sock_.send_all("<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>");
+            if (!read_until("proceed")) return false;
+            stream_buf_.clear();
+            if (!sock_.start_tls(host_)) return false;
+            if (!open_stream(true)) return false;
+        }
+        stream_buf_.clear();
+        if (!sasl_plain()) return false;
+        size_t base = stream_buf_.size();
+        sock_.send_all("<resume xmlns='urn:xmpp:sm:3' h='" +
+                       std::to_string(sm_in_) + "' previd='" +
+                       xml_escape(sm_id_) + "'/>");
+        char buf[4096];
+        for (int i = 0; i < 100; ++i) {
+            size_t p = stream_buf_.find("<resumed", base);
+            if (p != std::string::npos) {
+                size_t gt = stream_buf_.find('>', p);
+                if (gt == std::string::npos) {
+                    int n = sock_.recv_some(buf, sizeof(buf));
+                    if (n <= 0) return false;
+                    stream_buf_.append(buf, buf + n);
+                    continue;
+                }
+                std::string tag = stream_buf_.substr(p, gt - p + 1);
+                stream_buf_.erase(0, gt + 1);
+                uint32_t h =
+                    (uint32_t)strtoul(attr(tag, "h").c_str(), nullptr, 10);
+                sm_apply_ack(h);
+                // Retransmit whatever the server never saw.
+                for (const auto &s : sm_unacked_) sock_.send_all(s);
+                publish_presence();
+                set_state(ConnState::Online, "Resumed as " + jid);
+                return true;
+            }
+            if (stream_buf_.find("<failed", base) != std::string::npos)
+                return false;
+            int n = sock_.recv_some(buf, sizeof(buf));
+            if (n <= 0) return false;
+            stream_buf_.append(buf, buf + n);
+        }
+        return false;
     }
 
     // XEP-0410 — periodically ping our own occupant JID in each joined room;
@@ -3287,6 +3435,8 @@ private:
                 char buf[4096];
                 int n = sock_.recv_some(buf, sizeof(buf));
                 if (n <= 0) {
+                    // XEP-0198 — try to pick the managed stream back up.
+                    if (!stop_ && sm_try_resume()) continue;
                     set_state(ConnState::Disconnected, "Disconnected");
                     break;
                 }

@@ -34,7 +34,7 @@ This is the living checklist; tick items as they land on main.
 | Advanced Group Chat | XEP-0410 MUC Self-Ping | ✅ 90s self-ping; auto-rejoin on error/timeout |
 | Private data via PubSub (Adv.) | XEP-0223 | 🟡 via bookmarks path only |
 | Private XML Storage (Adv.) | XEP-0049 | ✅ (legacy bookmarks) |
-| Stream Management (Advanced) | XEP-0198 | ❌ no ack/resume |
+| Stream Management (Advanced) | XEP-0198 | ✅ enable + acks (r/a) + resume with retransmit |
 | Message Acknowledgements (Adv.) | XEP-0184 Delivery Receipts | ✅ |
 | History (Advanced) | XEP-0313 MAM | ✅ 1:1 paging |
 | Chat States (Advanced) | XEP-0085 | ✅ typing |
