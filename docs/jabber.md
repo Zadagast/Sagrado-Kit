@@ -56,7 +56,11 @@ UI tells you to pick a recommended host from `apps/jabber/providers.txt`.
    Right-click compose → Copy / Paste; right-click a message → Copy / Paste / React…
    (kit `context_menu` + clipboard; React opens the floating emoji host)
 4. **Kit V scrollbars** — `paint_scrollbar` on transcript, Buddies, Browse Chat Rooms, Get an Account providers, and Sign On recent JIDs when content overflows (hidden otherwise; wheel + thumb/arrows)
-5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame)
+5. **Menus** — File, Buddy, Chat, Appearance, Help (Ooze Gel frame). **Appearance**
+   lists every bundled skin under `format/skins/` next to the exe (Haps + SAP packs
+   like Milk Redux and Ooze); wheel scrolls a long list. **Load Appearance…** is for
+   extras; **Stock** is the in-binary colour fallback. Cold start prefers
+   **Gamespot-1100** from that folder (`make skins` copies the full Hap corpus + packs).
 6. **Status strip** — durable line: signed on as / presence / buddies online / active
    chat or room (occupant count). Brief flashes for mail, errors, uploads — not every
    room chat line

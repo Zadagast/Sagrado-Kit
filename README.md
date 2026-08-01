@@ -81,14 +81,17 @@ i686-w64-mingw32-g++ -std=c++17 -O2 -Iengine editor/main.cpp \
   -o build/SagradoKitEditor.exe -mwindows -lgdi32 -luser32 -lcomdlg32
 ```
 
-Run `build/SagradoKitEditor.exe`. Example skins are in
-`build/format/skins/` (and `format/skins/` in the repo). The editor prefers
-`milk-redux/milk-redux.sap` when that folder was copied by `make skins`.
+Run `build/SagradoKitEditor.exe`. `make skins` ships **all** appearances next to
+the binaries under `build/format/skins/` (every `research/haps/*.hap`, plus SAP
+packs such as `milk-redux/`, `ooze/`, `completion/`). Apps do not need
+`research/haps/` at runtime. Cold start prefers **Gamespot-1100**; pick others from
+**Appearance** (Jabber / TextEdit) or the editor **Themes** button.
 
 ## Editor
 
 - **Load / Save** — `.sap` files (same format apps load); **Load** also accepts `.hap`.
   Save after a Hap load writes a full `.sap` + `.skimg` art (Hap→Sap parity).
+- **Themes** — menu of bundled skins from `format/skins/` (wheel to scroll)
 - **Stock** — reset to built-in last-resort colours
 - **Colour Roles** — scrollable named swatches; drag R/G/B sliders
 - **Kit Preview** — live gel + controls (icon buttons, menu bar, Find, File
@@ -107,7 +110,7 @@ later apps follow).
 - Menu bar: File, Edit, Find, Appearance, Help
 - Soft-wrapped text view + scrollbars, selection, clipboard, undo
 - Find & Replace dialog (separate gel, TextEdit-measured 442×176)
-- **Appearance → Load Appearance** — any `.hap` / `.sap` live
+- **Appearance** — bundled skins from `format/skins/`; Load… for extras
 
 ```sh
 make run-textedit
