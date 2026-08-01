@@ -295,6 +295,8 @@ inline std::string sims_reference(const std::string &url,
     return s;
 }
 
+inline std::string attr(const std::string &tag, const std::string &key);
+
 // Inbound XEP-0385 (sims) / XEP-0447 (sfs): the attachment's download URI.
 inline std::string shared_media_url(const std::string &st) {
     if (st.find("urn:xmpp:sims:1") == std::string::npos &&
