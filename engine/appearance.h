@@ -591,11 +591,46 @@ inline bool label_near_white(Color c) {
     return c.r > 200 && c.g > 200 && c.b > 200;
 }
 
+inline int color_luma(Color c) {
+    return (int(c.r) * 299 + int(c.g) * 587 + int(c.b) * 114) / 1000;
+}
+
 inline Color plate_text_color(const SkinImage *plate) {
     if (!plate || !plate->has_text_color) return {0, 0, 0};
     return {uint8_t((plate->text_color >> 16) & 0xff),
             uint8_t((plate->text_color >> 8) & 0xff),
             uint8_t(plate->text_color & 0xff)};
+}
+
+// Mean luma of opaque plate pixels (center-weighted sample). -1 if empty.
+inline int plate_mean_luma(const SkinImage *plate) {
+    if (!plate || plate->empty()) return -1;
+    int64_t sum = 0;
+    int n = 0;
+    int step_x = std::max(1, plate->w / 8);
+    int step_y = std::max(1, plate->h / 8);
+    for (int y = 0; y < plate->h; y += step_y)
+        for (int x = 0; x < plate->w; x += step_x) {
+            uint32_t p = plate->at(x, y);
+            int a = int((p >> 24) & 255);
+            if (a < 32) continue;
+            Color c{uint8_t((p >> 16) & 255), uint8_t((p >> 8) & 255),
+                    uint8_t(p & 255)};
+            sum += color_luma(c);
+            ++n;
+        }
+    if (n <= 0) return -1;
+    return int(sum / n);
+}
+
+// Force black/white when ink would wash out on bright art (Gamespot orange
+// default buttons with light-gray Hap Text Color, etc.).
+inline Color contrast_ink_on_plate(Color ink, const SkinImage *plate) {
+    int pl = plate_mean_luma(plate);
+    if (pl < 0) return ink;
+    int il = color_luma(ink);
+    if (std::abs(pl - il) >= 90) return ink;
+    return pl >= 140 ? Color{16, 16, 16} : Color{245, 245, 245};
 }
 
 // When candidate is stock near-white (unauthored), use Primary Label so ink
@@ -613,11 +648,15 @@ inline Color readable_label(const Appearance &ap, Color candidate,
 inline Color label_ink(const Appearance &ap, Color role_ink,
                        const SkinImage *plate = nullptr, bool disabled = false) {
     if (disabled) return ap.c("primary.disable_label");
+    Color ink = role_ink;
     if (plate && plate->has_text_color) {
         Color tc = plate_text_color(plate);
-        if (!label_near_white(tc)) return tc;
+        if (!label_near_white(tc)) ink = tc;
+        else ink = readable_label(ap, role_ink, disabled);
+    } else {
+        ink = readable_label(ap, role_ink, disabled);
     }
-    return readable_label(ap, role_ink, disabled);
+    return contrast_ink_on_plate(ink, plate);
 }
 
 inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
@@ -625,7 +664,8 @@ inline Color button_label_ink(const Appearance &ap, bool disabled, bool has_art,
     (void)has_art;
     if (disabled)
         return label_ink(ap, ap.c("button_disable.label"), plate, true);
-    // Milk & friends leave Button Label at stock white on light pills.
+    // Milk & friends leave Button Label at stock white on light pills;
+    // Gamespot default-button art needs contrast vs orange plates.
     return label_ink(ap, ap.c("button.label"), plate, false);
 }
 
@@ -930,7 +970,7 @@ inline void paint_button(Canvas &cv, const Appearance &ap, Rect r,
         paint_button_face(cv, ap, r, pressed, disabled);
     }
     int off = pressed ? 1 : 0;
-Color ink = button_label_ink(ap, disabled, used_art, plate);
+    Color ink = button_label_ink(ap, disabled, used_art, plate);
     cv.text_centered(r, label, ink, off);
 }
 
