@@ -223,16 +223,36 @@ struct Canvas {
     // returns the string to draw.
     std::string text_elide(const char *s, int max_w) const {
         if (max_w <= 0) return {};
-        if (text_width(s) <= max_w) return s;
-        std::string out = s;
-        while (!out.empty()) {
-            out.pop_back();
-            // Never cut a UTF-8 sequence in half.
-            while (!out.empty() && (uint8_t(out.back()) & 0xc0) == 0x80)
-                out.pop_back();
-            if (text_width((out + "...").c_str()) <= max_w) return out + "...";
+        // Single forward pass: measure cluster by cluster and remember the
+        // last cut that still leaves room for the ellipsis. Re-measuring
+        // shrinking prefixes instead is quadratic, which long labels in a
+        // scrolling list feel immediately.
+        const int ell = text_width("...");
+        if (ell > max_w) return {};
+        const char *p = s;
+        int w = 0;
+        size_t fits = 0; // bytes that fit alongside "..."
+        while (*p) {
+            int n = unit_len(p);
+            if (n <= 0) break;
+            const char *q = p; // map_cp advances its argument
+            int adv = font_->advance(map_cp(q));
+            if (auto probe = kit_emoji_probe()) {
+                int len = 0;
+                const SkinImage *ic = nullptr;
+                int em = line_height();
+                if (probe(p, em <= 32 ? 32 : 48, &len, &ic) && len > 0) adv = em;
+            }
+            if (w + adv > max_w) {
+                // Too long overall — fall back to the last ellipsised cut.
+                std::string out(s, s + fits);
+                return out + "...";
+            }
+            w += adv;
+            p += n;
+            if (w + ell <= max_w) fits = size_t(p - s);
         }
-        return {};
+        return s; // whole string fits
     }
 
     // Draw label centred on the ink bounds inside r (not the advance box).

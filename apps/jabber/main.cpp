@@ -2456,14 +2456,16 @@ void rebuild_browse_rows() {
         }
     }
     bool searched = !g.field_room_search.empty();
-    g.browse_rows.push_back(
-        {"", searched ? "Search results" : "Public rooms", false, false, true});
+    std::string conf = g.field_room_service;
+    if (conf.empty()) {
+        std::lock_guard<std::mutex> lock(g.client.mu);
+        conf = g.client.conference_host;
+    }
+    std::string head = searched      ? std::string("Search results")
+                       : conf.empty() ? std::string("Public rooms")
+                                      : "Public rooms on " + conf;
+    g.browse_rows.push_back({"", head, false, false, true});
     if (rooms.empty()) {
-        std::string conf;
-        {
-            std::lock_guard<std::mutex> lock(g.client.mu);
-            conf = g.client.conference_host;
-        }
         if (searched)
             g.browse_rows.push_back({"", "(no rooms matched)", false, false, true});
         else if (conf.empty())
@@ -3632,6 +3634,15 @@ void dialog_ok() {
             g.browse_sel = -1;
             g.browse_scroll = 0;
             g.client.search_channels(g.field_room_search);
+            return;
+        }
+        // Enter in the service field lists that MUC domain's rooms, so rooms
+        // hosted anywhere are browsable, not just our own server's.
+        if (g.focus_field == 3) {
+            g.browse_sel = -1;
+            g.browse_scroll = 0;
+            g.field_room_search.clear();
+            g.client.refresh_muc_rooms(g.field_room_service);
             return;
         }
         std::string room;
