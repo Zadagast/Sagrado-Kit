@@ -6,7 +6,8 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 
 **App:** `apps/jabber/` → `build/SagradoJabber.exe`  
 **Standard:** follows the [Sagrado Apps standard](contract.md#sagrado-apps-standard)
-(TextEdit is still the chrome reference; Jabber is the second consumer).
+(TextEdit is still the chrome reference; Jabber is the second consumer).  
+**Where we are:** [roadmap.md](roadmap.md) — Jabber track, open PRs, what’s next.
 
 ## AOL / AIM UX ↔ XMPP
 
