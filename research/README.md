@@ -10,6 +10,7 @@ Working files for mapping Haxial’s Appearance Engine into SagradoKit.
 | `build_completion_pack.py` | Rebuild `format/skins/completion/` soft-fill pack |
 | `build_ooze_theme.py` | Regenerate `format/skins/ooze/` (aluminum gel + traffic lights) |
 | `extract_milk_redux.py` | Extract Milk Redux `.hap` → donor-filled `.sap` |
+| `build_ooze_theme.py` | Generate `format/skins/ooze/` (aluminum gel, pinstripes, traffic lights) |
 | `ft_qa.cpp` | Headless File Transfers / WonderLight / LED dump harness |
 
 Sample `.hap` files live in [`haps/`](haps/) (copied from Sagrado
@@ -27,3 +28,9 @@ unzip -d research/bin research/bin/AppearanceEdit1240-Win.zip
 ```
 
 Canonical write-up for the kit: [`../docs/haxial-surface-map.md`](../docs/haxial-surface-map.md).
+
+Regenerate the Ooze-look skin (original art; not imported from the Linux desktop):
+
+```sh
+python3 research/build_ooze_theme.py   # → format/skins/ooze/ooze.sap + .skimg
+```

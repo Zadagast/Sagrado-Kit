@@ -86,6 +86,8 @@ the binaries under `build/format/skins/` (every `research/haps/*.hap`, plus SAP
 packs such as `milk-redux/`, `ooze/`, `completion/`). Apps do not need
 `research/haps/` at runtime. Cold start prefers **Gamespot-1100**; pick others from
 **Appearance** (Jabber / TextEdit) or the editor **Themes** button.
+It also ships `ooze/ooze.sap` — aluminum gel, pinstripes, and traffic lights
+(`python3 research/build_ooze_theme.py` to regenerate) — load via Appearance.
 
 ## Editor
 
