@@ -62,9 +62,13 @@ inline void text_field_line_nav(TextFieldState &st, const Canvas &cv, int dir,
     int li = vis_index_at(st.lines, st.doc.caret);
     const VisLine &cur = st.lines[size_t(li)];
     int x = 0;
-    for (size_t i = cur.start; i < st.doc.caret && i < cur.start + cur.len; ++i) {
-        char t[2] = {st.doc.text[i], 0};
-        x += cv.text_width(t);
+    size_t stop = std::min(st.doc.caret, cur.start + cur.len);
+    for (size_t i = cur.start; i < stop;) {
+        int n = cv.unit_len(st.doc.text.c_str() + i);
+        if (n <= 0) n = 1;
+        if (i + size_t(n) > stop) n = int(stop - i);
+        x += cv.text_width(st.doc.text.substr(i, size_t(n)).c_str());
+        i += size_t(n);
     }
     int ni = std::clamp(li + dir, 0, (int)st.lines.size() - 1);
     text_field_move_caret(st, offset_at_xy(cv, st.lines, st.doc.text, ni, x),
@@ -164,8 +168,9 @@ inline std::string text_field_trimmed(const TextFieldState &st) {
 
 #ifdef _WIN32
 #include "clipboard.h"
+#include "utf8_win.h"
 
-// Clipboard helpers for the field (kit CF_TEXT path).
+// Clipboard helpers for the field (kit Unicode clipboard path).
 inline void text_field_copy(HWND hwnd, const TextFieldState &st) {
     if (!st.doc.has_sel()) return;
     sagrado::clipboard_set(hwnd, st.doc.selected());
@@ -224,12 +229,12 @@ inline bool text_field_keydown(TextFieldState &st, Canvas &cv, HWND hwnd,
 
     if (vk == VK_LEFT) {
         if (st.doc.caret > 0)
-            text_field_move_caret(st, st.doc.caret - 1, shift, page);
+            text_field_move_caret(st, st.doc.prev_pos(st.doc.caret), shift, page);
         return true;
     }
     if (vk == VK_RIGHT) {
         if (st.doc.caret < st.doc.text.size())
-            text_field_move_caret(st, st.doc.caret + 1, shift, page);
+            text_field_move_caret(st, st.doc.next_pos(st.doc.caret), shift, page);
         return true;
     }
     if (vk == VK_UP) {
@@ -282,10 +287,13 @@ inline bool text_field_char(TextFieldState &st, Canvas &cv, Rect r, WPARAM ch,
         (void)enter_sends;
         return false; // keydown owns these
     }
-    if (ch < 32 || ch > 126) return false;
+    if (ch < 32 || ch == 127) return false;
+    // Unicode window: WM_CHAR is a UTF-16 unit, so emoji arrive as a surrogate
+    // pair and the first half inserts nothing yet.
+    std::string t = sagrado::utf8_from_wm_char(unsigned(ch));
+    if (t.empty()) return true;
     Rect inner{r.x + 2, r.y + 2, r.w - 4, r.h - 4};
     const int wrap = std::max(8, inner.w - 2 * st.pad);
-    char t[2] = {char(ch), 0};
     st.doc.insert(t);
     text_field_relayout(cv, st, wrap);
     text_field_ensure_caret(st, text_field_page(st, inner.h, cv.line_height()));

@@ -117,6 +117,23 @@ struct Canvas {
     const Font &font() const { return *font_; }
     int line_height() const { return font_->line_height; }
 
+    // Byte length of the next drawable unit at `s`: an emoji cluster when the
+    // probe matches it, otherwise one UTF-8 codepoint. Text iteration must step
+    // by this, never by raw bytes, or multi-byte runs paint as broken glyphs.
+    int unit_len(const char *s) const {
+        if (!s || !*s) return 0;
+        if (auto probe = kit_emoji_probe()) {
+            int len = 0;
+            const SkinImage *ic = nullptr;
+            int em = line_height();
+            if (probe(s, em <= 32 ? 32 : 48, &len, &ic) && len > 0) return len;
+        }
+        const char *p = s;
+        fontutil::next_cp(p);
+        int n = int(p - s);
+        return n > 0 ? n : 1;
+    }
+
     int text_width(const char *s) const {
         int w = 0;
         while (*s) {

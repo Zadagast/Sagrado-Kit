@@ -44,17 +44,25 @@ inline std::vector<VisLine> layout_lines(const Canvas &cv, const std::string &te
             int w = 0;
             size_t last_break = start;
             size_t p = start;
+            // Advance by drawable units so multi-byte runs (emoji) are never
+            // split across visual lines or measured a byte at a time.
+            auto unit_at = [&](size_t i) {
+                int n = cv.unit_len(text.c_str() + i);
+                if (n <= 0) n = 1;
+                if (i + size_t(n) > content_end) n = int(content_end - i);
+                return size_t(n);
+            };
             while (p < content_end) {
                 char ch = text[p];
-                char tmp[2] = {ch, 0};
-                int aw = cv.text_width(tmp);
+                size_t ul = unit_at(p);
+                int aw = cv.text_width(text.substr(p, ul).c_str());
                 if (w + aw > wrap_w && p > start) break;
                 w += aw;
-                ++p;
+                p += ul;
                 if (ch == ' ' || ch == '\t') last_break = p;
             }
             if (p < content_end && last_break > start) p = last_break;
-            if (p == start) p = start + 1;
+            if (p == start) p = start + unit_at(start);
             out.push_back({start, p - start});
             pos = p;
             while (pos < content_end && text[pos] == ' ') ++pos;
@@ -85,11 +93,14 @@ inline size_t offset_at_xy(const Canvas &cv, const std::vector<VisLine> &lines,
     line = std::clamp(line, 0, (int)lines.size() - 1);
     const VisLine &vl = lines[size_t(line)];
     int x = 0;
-    for (size_t i = 0; i < vl.len; ++i) {
-        char tmp[2] = {text[vl.start + i], 0};
-        int aw = cv.text_width(tmp);
+    for (size_t i = 0; i < vl.len;) {
+        int n = cv.unit_len(text.c_str() + vl.start + i);
+        if (n <= 0) n = 1;
+        if (i + size_t(n) > vl.len) n = int(vl.len - i);
+        int aw = cv.text_width(text.substr(vl.start + i, size_t(n)).c_str());
         if (x + aw / 2 >= x_in_line) return vl.start + i;
         x += aw;
+        i += size_t(n);
     }
     return vl.start + vl.len;
 }

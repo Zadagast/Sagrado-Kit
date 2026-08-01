@@ -154,7 +154,7 @@ run-jabber: $(JABBER) skins
 
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
 # HAPS=<dir> also runs the .hap checks over a directory of real themes.
-smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp apps/jabber/smoke_paint.cpp engine/*.h | $(BUILD)
+smoke: engine/smoke_test.cpp engine/hap_test.cpp engine/emoji_text_test.cpp apps/textedit/smoke_paint.cpp apps/jabber/smoke_paint.cpp engine/*.h | $(BUILD)
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/smoke_test.cpp -o $(BUILD)/smoke_test
 	$(BUILD)/smoke_test format/skins/stock.sap format/skins/slate.sap
 	$(BUILD)/smoke_test format/skins/milk-redux/milk-redux.sap
@@ -181,6 +181,10 @@ smoke: engine/smoke_test.cpp engine/hap_test.cpp apps/textedit/smoke_paint.cpp a
 	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/skin_catalog_test.cpp \
 	  -o $(BUILD)/skin_catalog_test
 	$(BUILD)/skin_catalog_test $(BUILD)
+	# Emoji clusters in Kit text (compose box paints images, not broken bytes)
+	g++ -std=c++17 -O2 -Wall -Wextra -Iengine engine/emoji_text_test.cpp \
+	  -o $(BUILD)/emoji_text_test
+	$(BUILD)/emoji_text_test
 
 clean:
 	rm -rf $(BUILD)

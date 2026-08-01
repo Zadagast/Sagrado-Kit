@@ -77,27 +77,38 @@ inline void paint_text_editor(Canvas &cv, const Appearance &ap, const TextDoc &d
         size_t b = vl.start + vl.len;
         size_t s0 = std::max(a, lo);
         size_t s1 = std::min(b, hi);
+        // Step by drawable units (emoji cluster / codepoint), not bytes.
+        auto unit_at = [&](size_t i, size_t end) {
+            int n = cv.unit_len(doc.text.c_str() + i);
+            if (n <= 0) n = 1;
+            if (i + size_t(n) > end) n = int(end - i);
+            return doc.text.substr(i, size_t(n));
+        };
+
         if (s0 < s1) {
             int x0 = x;
-            for (size_t i = a; i < s0; ++i) {
-                char t[2] = {doc.text[i], 0};
-                x0 += cv.text_width(t);
+            for (size_t i = a; i < s0;) {
+                std::string u = unit_at(i, s0);
+                x0 += cv.text_width(u.c_str());
+                i += u.size();
             }
             int x1 = x0;
-            for (size_t i = s0; i < s1; ++i) {
-                char t[2] = {doc.text[i], 0};
-                x1 += cv.text_width(t);
+            for (size_t i = s0; i < s1;) {
+                std::string u = unit_at(i, s1);
+                x1 += cv.text_width(u.c_str());
+                i += u.size();
             }
             if (x1 == x0) x1 = x0 + 4;
             cv.fill({x0, y, x1 - x0, lh}, hi_bg);
         }
 
         int pen = x;
-        for (size_t i = a; i < b; ++i) {
-            char t[2] = {doc.text[i], 0};
+        for (size_t i = a; i < b;) {
+            std::string u = unit_at(i, b);
             Color ink = (i >= lo && i < hi) ? hi_fg : fg;
-            cv.text(pen, y, t, ink);
-            pen += cv.text_width(t);
+            cv.text(pen, y, u.c_str(), ink);
+            pen += cv.text_width(u.c_str());
+            i += u.size();
         }
 
         if (p.show_caret && p.focused && p.caret_on && doc.caret >= a &&
@@ -107,9 +118,10 @@ inline void paint_text_editor(Canvas &cv, const Appearance &ap, const TextDoc &d
                  lines[size_t(li + 1)].start == b);
             if (!at_wrap_end) {
                 int cx = x;
-                for (size_t i = a; i < doc.caret; ++i) {
-                    char t[2] = {doc.text[i], 0};
-                    cx += cv.text_width(t);
+                for (size_t i = a; i < doc.caret;) {
+                    std::string u = unit_at(i, doc.caret);
+                    cx += cv.text_width(u.c_str());
+                    i += u.size();
                 }
                 cv.vline(cx, y, y + lh, caret_c);
             }

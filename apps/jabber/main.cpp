@@ -30,6 +30,7 @@
 #include "../../engine/hfnt.h"
 #include "../../engine/skin_catalog.h"
 #include "../../engine/text_field.h"
+#include "../../engine/utf8_win.h"
 #include "../../engine/window_zoom.h"
 #include "xmpp/client.h"
 
@@ -4103,8 +4104,8 @@ void handle_char(WPARAM wp) {
                 g.status_msg = g.client.own_status;
             }
             g.status_field_focus = false;
-        } else if (wp >= 32 && wp < 127 && g.status_msg.size() < 120) {
-            g.status_msg.push_back(char(wp));
+        } else if (wp >= 32 && wp != 127 && g.status_msg.size() < 120) {
+            g.status_msg += sagrado::utf8_from_wm_char(unsigned(wp));
         }
         redraw();
         return;
@@ -4141,8 +4142,8 @@ void handle_char(WPARAM wp) {
             else if (g.dialog == DlgSetTopic) n = 1;
             else if (g.dialog == DlgInvite) n = 2;
             g.focus_field = (g.focus_field + 1) % n;
-        } else if (wp >= 32 && wp < 127) {
-            f->push_back(char(wp));
+        } else if (wp >= 32 && wp != 127) {
+            *f += sagrado::utf8_from_wm_char(unsigned(wp));
         }
         redraw();
         return;
@@ -4577,22 +4578,24 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         PostQuitMessage(0);
         return 0;
     }
-    return DefWindowProcA(hwnd, msg, wp, lp);
+    return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
 } // namespace
 
 int WINAPI WinMain(HINSTANCE hinst, HINSTANCE, LPSTR, int show) {
     g.hinst = hinst;
-    WNDCLASSA wc{};
+    // Unicode class: WM_CHAR then carries UTF-16 units, so emoji and accented
+    // text can be typed / pasted into the compose field.
+    WNDCLASSW wc{};
     wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC | CS_DBLCLKS;
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hinst;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = "SagradoJabber";
-    RegisterClassA(&wc);
+    wc.lpszClassName = L"SagradoJabber";
+    RegisterClassW(&wc);
     DWORD style = WS_POPUP | WS_THICKFRAME | WS_CLIPCHILDREN;
-    g.hwnd = CreateWindowExA(WS_EX_APPWINDOW, wc.lpszClassName, "Sagrado Jabber",
+    g.hwnd = CreateWindowExW(WS_EX_APPWINDOW, wc.lpszClassName, L"Sagrado Jabber",
                              style, CW_USEDEFAULT, CW_USEDEFAULT, kWinW, kWinH,
                              nullptr, nullptr, hinst, nullptr);
     ShowWindow(g.hwnd, show);

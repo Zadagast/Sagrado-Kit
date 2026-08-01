@@ -50,13 +50,29 @@ struct TextDoc {
         else replace_range(caret, caret, s);
     }
 
+    // Caret steps land on UTF-8 boundaries so editing never splits a
+    // multi-byte character (emoji included) into broken bytes.
+    size_t prev_pos(size_t i) const {
+        if (i == 0) return 0;
+        --i;
+        while (i > 0 && ((unsigned char)text[i] & 0xc0) == 0x80) --i;
+        return i;
+    }
+
+    size_t next_pos(size_t i) const {
+        if (i >= text.size()) return text.size();
+        ++i;
+        while (i < text.size() && ((unsigned char)text[i] & 0xc0) == 0x80) ++i;
+        return i;
+    }
+
     void backspace() {
         if (has_sel()) {
             replace_range(sel_lo(), sel_hi(), "");
             return;
         }
         if (caret == 0) return;
-        replace_range(caret - 1, caret, "");
+        replace_range(prev_pos(caret), caret, "");
     }
 
     void del_forward() {
@@ -65,7 +81,7 @@ struct TextDoc {
             return;
         }
         if (caret >= text.size()) return;
-        replace_range(caret, caret + 1, "");
+        replace_range(caret, next_pos(caret), "");
     }
 
     void select_all() {
