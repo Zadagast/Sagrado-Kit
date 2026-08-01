@@ -52,6 +52,8 @@ constexpr int kBuddyRowH = 36;
 constexpr int kGroupHeaderH = 20;
 constexpr UINT_PTR kTypingTimerId = 1;
 constexpr UINT_PTR kStatusFlashTimerId = 2;
+// Remote chat services can simply never answer; stop saying "asking…" forever.
+constexpr UINT_PTR kRoomListTimerId = 7;
 constexpr UINT_PTR kCaretTimerId = 3;
 constexpr UINT kTypingPauseMs = 2000;
 constexpr UINT kStatusFlashMs = 3500;
@@ -243,6 +245,8 @@ struct App {
         std::string notes;
     };
     std::vector<Provider> providers;
+    // Public MUC hosts offered in Browse Chat Rooms (host, display name).
+    std::vector<std::pair<std::string, std::string>> muc_services;
     int provider_sel = 0;
     int provider_scroll = 0; // pixels
     Rect provider_list_r{}, provider_sbar{};
@@ -266,8 +270,12 @@ struct App {
         bool bookmark = false;
         bool autojoin = false;
         bool section = false; // non-selectable header
+        bool service = false; // a chat service to list, not a room to join
     };
     std::vector<BrowseRow> browse_rows;
+    // After picking a service, scroll past the picker to its rooms.
+    bool browse_jump_rooms = false;
+    bool browse_listing = false; // a service query is in flight
 
     TextFieldState compose{};
     Rect compose_field_r{};
@@ -2438,6 +2446,41 @@ bool tab_is_muc(int idx) {
     return idx >= 0 && idx < (int)g.tabs.size() && g.tabs[idx].muc;
 }
 
+// Public chat services offered in Browse Chat Rooms, so rooms elsewhere are
+// reachable without knowing anyone's conference subdomain.
+void load_muc_services() {
+    g.muc_services.clear();
+    std::string base = exe_dir();
+    const char *cands[] = {
+        "\\muc-services.txt",
+        "\\..\\apps\\jabber\\muc-services.txt",
+        "\\..\\..\\apps\\jabber\\muc-services.txt",
+    };
+    std::string path = "apps/jabber/muc-services.txt";
+    for (const char *c : cands) {
+        std::string p = base + c;
+        if (file_exists(p)) {
+            path = p;
+            break;
+        }
+    }
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        auto bar = line.find('|');
+        std::string host = bar == std::string::npos ? line : line.substr(0, bar);
+        std::string name = bar == std::string::npos ? std::string()
+                                                    : line.substr(bar + 1);
+        trim_inplace(host);
+        trim_inplace(name);
+        if (host.empty()) continue;
+        g.muc_services.push_back({host, name.empty() ? host : name});
+    }
+    if (g.muc_services.empty())
+        g.muc_services.push_back({"conference.movim.eu", "Movim"});
+}
+
 void rebuild_browse_rows() {
     g.browse_rows.clear();
     std::vector<jabber::MucBookmark> bms;
@@ -2461,12 +2504,35 @@ void rebuild_browse_rows() {
         std::lock_guard<std::mutex> lock(g.client.mu);
         conf = g.client.conference_host;
     }
+    // Services first: the room list below can run to hundreds of rows, and a
+    // picker you have to scroll past all of them to find may as well not exist.
+    if (!searched) {
+        if (g.muc_services.empty()) load_muc_services();
+        g.browse_rows.push_back(
+            {"", "Chat services (click to list its rooms)", false, false, true,
+             false});
+        for (const auto &s : g.muc_services) {
+            bool cur = !conf.empty() && jabber::jid_ieq(s.first, conf);
+            g.browse_rows.push_back({s.first,
+                                     s.second + "  —  " + s.first +
+                                         (cur ? "  (listed below)" : ""),
+                                     false, false, false, true});
+        }
+    }
     std::string head = searched      ? std::string("Search results")
                        : conf.empty() ? std::string("Public rooms")
                                       : "Public rooms on " + conf;
-    g.browse_rows.push_back({"", head, false, false, true});
+    if (g.browse_jump_rooms) {
+        g.browse_jump_rooms = false;
+        g.browse_scroll =
+            (int)g.browse_rows.size() * (g.canvas.line_height() + 4);
+    }
+    g.browse_rows.push_back({"", head, false, false, true, false});
     if (rooms.empty()) {
-        if (searched)
+        if (g.browse_listing)
+            g.browse_rows.push_back(
+                {"", "(asking " + conf + " for its rooms\u2026)", false, false, true});
+        else if (searched)
             g.browse_rows.push_back({"", "(no rooms matched)", false, false, true});
         else if (conf.empty())
             g.browse_rows.push_back(
@@ -3640,9 +3706,12 @@ void dialog_ok() {
         // hosted anywhere are browsable, not just our own server's.
         if (g.focus_field == 3) {
             g.browse_sel = -1;
-            g.browse_scroll = 0;
+            g.browse_jump_rooms = true;
+            g.browse_listing = true;
             g.field_room_search.clear();
             g.client.refresh_muc_rooms(g.field_room_service);
+            SetTimer(g.hwnd, kRoomListTimerId, 20000, nullptr);
+            rebuild_browse_rows();
             return;
         }
         std::string room;
@@ -3903,6 +3972,19 @@ void mouse_down(int x, int y) {
             int idx = sagrado::row_at(g.browse_list_r, g.browse_scroll, row_h,
                                       (int)g.browse_rows.size(), y);
             if (idx >= 0 && !g.browse_rows[idx].section) {
+                // A service row browses that host instead of selecting a room.
+                if (g.browse_rows[idx].service) {
+                    g.field_room_service = g.browse_rows[idx].jid;
+                    g.field_room_search.clear();
+                    g.browse_sel = -1;
+                    g.browse_jump_rooms = true;
+                    g.browse_listing = true;
+                    g.client.refresh_muc_rooms(g.field_room_service);
+                    SetTimer(g.hwnd, kRoomListTimerId, 20000, nullptr);
+                    rebuild_browse_rows();
+                    redraw();
+                    return;
+                }
                 g.browse_sel = idx;
                 g.field_room = g.browse_rows[idx].jid;
                 // Picking a room means Enter should join it, not re-search.
@@ -4561,6 +4643,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (e->type == jabber::ClientEvent::MucRooms ||
             e->type == jabber::ClientEvent::Bookmarks) {
+            if (e->type == jabber::ClientEvent::MucRooms) g.browse_listing = false;
             if (g.dialog == DlgBrowseMuc) rebuild_browse_rows();
         }
         if (e->type == jabber::ClientEvent::RegisterOk)
@@ -4672,7 +4755,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             int row_h = g.canvas.line_height() + 4;
             int idx = sagrado::row_at(g.browse_list_r, g.browse_scroll, row_h,
                                       (int)g.browse_rows.size(), y);
-            if (idx >= 0 && !g.browse_rows[idx].section) {
+            if (idx >= 0 && !g.browse_rows[idx].section &&
+                !g.browse_rows[idx].service) {
                 g.browse_sel = idx;
                 g.field_room = g.browse_rows[idx].jid;
                 // Picking a room means Enter should join it, not re-search.
@@ -4749,6 +4833,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 g.typing_sent = false;
             }
             KillTimer(hwnd, kTypingTimerId);
+            return 0;
+        }
+        if (wp == kRoomListTimerId) {
+            KillTimer(hwnd, kRoomListTimerId);
+            if (g.browse_listing) {
+                g.browse_listing = false;
+                set_status("No answer from " + g.field_room_service);
+                if (g.dialog == DlgBrowseMuc) rebuild_browse_rows();
+                redraw();
+            }
             return 0;
         }
         if (wp == kStatusFlashTimerId) {

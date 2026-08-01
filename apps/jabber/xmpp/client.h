@@ -1140,6 +1140,12 @@ public:
                             "No chat service found on this server yet"));
             return;
         }
+        {
+            // Drop the previous service's rooms so the list can't show one
+            // server's rooms under another server's heading.
+            std::lock_guard<std::mutex> lock(mu);
+            muc_rooms.clear();
+        }
         queue_send("<iq type='get' id='mucrooms1' to='" + xml_escape(conf) +
                    "'><query xmlns='http://jabber.org/protocol/disco#items'/></iq>");
         emit(make_event(ClientEvent::StatusText, "Fetching rooms on " + conf + "…"));
@@ -3015,6 +3021,20 @@ private:
                 parse_roster(st);
                 emit(make_event(ClientEvent::Roster));
             }
+            // A remote chat service that refuses or cannot be reached must say
+            // so; otherwise the room list just sits there looking broken.
+            if (iq_id.rfind("mucrooms", 0) == 0 && iq_type == "error") {
+                std::string who = attr(st, "from");
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    muc_rooms.clear();
+                }
+                emit(make_event(ClientEvent::MucRooms));
+                emit(make_event(ClientEvent::StatusText,
+                                "No room list from " +
+                                    (who.empty() ? "that service" : who)));
+                return;
+            }
             if (st.find("disco#items") != std::string::npos)
                 handle_disco_items(st);
             // XEP-0433 — channel search results (or the service saying no).
@@ -3182,6 +3202,35 @@ private:
                 if (!r.jid.empty() && r.jid.find('@') != std::string::npos)
                     rooms.push_back(r);
                 pos = end + 1;
+            }
+            // A bare domain (movim.eu) answers with its services, not rooms.
+            // Follow the one that looks like the MUC host once, so users can
+            // browse a server without knowing its conference subdomain.
+            if (rooms.empty() && id != "mucroomshop") {
+                std::string hop;
+                size_t p = 0;
+                while ((p = st.find("<item", p)) != std::string::npos) {
+                    size_t e = st.find('>', p);
+                    if (e == std::string::npos) break;
+                    std::string j = attr(st.substr(p, e - p + 1), "jid");
+                    if (!j.empty() && j.find('@') == std::string::npos &&
+                        (j.rfind("conference.", 0) == 0 || j.rfind("muc.", 0) == 0 ||
+                         j.rfind("chat.", 0) == 0 || j.rfind("rooms.", 0) == 0 ||
+                         j.rfind("conf.", 0) == 0)) {
+                        hop = j;
+                        break;
+                    }
+                    p = e + 1;
+                }
+                if (!hop.empty()) {
+                    queue_send("<iq type='get' id='mucroomshop' to='" +
+                               xml_escape(hop) +
+                               "'><query xmlns='http://jabber.org/protocol/"
+                               "disco#items'/></iq>");
+                    emit(make_event(ClientEvent::StatusText,
+                                    "Fetching rooms on " + hop + "…"));
+                    return;
+                }
             }
             size_t nrooms = rooms.size();
             {

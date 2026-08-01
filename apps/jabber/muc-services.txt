@@ -1,0 +1,19 @@
+# Public MUC (chat room) services listed in Browse Chat Rooms.
+# Pick one to list its public rooms, or type any domain in the Service field —
+# a bare server domain is resolved to its chat service via disco#items.
+# Format: host | display name (optional)
+conference.movim.eu|Movim
+chat.yax.im|yax.im
+conference.jabber.ru|jabber.ru
+chat.jabberfr.org|JabberFR
+conference.jabber.at|jabber.at
+conference.404.city|404.city
+conference.trashserver.net|Trashserver
+conference.jabbim.cz|Jabbim
+muc.anoxinon.me|Anoxinon
+conference.draugr.de|draugr.de
+conference.jabber.de|jabber.de
+chat.disroot.org|Disroot
+conference.cluxia.eu|Cluxia
+chat.magicbroccoli.de|magicbroccoli.de
+conference.jabber.hot-chilli.net|hot-chilli.net

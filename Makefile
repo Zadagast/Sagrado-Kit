@@ -81,6 +81,7 @@ $(JABBER): apps/jabber/main.cpp apps/jabber/xmpp/*.h \
            apps/jabber/third_party/stb_image.h $(MBEDTLS_LIB) $(OMEMO_LIB) engine/*.h | $(BUILD)
 	$(CXX) $(JABBER_CXXFLAGS) apps/jabber/main.cpp $(MBEDTLS_LIB) $(OMEMO_LIB) -o $@ $(JABBER_LDFLAGS)
 	cp -f apps/jabber/providers.txt $(BUILD)/providers.txt
+	cp -f apps/jabber/muc-services.txt $(BUILD)/muc-services.txt
 	@if [ ! -f $(BUILD)/emoji_pack/catalog.txt ]; then \
 	  $(MAKE) emoji-pack; \
 	fi
