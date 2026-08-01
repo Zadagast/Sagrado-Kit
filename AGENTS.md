@@ -29,9 +29,11 @@ hand-rolling compiler invocations:
 - The `run*` targets prefer `wine64`, then fall back to `wine`. `wine64` is not
   installed in this environment, so `wine` (32-bit) is used — that is correct
   for the i686 binaries, so the fallback path is expected, not an error.
-- GUI apps need a display. Use the existing TigerVNC desktop on `DISPLAY=:1`
-  (1920x1200). To launch outside `make`, run e.g.
-  `DISPLAY=:1 WINEDEBUG=-all wine build/SagradoTextEdit.exe`. `WINEDEBUG=-all`
+- GUI apps need a display. Use whichever desktop the environment already runs —
+  a TigerVNC session is usually `DISPLAY=:1`, while hosted agent desktops expose
+  `DISPLAY=:0`; check with `xdotool getdisplaygeometry` before assuming. To
+  launch outside `make`, run e.g.
+  `DISPLAY=:0 WINEDEBUG=-all wine build/SagradoTextEdit.exe`. `WINEDEBUG=-all`
   silences noisy Wine fixme logs.
 - The Wine prefix (`~/.wine`) is created on first `wineboot`/run. If it is
   missing, run `wineboot --init` once before launching apps.
