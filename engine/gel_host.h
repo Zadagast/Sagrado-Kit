@@ -61,6 +61,7 @@ struct GelHost {
     bool focused = true;
     bool visible = false;
     bool close_on_deactivate = false;
+    DWORD shown_tick = 0; // GetTickCount at last show (deactivate grace window)
     int pressed_box = 0; // 1=close
 
     GelHostPaintFn paint_fn = nullptr;
@@ -255,7 +256,11 @@ inline LRESULT CALLBACK gel_host_wnd_proc(HWND hwnd, UINT msg, WPARAM wp,
     case WM_ACTIVATE:
         // Dismiss on click-away so the picker never gets "stuck" open when
         // focus has moved to another window (Esc only reaches the focused one).
-        if (LOWORD(wp) == WA_INACTIVE && h.close_on_deactivate && h.visible) {
+        // Ignore the deactivation that immediately follows show(): opening from
+        // a menu tears the menu down and re-activates the owner, which would
+        // otherwise slam the picker shut before the user can use it.
+        if (LOWORD(wp) == WA_INACTIVE && h.close_on_deactivate && h.visible &&
+            GetTickCount() - h.shown_tick > 350) {
             gel_host_request_close(h);
             return 0;
         }
@@ -415,6 +420,7 @@ inline void gel_host_show(GelHost &h, bool show) {
             SetWindowPos(h.hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
         }
     }
+    h.shown_tick = GetTickCount();
     ShowWindow(h.hwnd, SW_SHOW);
     SetForegroundWindow(h.hwnd);
     gel_host_invalidate(h);
