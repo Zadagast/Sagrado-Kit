@@ -571,6 +571,7 @@ public:
     std::map<std::string, std::vector<MucOccupant>> muc_occupants;
     std::map<std::string, std::string> muc_nicks;     // room → our nick
     std::map<std::string, std::string> muc_subjects;  // room → subject
+    std::map<std::string, size_t> mam_live_break_;    // chat → first live line
     std::set<std::string> muc_joined;                 // rooms we have joined
     // vCard PHOTO cache for bare JIDs (roster + MUC real JIDs).
     std::map<std::string, SkinImage> vcard_avatars;
@@ -639,6 +640,7 @@ public:
             omemo_ready = false;
             mam_initial_done_.clear();
             mam_complete_.clear();
+            mam_live_break_.clear();
             mam_oldest_.clear();
             mam_pending_.clear();
             mam_inflight_.clear();
@@ -661,6 +663,7 @@ public:
         password_ = password;
         host_ = jid_domain(jid);
         user_ = jid_node(jid);
+        load_cached_own_avatar();
         stop_ = false;
         thread_ = std::thread([this] { run(); });
     }
@@ -1311,6 +1314,28 @@ public:
         return nullptr;
     }
 
+    std::string own_avatar_cache_path() const {
+        if (store_root.empty() || jid.empty()) return {};
+        std::string name = bare_jid(jid);
+        for (char &c : name) {
+            unsigned char uc = static_cast<unsigned char>(c);
+            if (!(std::isalnum(uc) || c == '-' || c == '_' || c == '.'))
+                c = '_';
+        }
+        return store_root + "\\own-avatar-" + name + ".skimg";
+    }
+
+    void load_cached_own_avatar() {
+        std::string path = own_avatar_cache_path();
+        if (path.empty()) return;
+        SkinImage cached;
+        if (!load_skin_image(path, cached) || cached.empty()) return;
+        std::lock_guard<std::mutex> lock(mu);
+        if (!own_avatar.empty()) return;
+        own_avatar = std::move(cached);
+        vcard_avatars[bare_jid(jid)] = own_avatar;
+    }
+
     // Publish own icon via XEP-0054 vCard PHOTO (AIM-shaped Set Picture).
     // Large camera photos are cropped/scaled/compressed like Gajim/Conversations.
     bool set_own_photo(const std::vector<uint8_t> &bytes, const std::string & /*mime_in*/) {
@@ -1333,9 +1358,11 @@ public:
         std::string hash = sha1_hex(pub);
         std::string nick;
         std::string cached;
+        SkinImage cached_avatar;
         {
             std::lock_guard<std::mutex> lock(mu);
             own_avatar = std::move(av);
+            cached_avatar = own_avatar;
             vcard_avatars[bare_jid(jid)] = own_avatar;
             own_photo_hash_ = hash;
             pending_photo_bytes_ = pub;
@@ -1343,6 +1370,8 @@ public:
             nick = own_nick.empty() ? jid_node(jid) : own_nick;
             cached = own_vcard_xml_;
         }
+        std::string cache_path = own_avatar_cache_path();
+        if (!cache_path.empty()) save_skimg(cache_path, cached_avatar);
         emit(make_event(ClientEvent::Identity));
         emit(make_event(ClientEvent::StatusText, "Updating picture…"));
 
@@ -1636,6 +1665,7 @@ private:
             }
         }
         bool self = bare.empty() || jid_ieq(bare_jid(bare), bare_jid(jid));
+        SkinImage cached_avatar;
         {
             std::lock_guard<std::mutex> lock(mu);
             std::string key = self ? bare_jid(jid) : bare_jid(bare);
@@ -1652,7 +1682,10 @@ private:
                     own_vcard_xml_ = st.substr(a, b + 8 - a);
                 if (!nick.empty()) own_nick = nick;
                 else if (!fn.empty()) own_nick = fn;
-                if (!avatar.empty()) own_avatar = std::move(avatar);
+                if (!avatar.empty()) {
+                    own_avatar = std::move(avatar);
+                    cached_avatar = own_avatar;
+                }
                 if (!photo_hash.empty()) own_photo_hash_ = photo_hash;
             } else if (roster.count(key)) {
                 if (!nick.empty()) roster[key].name = nick;
@@ -1662,6 +1695,10 @@ private:
                 if (!avatar.empty()) roster[key].avatar = avatar;
                 roster[key].vcard_fetched = true;
             }
+        }
+        if (self && !cached_avatar.empty()) {
+            std::string cache_path = own_avatar_cache_path();
+            if (!cache_path.empty()) save_skimg(cache_path, cached_avatar);
         }
         emit(make_event(ClientEvent::Identity, {}, self ? bare_jid(jid) : bare_jid(bare)));
         if (!self) {
@@ -2000,6 +2037,8 @@ private:
             int n = (int)add.size();
             lines.insert(lines.begin(), std::make_move_iterator(add.begin()),
                          std::make_move_iterator(add.end()));
+            auto bit = mam_live_break_.find(with);
+            if (bit != mam_live_break_.end()) bit->second += size_t(n);
             for (auto &ln : lines)
                 if (!ln.react_id.empty())
                     refresh_line_reactions_locked(with, ln.react_id);
@@ -2018,6 +2057,7 @@ private:
         }
         const bool buf_was_empty = pend.buf.empty();
         lines = std::move(pend.buf);
+        if (!lines.empty()) mam_live_break_[with] = lines.size();
         for (auto &ln : live_extra) lines.push_back(std::move(ln));
         for (auto &ln : lines)
             if (!ln.react_id.empty())

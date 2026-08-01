@@ -435,11 +435,11 @@ void load_emoji_pack() {
 }
 
 // Gajim-like transcript rows: avatar + colored nick + time + body + reaction pills.
-constexpr int kMsgAvatar = 32;
-constexpr int kMsgGap = 12;     // between different senders
-constexpr int kMsgGapCont = 4;  // continuation from same sender
-constexpr int kMsgPadX = 12;
-constexpr int kMsgAvatarGap = 10;
+constexpr int kMsgAvatar = 36;
+constexpr int kMsgGap = 14;     // between different senders
+constexpr int kMsgGapCont = 6;   // continuation from same sender
+constexpr int kMsgPadX = 14;
+constexpr int kMsgAvatarGap = 12;
 constexpr int kReactGlyph = 22;
 constexpr int kReactPillPad = 4;
 constexpr int kReactPillGap = 6;
@@ -479,6 +479,56 @@ std::string chat_initials(const std::string &name) {
         }
     }
     return out.empty() ? "?" : out;
+}
+
+const char *show_label(jabber::Show s);
+
+std::string chat_header_title(const std::string &jid, bool muc) {
+    std::lock_guard<std::mutex> lock(g.client.mu);
+    if (muc) {
+        for (const auto &r : g.client.muc_rooms)
+            if (jabber::jid_ieq(r.jid, jid))
+                return r.name.empty() ? jabber::jid_node(jid) : r.name;
+        return jabber::jid_node(jid).empty() ? jid : jabber::jid_node(jid);
+    }
+    auto it = g.client.roster.find(jid);
+    if (it != g.client.roster.end() && !it->second.name.empty()) return it->second.name;
+    return jabber::jid_node(jid).empty() ? jid : jabber::jid_node(jid);
+}
+
+std::string chat_header_subtitle(const std::string &jid, bool muc) {
+    std::lock_guard<std::mutex> lock(g.client.mu);
+    if (muc) {
+        size_t count = 0;
+        auto oit = g.client.muc_occupants.find(jid);
+        if (oit != g.client.muc_occupants.end()) count = oit->second.size();
+        std::string sub = std::to_string(count) + " online";
+        std::string service = g.client.conference_host.empty()
+                                  ? jabber::jid_domain(jid)
+                                  : g.client.conference_host;
+        if (!service.empty()) sub += " · " + service;
+        return sub;
+    }
+    auto it = g.client.roster.find(jid);
+    if (it == g.client.roster.end()) return "Offline";
+    std::string sub = show_label(it->second.show);
+    if (!it->second.status.empty()) sub += " · " + it->second.status;
+    return sub;
+}
+
+int chat_header_height(Canvas &cv) { return cv.line_height() * 2 + 14; }
+
+void paint_chat_header(Canvas &cv, const Appearance &ap, Rect r, const std::string &title,
+                       const std::string &sub) {
+    cv.fill(r, ap.c("primary.background"));
+    cv.hline(r.x, r.right(), r.bottom() - 1, ap.c("list.separator"));
+    int lh = cv.line_height();
+    int x = r.x + kMsgPadX;
+    int y = r.y + 6;
+    int w = std::max(8, r.w - 2 * kMsgPadX);
+    cv.text_elided(x, y, title.c_str(), w, ap.c("primary.label"));
+    y += lh + 2;
+    cv.text_elided(x, y, sub.c_str(), w, ap.c("menu.disable_label"));
 }
 
 bool chat_same_sender(const jabber::ChatLine &a, const jabber::ChatLine &b, bool muc) {
@@ -619,6 +669,7 @@ std::string chat_body_text(const jabber::ChatLine &ln) {
 struct InlineImageEntry {
     int state = 0; // pending, ready, failed
     SkinImage img;
+    std::string caption;
 };
 
 std::mutex g_inline_image_mu;
@@ -627,6 +678,36 @@ std::map<std::string, InlineImageEntry> g_inline_images;
 int g_inline_image_workers = 0;
 constexpr int kMaxInlineImageWorkers = 2;
 constexpr int kInlineImageMax = 256;
+
+std::string inline_image_name(const std::string &url) {
+    std::string u = url;
+    size_t q = u.find_first_of("?#");
+    if (q != std::string::npos) u.resize(q);
+    size_t slash = u.find_last_of('/');
+    std::string name = slash == std::string::npos ? u : u.substr(slash + 1);
+    if (name.empty()) name = "image";
+    return name;
+}
+
+std::string human_bytes(size_t n) {
+    const char *units[] = {"B", "KB", "MB", "GB"};
+    double v = (double)n;
+    int u = 0;
+    while (v >= 1024.0 && u < 3) {
+        v /= 1024.0;
+        ++u;
+    }
+    char buf[32];
+    if (u == 0)
+        std::snprintf(buf, sizeof(buf), "%zu %s", n, units[u]);
+    else
+        std::snprintf(buf, sizeof(buf), "%.1f %s", v, units[u]);
+    return buf;
+}
+
+std::string inline_image_caption(const std::string &url, size_t bytes) {
+    return inline_image_name(url) + " · " + human_bytes(bytes);
+}
 
 bool inline_image_url(const std::string &url) {
     size_t end = url.find_first_of("?#");
@@ -681,7 +762,10 @@ void inline_image_worker(const std::string &url) {
         auto it = g_inline_images.find(url);
         if (it != g_inline_images.end()) {
             it->second.state = ok ? 2 : 3;
-            if (ok) it->second.img = std::move(decoded);
+            if (ok) {
+                it->second.img = std::move(decoded);
+                it->second.caption = inline_image_caption(url, result.body.size());
+            }
         }
         --g_inline_image_workers;
     }
@@ -694,7 +778,7 @@ void ensure_inline_image(const std::string &url) {
     bool start = false;
     {
         std::lock_guard<std::mutex> lock(g_inline_image_mu);
-        auto [it, inserted] = g_inline_images.emplace(url, InlineImageEntry{1, {}});
+        auto [it, inserted] = g_inline_images.emplace(url, InlineImageEntry{1, {}, {}});
         start = inserted;
         (void)it;
     }
@@ -708,6 +792,13 @@ bool inline_image_snapshot(const std::string &url, SkinImage *img, int *state) {
     if (state) *state = it->second.state;
     if (img && it->second.state == 2) *img = it->second.img;
     return true;
+}
+
+std::string inline_image_caption_for(const std::string &url) {
+    std::lock_guard<std::mutex> lock(g_inline_image_mu);
+    auto it = g_inline_images.find(url);
+    if (it == g_inline_images.end() || it->second.caption.empty()) return {};
+    return it->second.caption;
 }
 
 void inline_image_box(const SkinImage &img, int max_w, int *w, int *h) {
@@ -754,7 +845,7 @@ int chat_block_height(Canvas &cv, const jabber::ChatLine &ln, bool show_header,
     if (image_cached && image_state == 2)
         inline_image_box(image, body_wrap, &image_w, &image_h);
     if (image_h > 0)
-        h += image_h + 4;
+        h += image_h + 4 + lh;
     else
         h += text_content_height(layout_lines(cv, chat_body_text(ln), body_wrap, true),
                                  lh);
@@ -814,11 +905,13 @@ std::string date_sep_label(time_t when) {
 }
 
 int full_block_h(Canvas &cv, const std::vector<jabber::ChatLine> &lines, int i,
-                 bool muc, int transcript_w, int pad) {
+                 bool muc, int transcript_w, int pad,
+                 size_t live_break = static_cast<size_t>(-1)) {
     bool headed = lines[size_t(i)].system || i == 0 ||
                   !chat_same_sender(lines[size_t(i - 1)], lines[size_t(i)], muc);
     int bw = chat_body_wrap(transcript_w, pad, headed);
-    return date_sep_h(lines, i, cv.line_height()) +
+    int new_h = (live_break == static_cast<size_t>(i)) ? cv.line_height() + 10 : 0;
+    return new_h + date_sep_h(lines, i, cv.line_height()) +
            chat_block_height(cv, lines[size_t(i)], headed, bw);
 }
 
@@ -1756,6 +1849,7 @@ int hit_transcript_line(int x, int y) {
     bool muc = g.tabs[g.active_tab].muc;
     std::vector<jabber::ChatLine> lines;
     std::string subject;
+    size_t live_break = static_cast<size_t>(-1);
     {
         std::lock_guard<std::mutex> lock(g.client.mu);
         lines = g.client.chats[key];
@@ -1763,11 +1857,13 @@ int hit_transcript_line(int x, int y) {
             auto it = g.client.muc_subjects.find(key);
             if (it != g.client.muc_subjects.end()) subject = it->second;
         }
+        auto bit = g.client.mam_live_break_.find(key);
+        if (bit != g.client.mam_live_break_.end()) live_break = bit->second;
     }
     const int pad = kMsgPadX;
     const int lh = g.canvas.line_height();
     const int full_wrap = std::max(8, g.transcript_r.w - 2 * pad);
-    int top = g.transcript_r.y + 4;
+    int top = g.transcript_r.y + 4 + chat_header_height(g.canvas) + 6;
     if (muc && !subject.empty()) {
         std::string sub = "Topic: " + subject;
         top += text_content_height(layout_lines(g.canvas, sub, full_wrap, true), lh) +
@@ -1778,7 +1874,8 @@ int hit_transcript_line(int x, int y) {
     if (!body.contains(x, y)) return -1;
     int ty = body.y - g.chat_scroll;
     for (int i = 0; i < (int)lines.size(); ++i) {
-        int h = full_block_h(g.canvas, lines, i, muc, g.transcript_r.w, pad);
+        int h =
+            full_block_h(g.canvas, lines, i, muc, g.transcript_r.w, pad, live_break);
         if (y >= ty && y < ty + h) return lines[i].system ? -1 : i;
         ty += h;
     }
@@ -1794,6 +1891,7 @@ int hit_reaction_pill(int x, int y, std::string *emoji_out) {
     bool muc = g.tabs[g.active_tab].muc;
     std::vector<jabber::ChatLine> lines;
     std::string subject;
+    size_t live_break = static_cast<size_t>(-1);
     {
         std::lock_guard<std::mutex> lock(g.client.mu);
         lines = g.client.chats[key];
@@ -1801,11 +1899,13 @@ int hit_reaction_pill(int x, int y, std::string *emoji_out) {
             auto it = g.client.muc_subjects.find(key);
             if (it != g.client.muc_subjects.end()) subject = it->second;
         }
+        auto bit = g.client.mam_live_break_.find(key);
+        if (bit != g.client.mam_live_break_.end()) live_break = bit->second;
     }
     const int pad = kMsgPadX;
     const int lh = g.canvas.line_height();
     const int full_wrap = std::max(8, g.transcript_r.w - 2 * pad);
-    int top = g.transcript_r.y + 4;
+    int top = g.transcript_r.y + 4 + chat_header_height(g.canvas) + 6;
     if (muc && !subject.empty()) {
         std::string sub = "Topic: " + subject;
         top += text_content_height(layout_lines(g.canvas, sub, full_wrap, true), lh) +
@@ -1820,10 +1920,12 @@ int hit_reaction_pill(int x, int y, std::string *emoji_out) {
         bool headed = lines[i].system || i == 0 ||
                       !chat_same_sender(lines[size_t(i - 1)], lines[size_t(i)], muc);
         int bw = chat_body_wrap(g.transcript_r.w, pad, headed);
-        int h = full_block_h(g.canvas, lines, i, muc, g.transcript_r.w, pad);
+        int h =
+            full_block_h(g.canvas, lines, i, muc, g.transcript_r.w, pad, live_break);
         if (y >= ty && y < ty + h && !lines[i].system && !lines[i].reactions.empty()) {
             int text_x = body.x + pad + kMsgAvatar + kMsgAvatarGap;
             int row_y = ty;
+            row_y += (live_break == static_cast<size_t>(i)) ? lh + 10 : 0;
             row_y += date_sep_h(lines, i, lh);
             if (headed) row_y += lh + 2;
             SkinImage image;
@@ -1834,7 +1936,7 @@ int hit_reaction_pill(int x, int y, std::string *emoji_out) {
                 inline_image_box(image, bw, &image_w, &image_h);
             }
             if (image_h > 0)
-                row_y += image_h + 4;
+                row_y += image_h + 4 + lh;
             else
                 row_y += text_content_height(
                     layout_lines(g.canvas, chat_body_text(lines[i]), bw, true), lh);
@@ -2784,6 +2886,7 @@ void paint() {
         else g.client.request_muc_history(key);
         std::vector<jabber::ChatLine> lines;
         std::string subject;
+        size_t live_break = static_cast<size_t>(-1);
         {
             std::lock_guard<std::mutex> lock(g.client.mu);
             lines = g.client.chats[key];
@@ -2791,6 +2894,8 @@ void paint() {
                 auto it = g.client.muc_subjects.find(key);
                 if (it != g.client.muc_subjects.end()) subject = it->second;
             }
+            auto bit = g.client.mam_live_break_.find(key);
+            if (bit != g.client.mam_live_break_.end()) live_break = bit->second;
         }
         const int pad = kMsgPadX;
         const int lh = cv.line_height();
@@ -2799,7 +2904,7 @@ void paint() {
             return !chat_same_sender(lines[size_t(i - 1)], lines[size_t(i)], muc);
         };
         auto line_block_h = [&](int i) {
-            return full_block_h(cv, lines, i, muc, g.transcript_r.w, pad);
+            return full_block_h(cv, lines, i, muc, g.transcript_r.w, pad, live_break);
         };
         auto measure_chat = [&]() {
             int h = 0;
@@ -2844,41 +2949,11 @@ void paint() {
         }
 
         int top = g.transcript_r.y + 4;
-        Rect body{g.transcript_r.x, top, g.transcript_r.w,
-                  g.transcript_r.bottom() - top};
-        int wrap_full = std::max(8, body.w - 2 * pad);
-        int subject_h = 0;
-        if (muc && !subject.empty()) {
-            std::string sub = "Topic: " + subject;
-            subject_h =
-                text_content_height(layout_lines(cv, sub, wrap_full, true), lh) + 4;
-        }
-        int content_h = measure_chat();
-        g.chat_page = std::max(1, body.h - subject_h);
-        g.chat_max = std::max(0, content_h - g.chat_page);
-        if (g.chat_max > 0) {
-            claim_v_sbar(g.transcript_r, g.chat_sbar, g.chat_max);
-            body.w = g.transcript_r.w;
-            wrap_full = std::max(8, body.w - 2 * pad);
-            if (muc && !subject.empty()) {
-                std::string sub = "Topic: " + subject;
-                subject_h =
-                    text_content_height(layout_lines(cv, sub, wrap_full, true), lh) +
-                    4;
-            }
-            content_h = measure_chat();
-            g.chat_page = std::max(1, body.h - subject_h);
-            g.chat_max = std::max(0, content_h - g.chat_page);
-            g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
-            if (g.chat_max <= 0) {
-                g.transcript_r.w += g.chat_sbar.w;
-                g.chat_sbar = {};
-                body.w = g.transcript_r.w;
-            }
-        } else {
-            g.chat_scroll = 0;
-        }
-        top = g.transcript_r.y + 4;
+        int header_h = chat_header_height(cv);
+        paint_chat_header(cv, g.ap, {g.transcript_r.x, top, g.transcript_r.w, header_h},
+                          chat_header_title(key, muc), chat_header_subtitle(key, muc));
+        top += header_h + 6;
+        int wrap_full = std::max(8, g.transcript_r.w - 2 * pad);
         if (muc && !subject.empty()) {
             std::string sub = "Topic: " + subject;
             auto sub_lines = layout_lines(cv, sub, wrap_full, true);
@@ -2893,7 +2968,27 @@ void paint() {
             cv.hline(g.transcript_r.x + 4, g.transcript_r.right() - 4, top - 2,
                      g.ap.c("list.separator"));
         }
-        body = {g.transcript_r.x, top, g.transcript_r.w, g.transcript_r.bottom() - top};
+        Rect body{g.transcript_r.x, top, g.transcript_r.w,
+                  g.transcript_r.bottom() - top};
+        int content_h = measure_chat();
+        g.chat_page = std::max(1, body.h);
+        g.chat_max = std::max(0, content_h - g.chat_page);
+        if (g.chat_max > 0) {
+            claim_v_sbar(g.transcript_r, g.chat_sbar, g.chat_max);
+            body.w = g.transcript_r.w;
+            wrap_full = std::max(8, body.w - 2 * pad);
+            content_h = measure_chat();
+            g.chat_page = std::max(1, body.h);
+            g.chat_max = std::max(0, content_h - g.chat_page);
+            g.chat_scroll = std::clamp(g.chat_scroll, 0, g.chat_max);
+            if (g.chat_max <= 0) {
+                g.transcript_r.w += g.chat_sbar.w;
+                g.chat_sbar = {};
+                body.w = g.transcript_r.w;
+            }
+        } else {
+            g.chat_scroll = 0;
+        }
         g.chat_page = std::max(1, body.h);
         g.chat_max = std::max(0, content_h - g.chat_page);
         if (g.mam_pending_prepend > 0) {
@@ -2923,9 +3018,11 @@ void paint() {
                 bool headed = row_headed(li);
                 int bw = chat_body_wrap(body.w, pad, headed);
                 int sep_h = date_sep_h(lines, li, lh);
-                int block_h = full_block_h(cv, lines, li, muc, body.w, pad);
+                int new_h = live_break == static_cast<size_t>(li) ? lh + 10 : 0;
+                int block_h =
+                    full_block_h(cv, lines, li, muc, body.w, pad, live_break);
                 int gap = headed ? kMsgGap : kMsgGapCont;
-                int content_block = block_h - sep_h - gap;
+                int content_block = block_h - sep_h - new_h - gap;
 
                 if (sep_h > 0) {
                     std::string label = date_sep_label(ln.when);
@@ -2942,6 +3039,20 @@ void paint() {
                                 label.c_str(), g.ap.c("menu.disable_label"));
                 }
                 ty += sep_h;
+                if (new_h > 0) {
+                    const char *label = "NEW MESSAGES";
+                    int label_w = cv.text_width(label);
+                    int center = body.x + body.w / 2;
+                    int rule_y = ty + new_h / 2;
+                    int rule_gap = 8;
+                    Color accent = g.ap.c("menu.hilite_label");
+                    cv.hline(body.x + pad, center - label_w / 2 - rule_gap, rule_y,
+                             accent);
+                    cv.hline(center + label_w / 2 + rule_gap, body.right() - pad,
+                             rule_y, accent);
+                    cv.text(center - label_w / 2, ty + (new_h - lh) / 2, label, accent);
+                    ty += new_h;
+                }
 
                 if (li == g.chat_sel && !ln.system &&
                     ty + content_block > body.y && ty < body.bottom()) {
@@ -3017,6 +3128,13 @@ void paint() {
                         cv.blit_image_scaled(inline_image, text_x, row_y, inline_w,
                                             inline_h);
                     row_y += inline_h + 4;
+                    std::string caption = inline_image_caption_for(ln.body);
+                    if (!caption.empty()) {
+                        if (row_y + lh > body.y && row_y < body.bottom())
+                            cv.text_elided(text_x, row_y, caption.c_str(), bw,
+                                           g.ap.c("menu.disable_label"));
+                        row_y += lh;
+                    }
                 } else {
                     auto spans = ln.system ? std::vector<StyleSpan>{}
                                            : styling_spans(btext);
@@ -3046,7 +3164,7 @@ void paint() {
                                                    : g.ap.c("menu.disable_label"));
                     row_y += lh;
                 }
-                ty += block_h - sep_h;
+                ty += block_h - sep_h - new_h;
             }
         }
     } else {
@@ -3427,6 +3545,7 @@ void run_menu(int menu, int row) {
         const int stock_row = load_row + 1;
         if (row >= 0 && row < n_skins) {
             if (g.ap.load(g.bundled_skins[row].path)) {
+                g.client.load_cached_own_avatar();
                 set_status(std::string("Appearance: ") + g.ap.skin.meta.name);
                 if (sagrado::gel_host_is_visible(g.emoji_host))
                     sagrado::gel_host_invalidate(g.emoji_host);
@@ -3441,12 +3560,14 @@ void run_menu(int menu, int row) {
             ofn.lpstrFilter = "Appearances (*.hap;*.sap)\0*.hap;*.sap\0";
             ofn.Flags = OFN_FILEMUSTEXIST;
             if (GetOpenFileNameA(&ofn) && g.ap.load(file)) {
+                g.client.load_cached_own_avatar();
                 set_status(std::string("Appearance: ") + g.ap.skin.meta.name);
                 if (sagrado::gel_host_is_visible(g.emoji_host))
                     sagrado::gel_host_invalidate(g.emoji_host);
             }
         } else if (row == stock_row) {
             g.ap.set_skin(stock_skin());
+            g.client.load_cached_own_avatar();
             set_status("Stock appearance");
             if (sagrado::gel_host_is_visible(g.emoji_host))
                 sagrado::gel_host_invalidate(g.emoji_host);
