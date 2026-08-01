@@ -47,6 +47,19 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 | Drawing | Software framebuffer → `SetDIBitsToDevice` |
 | Skin | Named `.sap` (schema in `format/schema.json`) |
 
+## Everyday loop (stay on main)
+
+```sh
+git checkout main
+git pull
+make
+make run           # Sagrado Jabber under Wine
+```
+
+Do **not** check out old draft feature branches for daily use — they diverge and
+feel like “an old/different version.” Review PRs only when reviewing. Roadmap:
+[`docs/roadmap.md`](docs/roadmap.md).
+
 ## Build
 
 ### Linux (cross-compile + Wine)
@@ -55,10 +68,11 @@ Short lessons: [`docs/lessons-from-hap.md`](docs/lessons-from-hap.md).
 # Debian/Ubuntu
 sudo apt install g++-mingw-w64-i686 wine
 
-make               # → Editor + TextEdit + Jabber + example skins
-make run           # kit editor under Wine (prefers `wine64`, then `wine`)
+make               # → Editor + TextEdit + Jabber + bundled skins
+make run           # Sagrado Jabber under Wine (prefers wine64)
+make run-jabber    # same as make run
 make run-textedit  # Sagrado TextEdit under Wine
-make run-jabber    # Sagrado Jabber under Wine
+make run-editor    # kit Appearance editor under Wine
 # without Wine: copy the .exe to Windows, or install WineHQ and use wine64
 ```
 
@@ -124,7 +138,8 @@ chats, HTTP Upload files, and **Get an Account** with CAPTCHA painted in gel
 (no browser signup). See [`docs/jabber.md`](docs/jabber.md).
 
 ```sh
-make run-jabber
+make run
+# or: make run-jabber
 # or: build/SagradoJabber.exe
 ```
 

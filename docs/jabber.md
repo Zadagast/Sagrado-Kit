@@ -9,6 +9,14 @@ XMPP’s roster + presence + 1:1 chat is that shape.
 (TextEdit is still the chrome reference; Jabber is the second consumer).  
 **Where we are:** [roadmap.md](roadmap.md) — Jabber track, open PRs, what’s next.
 
+**Everyday (stay on `main`):**
+
+```sh
+git checkout main && git pull && make && make run
+```
+
+Do not check out old draft feature branches for daily use.
+
 ## AOL / AIM UX ↔ XMPP
 
 | AIM / Yahoo feeling | Sagrado Jabber | Wire |
@@ -163,7 +171,7 @@ required for the MinGW cross-build.
 ```sh
 make                 # includes SagradoJabber.exe (+ emoji pack if missing)
 make emoji-pack      # Noto Color Emoji → build/emoji_pack/ (catalog + PNGs)
-make run-jabber      # Wine
+make run             # Jabber under Wine (same as make run-jabber)
 make smoke           # includes jabber paint smoke (no network)
 make jabber-connect-smoke   # Wine: TCP + mbedTLS STARTTLS + register form (yax.im)
 ```

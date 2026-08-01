@@ -23,7 +23,7 @@ JABBER_CXXFLAGS := $(CXXFLAGS) -Iapps/jabber -Iapps/jabber/xmpp \
 	-Iapps/jabber/third_party/mbedtls/include \
 	-DMBEDTLS_CONFIG_FILE='<jabber_mbedtls_config.h>'
 
-.PHONY: all clean run run-textedit run-jabber skins smoke jabber-connect-smoke emoji-pack
+.PHONY: all clean run run-editor run-textedit run-jabber skins smoke jabber-connect-smoke emoji-pack
 
 all: $(EDITOR) $(TEXTEDIT) $(JABBER) skins
 
@@ -82,7 +82,21 @@ skins: | $(BUILD)
 	  cp -f "$$d"* "$(BUILD)/format/skins/$$name/"; \
 	done
 
-run: $(EDITOR) skins
+# Everyday default: Jabber. Editor / TextEdit are explicit.
+run: $(JABBER) skins
+	@WINE=$$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null); \
+	if [ -z "$$WINE" ]; then \
+	  echo "wine64/wine not found — Sagrado Jabber is a Win32 .exe (MinGW)."; \
+	  echo "  WineHQ / Debian: install wine and use wine64, or: sudo apt install wine"; \
+	  echo "  Or copy build/SagradoJabber.exe to a Windows box and run it there."; \
+	  exit 127; \
+	fi; \
+	echo "launching Jabber with $$WINE"; \
+	$$WINE $(JABBER)
+
+run-jabber: run
+
+run-editor: $(EDITOR) skins
 	@WINE=$$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null); \
 	if [ -z "$$WINE" ]; then \
 	  echo "wine64/wine not found — this editor is a Win32 .exe (MinGW)."; \
@@ -90,7 +104,7 @@ run: $(EDITOR) skins
 	  echo "  Or copy build/SagradoKitEditor.exe to a Windows box and run it there."; \
 	  exit 127; \
 	fi; \
-	echo "launching with $$WINE"; \
+	echo "launching editor with $$WINE"; \
 	$$WINE $(EDITOR)
 
 run-textedit: $(TEXTEDIT) skins
@@ -102,16 +116,6 @@ run-textedit: $(TEXTEDIT) skins
 	fi; \
 	echo "launching TextEdit with $$WINE"; \
 	$$WINE $(TEXTEDIT)
-
-run-jabber: $(JABBER) skins
-	@WINE=$$(command -v wine64 2>/dev/null || command -v wine 2>/dev/null); \
-	if [ -z "$$WINE" ]; then \
-	  echo "wine64/wine not found — Sagrado Jabber is a Win32 .exe (MinGW)."; \
-	  echo "  Or copy build/SagradoJabber.exe to a Windows box and run it there."; \
-	  exit 127; \
-	fi; \
-	echo "launching Jabber with $$WINE"; \
-	$$WINE $(JABBER)
 
 # Host-native smoke test (no Win32) — load/resolve/paint/roundtrip.
 # HAPS=<dir> also runs the .hap checks over a directory of real themes.
