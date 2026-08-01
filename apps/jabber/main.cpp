@@ -73,7 +73,8 @@ static const char *kFileItems[] = {
     "Sign On...", "Get an Account...", "Sign Off", "-", "Quit",
 };
 static const char *kBuddyItems[] = {
-    "Add Buddy...", "Remove Buddy...", "Set Picture...", "-",
+    "Add Buddy...", "Remove Buddy...", "Block Buddy", "Unblock Buddy",
+    "Set Picture...", "-",
     "Available", "Away", "Busy", "Invisible",
 };
 static const char *kChatItems[] = {
@@ -99,7 +100,7 @@ struct MenuDef {
 };
 // Appearance is rebuilt from bundled skins (see rebuild_appearance_menu).
 static MenuDef kMenus[MenuCount] = {
-    {kFileItems, 5}, {kBuddyItems, 8}, {kChatItems, 10},
+    {kFileItems, 5}, {kBuddyItems, 10}, {kChatItems, 10},
     {nullptr, 0}, {kHelpItems, 1},
 };
 
@@ -2897,15 +2898,24 @@ void run_menu(int menu, int row) {
                 close_tab_jid(jid);
                 set_status("Removed " + jabber::jid_node(jid));
             }
-        } else if (row == 2) {
+        } else if (row == 2 || row == 3) {
+            // XEP-0191 — block / unblock the selected buddy server-side.
+            std::string jid = selected_buddy_jid();
+            if (jid.empty())
+                set_status("Select a buddy or open their chat first");
+            else if (row == 2)
+                g.client.block_jid(jid);
+            else
+                g.client.unblock_jid(jid);
+        } else if (row == 4) {
             pick_and_set_picture();
-        } else if (row == 4)
+        } else if (row == 6)
             g.client.set_show(jabber::Show::Chat);
-        else if (row == 5)
-            g.client.set_show(jabber::Show::Away);
-        else if (row == 6)
-            g.client.set_show(jabber::Show::Dnd);
         else if (row == 7)
+            g.client.set_show(jabber::Show::Away);
+        else if (row == 8)
+            g.client.set_show(jabber::Show::Dnd);
+        else if (row == 9)
             g.client.set_show(jabber::Show::Unavailable);
     } else if (menu == MenuChat) {
         if (row == 0) {

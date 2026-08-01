@@ -518,6 +518,7 @@ public:
     std::vector<MucRoomInfo> muc_rooms;               // public disco list
     std::vector<MucBookmark> muc_bookmarks;
     std::vector<MucInvite> pending_muc_invites;
+    std::set<std::string> blocked; // XEP-0191 blocklist (bare JIDs)
     SkinImage captcha_image;
     std::string captcha_sid;
     std::string captcha_form_type;
@@ -563,6 +564,7 @@ public:
             conference_host.clear();
             pending_subscribe.clear();
             pending_muc_invites.clear();
+            blocked.clear();
             chat_states.clear();
             reaction_sets.clear();
             vcard_avatars.clear();
@@ -641,6 +643,7 @@ public:
                 "http://jabber.org/protocol/muc",
                 "jabber:x:conference",
                 "jabber:x:oob",
+                "urn:xmpp:blocking",
                 "urn:xmpp:message-correct:0",
                 "urn:xmpp:ping",
                 "urn:xmpp:reactions:0",
@@ -905,6 +908,40 @@ public:
             chats[room].push_back(std::move(ln));
         }
         emit(make_event(ClientEvent::MucSubject, subject, room));
+    }
+
+    // XEP-0191 — server-side blocklist.
+    void block_jid(const std::string &jid_in) {
+        std::string bare = bare_jid(jid_in);
+        if (bare.empty()) return;
+        queue_send("<iq type='set' id='blk" + std::to_string(iq_seq_++) +
+                   "'><block xmlns='urn:xmpp:blocking'><item jid='" +
+                   xml_escape(bare) + "'/></block></iq>");
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            blocked.insert(bare);
+        }
+        emit(make_event(ClientEvent::StatusText, "Blocked " + jid_node(bare)));
+        emit(make_event(ClientEvent::Roster));
+    }
+
+    void unblock_jid(const std::string &jid_in) {
+        std::string bare = bare_jid(jid_in);
+        if (bare.empty()) return;
+        queue_send("<iq type='set' id='blk" + std::to_string(iq_seq_++) +
+                   "'><unblock xmlns='urn:xmpp:blocking'><item jid='" +
+                   xml_escape(bare) + "'/></unblock></iq>");
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            blocked.erase(bare);
+        }
+        emit(make_event(ClientEvent::StatusText, "Unblocked " + jid_node(bare)));
+        emit(make_event(ClientEvent::Roster));
+    }
+
+    bool is_blocked(const std::string &jid_in) {
+        std::lock_guard<std::mutex> lock(mu);
+        return blocked.count(bare_jid(jid_in)) != 0;
     }
 
     void invite_muc(const std::string &room_in, const std::string &buddy_in,
@@ -1295,6 +1332,9 @@ private:
     std::string pending_photo_mime_;
     omemo::Manager omemo_;
     std::set<std::string> omemo_bundle_inflight_; // "bare#deviceId"
+    // XEP-0410 — in-flight self-pings: iq id → (room, sent-at).
+    std::map<std::string, std::pair<std::string, time_t>> selfping_pending_;
+    time_t selfping_last_ = 0;
 
     void emit(const ClientEvent &e) {
         EventFn fn;
@@ -2047,6 +2087,43 @@ private:
             emit(make_event(ClientEvent::Message, body, key));
     }
 
+    // XEP-0191 — blocklist result and <block>/<unblock> pushes.
+    void handle_blocking_iq(const std::string &st) {
+        std::string iq_type = attr(st, "type");
+        bool unblock = st.find("<unblock") != std::string::npos;
+        bool clear_all = false;
+        std::vector<std::string> jids;
+        size_t p = st.find("<item");
+        while (p != std::string::npos) {
+            size_t gt = st.find('>', p);
+            if (gt == std::string::npos) break;
+            std::string j = bare_jid(attr(st.substr(p, gt - p + 1), "jid"));
+            if (!j.empty()) jids.push_back(j);
+            p = st.find("<item", gt);
+        }
+        if (unblock && jids.empty()) clear_all = true;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (st.find("<blocklist") != std::string::npos &&
+                iq_type == "result")
+                blocked.clear();
+            if (clear_all) blocked.clear();
+            for (const auto &j : jids) {
+                if (unblock)
+                    blocked.erase(j);
+                else
+                    blocked.insert(j);
+            }
+        }
+        if (iq_type == "set") {
+            // Acknowledge the push.
+            std::string iq_id = attr(st, "id");
+            if (!iq_id.empty())
+                queue_send("<iq type='result' id='" + xml_escape(iq_id) + "'/>");
+            emit(make_event(ClientEvent::Roster));
+        }
+    }
+
     // Mediated MUC invite (XEP-0045 muc#user) — queue for Accept/Decline UI.
     bool try_queue_muc_invite(const std::string &st) {
         // XEP-0249 direct invitation: message from inviter, x jid = room.
@@ -2358,12 +2435,29 @@ private:
             }
             if (st.find("disco#info") != std::string::npos)
                 handle_disco_info(st);
+            // XEP-0191 — blocklist result / server pushes.
+            if (st.find("urn:xmpp:blocking") != std::string::npos)
+                handle_blocking_iq(st);
             if (st.find("urn:xmpp:bookmarks:1") != std::string::npos ||
                 st.find("storage:bookmarks") != std::string::npos)
                 handle_bookmarks_iq(st);
             if (st.find(omemo::NS) != std::string::npos ||
                 iq_id.rfind("om", 0) == 0)
                 handle_omemo_iq(st);
+            // XEP-0410 — self-ping outcome: result keeps us; error → rejoin.
+            if (iq_id.rfind("sping", 0) == 0) {
+                std::string room;
+                {
+                    std::lock_guard<std::mutex> lock(mu);
+                    auto it = selfping_pending_.find(iq_id);
+                    if (it != selfping_pending_.end()) {
+                        room = it->second.first;
+                        selfping_pending_.erase(it);
+                    }
+                }
+                if (iq_type == "error" && !room.empty()) rejoin_muc(room);
+                return;
+            }
             if (iq_id.rfind("mam", 0) == 0) {
                 MamPending pend;
                 bool have = false;
@@ -2951,10 +3045,66 @@ private:
         // XEP-0280 Message Carbons — mirror other resources into this session.
         sock_.send_all(
             "<iq type='set' id='carb1'><enable xmlns='urn:xmpp:carbons:2'/></iq>");
+        // XEP-0191 — fetch the server-side blocklist.
+        sock_.send_all(
+            "<iq type='get' id='blklist1'><blocklist xmlns='urn:xmpp:blocking'/></iq>");
         bootstrap_omemo();
         set_state(ConnState::Online, "Signed on as " + jid);
         emit(make_event(ClientEvent::Identity));
         return true;
+    }
+
+    // XEP-0410 — periodically ping our own occupant JID in each joined room;
+    // an error or timeout means the room silently dropped us, so rejoin.
+    void muc_self_ping_tick() {
+        constexpr time_t kInterval = 90; // seconds between ping rounds
+        constexpr time_t kTimeout = 60;  // unanswered → assume dropped
+        time_t now = std::time(nullptr);
+        std::vector<std::string> rejoin;
+        std::vector<std::pair<std::string, std::string>> pings; // id, to
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (state != ConnState::Online) return;
+            for (auto it = selfping_pending_.begin();
+                 it != selfping_pending_.end();) {
+                if (now - it->second.second > kTimeout) {
+                    rejoin.push_back(it->second.first);
+                    it = selfping_pending_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            if (now - selfping_last_ >= kInterval) {
+                selfping_last_ = now;
+                for (const auto &room : muc_joined) {
+                    auto nit = muc_nicks.find(room);
+                    if (nit == muc_nicks.end()) continue;
+                    std::string id = "sping" + std::to_string(iq_seq_++);
+                    selfping_pending_[id] = {room, now};
+                    pings.push_back({id, room + "/" + nit->second});
+                }
+            }
+        }
+        for (const auto &p : pings)
+            queue_send("<iq type='get' id='" + p.first + "' to='" +
+                       xml_escape(p.second) +
+                       "'><ping xmlns='urn:xmpp:ping'/></iq>");
+        for (const auto &room : rejoin) rejoin_muc(room);
+    }
+
+    void rejoin_muc(const std::string &room) {
+        std::string nick;
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            if (!muc_joined.count(room)) return;
+            auto nit = muc_nicks.find(room);
+            nick = nit != muc_nicks.end() ? nit->second : jid_node(jid);
+            muc_occupants[room].clear();
+        }
+        queue_send("<presence to='" + xml_escape(room + "/" + nick) +
+                   "'><x xmlns='http://jabber.org/protocol/muc'/></presence>");
+        emit(make_event(ClientEvent::StatusText,
+                        "Rejoining " + jid_node(room) + "…"));
     }
 
     void bootstrap_omemo() {
@@ -3071,6 +3221,7 @@ private:
 
         // Event loop
         while (!stop_) {
+            muc_self_ping_tick();
             flush_send();
             fd_set rfds;
             FD_ZERO(&rfds);
